@@ -1821,7 +1821,7 @@ def cmd_help(topic: str) -> int:
             "probe inspect: mechanically expand one curiosity probe into record details and link status",
             "probe chain draft: mechanically draft an evidence-chain skeleton from one curiosity probe",
             "probe pack: compact mechanical probe, inspection, and chain-draft bundle",
-            "next step: compact action route that tells the agent which TEP branch to follow next",
+            "next step: compact action route and --format json route_graph for mechanical branch selection",
             "logic index: generated predicate atom/rule projection over CLM.logic blocks",
             "code index: index files/symbols/areas and attach navigation-only CIX annotations",
             "strictness: inspect or change allowed_freedom through user-backed requests",
@@ -1829,7 +1829,7 @@ def cmd_help(topic: str) -> int:
         ],
         "commands": [
             "review-context | reindex-context | scan-conflicts",
-            "next-step --intent answer|plan|edit|test|persist|permission|debug --task ...",
+            "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]",
             "brief-context --task ... | search-records --query ... | record-detail --record ...",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",

@@ -769,9 +769,13 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     help_text = run_cli(context, "help", "modes").stdout
     assert "precedent review" in help_text
     assert "task control" in help_text
+    assert "--format json route_graph" in help_text
 
     alias_text = run_cli(context, "tep-help", "modes").stdout
     assert alias_text == help_text
+
+    commands_help = run_cli(context, "help", "commands").stdout
+    assert "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]" in commands_help
 
     configured = run_cli(
         context,
