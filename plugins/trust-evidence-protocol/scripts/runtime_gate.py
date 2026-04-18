@@ -255,11 +255,26 @@ def cmd_show_hydration(root: Path) -> int:
     state = load_hydration_state(root)
     current_fingerprint = compute_context_fingerprint(root)
     stored_fingerprint = str(state.get("fingerprint", ""))
-    is_current = stored_fingerprint == current_fingerprint and state.get("status") in VALID_HYDRATION_STATUSES
+    settings = load_effective_settings(root)
+    mismatches: list[tuple[str, str, str]] = []
+    for key, settings_key in (
+        ("current_workspace", "current_workspace_ref"),
+        ("current_project", "current_project_ref"),
+        ("current_task", "current_task_ref"),
+    ):
+        snapshot = state.get(key)
+        snapshot_ref = str(snapshot.get("id", "")).strip() if isinstance(snapshot, dict) else ""
+        effective_ref = str(settings.get(settings_key) or "").strip()
+        if snapshot_ref != effective_ref:
+            mismatches.append((key, snapshot_ref or "none", effective_ref or "none"))
+    is_current = (
+        stored_fingerprint == current_fingerprint
+        and state.get("status") in VALID_HYDRATION_STATUSES
+        and not mismatches
+    )
 
     print(f"hydration_status={state.get('status', 'unhydrated')}")
     print(f"hydrated_at={state.get('hydrated_at', '')}")
-    settings = load_effective_settings(root)
     print(f"allowed_freedom={settings.get('allowed_freedom', 'proof-only')}")
     if settings.get("allowed_freedom_source"):
         print(f"allowed_freedom_source={settings.get('allowed_freedom_source')}")
@@ -295,6 +310,12 @@ def cmd_show_hydration(root: Path) -> int:
         print(f"active_guidelines={len(active_guidelines)}")
     print(f"state_file={hydration_state_path(root)}")
     print(f"fingerprint_current={is_current}")
+    if mismatches:
+        print("snapshot_mismatch=" + ",".join(key for key, _, _ in mismatches))
+        for key, snapshot_ref, effective_ref in mismatches:
+            print(f"snapshot_{key}={snapshot_ref}")
+            print(f"effective_{key}={effective_ref}")
+        print("action=run hydrate-context")
     if state.get("conflict_count") is not None:
         print(f"conflict_count={state.get('conflict_count')}")
     if state.get("error_count") is not None:

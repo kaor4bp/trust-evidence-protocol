@@ -472,6 +472,118 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
     assert "uses authorization/control" in invalid.stdout
 
 
+def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    run_cli(
+        context,
+        "record-workspace",
+        "--workspace-key",
+        "global-workspace",
+        "--title",
+        "Global Workspace",
+        "--root-ref",
+        str(tmp_path / "global"),
+        "--note",
+        "global workspace",
+    )
+    global_workspace_id = record_ids(context, "workspace")[0]
+    run_cli(context, "set-current-workspace", "--workspace", global_workspace_id)
+    run_cli(
+        context,
+        "record-project",
+        "--project-key",
+        "global-project",
+        "--title",
+        "Global Project",
+        "--root-ref",
+        str(tmp_path / "global"),
+        "--note",
+        "global project",
+    )
+    global_project_id = record_ids(context, "project")[0]
+    run_cli(context, "set-current-project", "--project", global_project_id)
+
+    workdir = tmp_path / "anchored-workdir"
+    workdir.mkdir()
+    run_cli(
+        context,
+        "record-workspace",
+        "--workspace-key",
+        "anchor-workspace",
+        "--title",
+        "Anchor Workspace",
+        "--root-ref",
+        str(workdir),
+        "--note",
+        "anchor workspace",
+    )
+    anchor_workspace_id = [record_id for record_id in record_ids(context, "workspace") if record_id != global_workspace_id][0]
+    run_cli(
+        context,
+        "record-project",
+        "--project-key",
+        "anchor-project",
+        "--title",
+        "Anchor Project",
+        "--root-ref",
+        str(workdir),
+        "--workspace",
+        anchor_workspace_id,
+        "--note",
+        "anchor project",
+    )
+    anchor_project_id = [record_id for record_id in record_ids(context, "project") if record_id != global_project_id][0]
+    run_runtime(context, "hydrate-context")
+    (workdir / ".tep").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "context_root": str(context),
+                "workspace_ref": anchor_workspace_id,
+                "project_ref": anchor_project_id,
+                "note": "local anchor",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    mismatched = subprocess.run(
+        [sys.executable, str(RUNTIME_GATE), "--context", str(context), "show-hydration"],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert mismatched.returncode == 1
+    assert "snapshot_mismatch=current_workspace,current_project" in mismatched.stdout
+    assert f"snapshot_current_workspace={global_workspace_id}" in mismatched.stdout
+    assert f"effective_current_workspace={anchor_workspace_id}" in mismatched.stdout
+    assert f"snapshot_current_project={global_project_id}" in mismatched.stdout
+    assert f"effective_current_project={anchor_project_id}" in mismatched.stdout
+    assert "action=run hydrate-context" in mismatched.stdout
+
+    hydrated = subprocess.run(
+        [sys.executable, str(RUNTIME_GATE), "--context", str(context), "hydrate-context"],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert hydrated.returncode == 0, hydrated.stdout + hydrated.stderr
+    aligned = subprocess.run(
+        [sys.executable, str(RUNTIME_GATE), "--context", str(context), "show-hydration"],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert aligned.returncode == 0
+    assert "snapshot_mismatch=" not in aligned.stdout
+    assert f"current_workspace={anchor_workspace_id}" in aligned.stdout
+
+
 def test_session_start_hook_reports_conflicts(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
