@@ -528,6 +528,9 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert next_step["isError"] is False
     assert "TEP Next Step" in next_step["content"][0]["text"]
     assert "intent: plan" in next_step["content"][0]["text"]
+    graph_lines = [line for line in next_step["content"][0]["text"].splitlines() if line.startswith("- graph: ")]
+    assert graph_lines
+    assert "=>" in graph_lines[0]
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:

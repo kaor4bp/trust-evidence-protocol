@@ -14,7 +14,7 @@ repo-local memory over the unified global context.
 When the plugin MCP server is available, prefer MCP for lookup-heavy work and keep CLI for mutation:
 
 - `brief_context`: equivalent to compact `brief-context --task "..."`; pass `detail=full` only when the expanded brief is needed
-- `next_step`: equivalent to `next-step --intent ...`; use it as the first route branch when unsure what to do next
+- `next_step`: equivalent to `next-step --intent ...`; use it as the first route branch when unsure what to do next, and follow its compact action graph before re-reading the protocol
 - `search_records`: equivalent to `search-records --query "..."`
 - `record_detail`: equivalent to `record-detail --record ID`
 - `linked_records`: equivalent to `linked-records --record ID`

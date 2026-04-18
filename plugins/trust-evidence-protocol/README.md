@@ -399,6 +399,7 @@ Commands:
 
 - `next-step --intent answer|plan|edit|test|persist|permission|debug --task "..."`
   - prints the compact route branch the agent should follow next
+  - includes a compact action graph (`condition=>route`) so the agent follows a route instead of re-reading the whole protocol
   - uses hydration freshness, conflicts, strictness, current workspace/project/task, restrictions, and guidelines
   - is navigation only; it is not proof and does not replace record quotes
 
