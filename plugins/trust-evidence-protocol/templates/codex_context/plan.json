@@ -1,0 +1,28 @@
+{
+  "id": "PLN-YYYYMMDD-xxxxxxxx",
+  "record_type": "plan",
+  "scope": "example-scope",
+  "title": "Stabilize Return to Stock dialog assertions",
+  "status": "proposed",
+  "priority": "high",
+  "justified_by": [
+    "CLM-YYYYMMDD-xxxxxxxx"
+  ],
+  "steps": [
+    "Confirm the current UI state from runtime evidence.",
+    "Update the stale test oracle to match supported facts."
+  ],
+  "success_criteria": [
+    "Tests assert the correct button set for the initial overlay.",
+    "Changed assertions are justified by supported claims."
+  ],
+  "blocked_by": [],
+  "project_refs": [],
+  "task_refs": [],
+  "created_at": "2026-04-16T12:20:00+03:00",
+  "updated_at": "2026-04-16T12:20:00+03:00",
+  "tags": [
+    "example"
+  ],
+  "note": "Persistent plan record for an evidence-backed work item."
+}

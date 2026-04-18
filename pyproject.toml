@@ -1,0 +1,35 @@
+[project]
+name = "trust-evidence-protocol"
+version = "0.1.0"
+requires-python = ">=3.13"
+
+[project.optional-dependencies]
+test = [
+    "coverage[toml]>=7.13,<8",
+    "pytest>=8,<9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.coverage.run]
+parallel = true
+patch = ["subprocess"]
+source_dirs = [
+    "plugins/trust-evidence-protocol/hooks",
+    "plugins/trust-evidence-protocol/mcp",
+    "plugins/trust-evidence-protocol/scripts",
+    "plugins/trust-evidence-protocol/tep_runtime",
+]
+
+[tool.coverage.report]
+include = [
+    "plugins/trust-evidence-protocol/hooks/*.py",
+    "plugins/trust-evidence-protocol/hooks/codex/*.py",
+    "plugins/trust-evidence-protocol/mcp/*.py",
+    "plugins/trust-evidence-protocol/scripts/*.py",
+    "plugins/trust-evidence-protocol/tep_runtime/*.py",
+]
+show_missing = true
+skip_empty = true

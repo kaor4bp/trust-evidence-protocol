@@ -1,0 +1,64 @@
+{
+  "id": "external_factor_speed_drift",
+  "description": "A person has a stable clear-weather speed calibration, but a shortcut observation was collected under rain, so it is a revalidation candidate rather than a current edge proof.",
+  "source_grid": {
+    "rows": 18,
+    "cols": 12,
+    "points": {
+      "A": { "row": 13, "col": 2 },
+      "B": { "row": 5, "col": 4 },
+      "C": { "row": 5, "col": 8 },
+      "D": { "row": 18, "col": 4 },
+      "E": { "row": 10, "col": 6 },
+      "F": { "row": 13, "col": 12 }
+    }
+  },
+  "nodes": ["A", "B", "C", "D", "E", "F"],
+  "start": "A",
+  "goal": "F",
+  "current_travel_context": "clear",
+  "current_known_edges": [
+    { "edge": ["A", "B"], "weight": 4, "source": "known-route-1" },
+    { "edge": ["B", "C"], "weight": 6, "source": "known-route-1" },
+    { "edge": ["C", "F"], "weight": 8, "source": "known-route-1" },
+    { "edge": ["A", "D"], "weight": 7, "source": "known-route-2" },
+    { "edge": ["D", "E"], "weight": 7, "source": "known-route-2" }
+  ],
+  "historical_routes": [
+    { "id": "known-route-1", "path": ["A", "B", "C", "F"], "cost": 18 }
+  ],
+  "traveler_observations": [
+    { "id": "OBS-1", "person": "Ada", "edge": ["A", "B"], "time": 4, "condition": "clear" },
+    { "id": "OBS-2", "person": "Ben", "edge": ["A", "B"], "time": 8, "condition": "clear" },
+    { "id": "OBS-3", "person": "Ben", "edge": ["B", "C"], "time": 12, "condition": "clear" },
+    { "id": "OBS-4", "person": "Ada", "edge": ["A", "E"], "time": 5, "condition": "clear" },
+    { "id": "OBS-5", "person": "Ben", "edge": ["E", "F"], "time": 10, "condition": "rain", "external_factor": "rain" }
+  ],
+  "hidden_edges": [
+    { "edge": ["A", "C"], "weight": 12 },
+    { "edge": ["A", "E"], "weight": 5 },
+    { "edge": ["A", "F"], "weight": 16 },
+    { "edge": ["B", "D"], "weight": 10 },
+    { "edge": ["B", "E"], "weight": 9 },
+    { "edge": ["B", "F"], "weight": 17 },
+    { "edge": ["C", "D"], "weight": 9 },
+    { "edge": ["C", "E"], "weight": 8 },
+    { "edge": ["D", "F"], "weight": 14 },
+    { "edge": ["E", "F"], "weight": 12 }
+  ],
+  "expected": {
+    "person_time_multipliers": {
+      "Ada": 1.0,
+      "Ben": 2.0
+    },
+    "normalized_observed_edges": [
+      { "edge": ["A", "E"], "weight": 5 }
+    ],
+    "factor_drift_edges": [
+      ["E", "F"]
+    ],
+    "initial_best_known": { "path": ["A", "B", "C", "F"], "cost": 18 },
+    "best_after_normalized_observations": { "path": ["A", "B", "C", "F"], "cost": 18 },
+    "oracle_shortest": { "path": ["A", "F"], "cost": 16 }
+  }
+}

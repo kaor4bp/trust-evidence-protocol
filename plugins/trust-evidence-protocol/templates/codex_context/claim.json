@@ -1,0 +1,66 @@
+{
+  "id": "CLM-YYYYMMDD-xxxxxxxx",
+  "record_type": "claim",
+  "plane": "runtime",
+  "status": "tentative",
+  "claim_kind": "factual",
+  "confidence": "moderate",
+  "scope": "example-scope",
+  "statement": "Initial Return to Stock overlay does not expose a Confirm button.",
+  "comparison": {
+    "key": "return-to-stock.initial-overlay.confirm-button-visible",
+    "subject": "return-to-stock overlay",
+    "aspect": "confirm-button-visible",
+    "comparator": "boolean",
+    "value": false,
+    "polarity": "affirmed",
+    "context_scope": "initial-overlay"
+  },
+  "logic": {
+    "symbols": [
+      {
+        "symbol": "ui:return-to-stock-overlay",
+        "kind": "entity",
+        "note": "Typed symbols are introduced by source-backed claims."
+      }
+    ],
+    "atoms": [
+      {
+        "predicate": "Visible",
+        "args": [
+          "ui:return-to-stock-overlay"
+        ],
+        "polarity": "affirmed",
+        "value": true,
+        "functional": true,
+        "context": {
+          "scope": "initial-overlay"
+        }
+      }
+    ],
+    "rules": []
+  },
+  "source_refs": [
+    "SRC-YYYYMMDD-xxxxxxxx"
+  ],
+  "support_refs": [],
+  "contradiction_refs": [],
+  "derived_from": [],
+  "lifecycle": {
+    "state": "active",
+    "attention": "normal",
+    "resolved_at": "",
+    "resolved_by_claim_refs": [],
+    "resolved_by_action_refs": [],
+    "reactivation_conditions": [],
+    "history": []
+  },
+  "project_refs": [],
+  "task_refs": [],
+  "recorded_at": "2026-04-16T12:05:00+03:00",
+  "tags": [
+    "example"
+  ],
+  "red_flags": [],
+  "note": "Why it matters: replace with a short consequence-oriented note."
+}

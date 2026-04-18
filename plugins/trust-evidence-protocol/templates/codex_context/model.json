@@ -1,0 +1,21 @@
+{
+  "id": "MODEL-YYYYMMDD-xxxxxxxx",
+  "record_type": "model",
+  "knowledge_class": "investigation",
+  "domain": "payments",
+  "scope": "checkout.payment-timeout",
+  "aspect": "runtime-behavior",
+  "status": "draft",
+  "is_primary": false,
+  "summary": "Evidence-backed working picture for one scope + aspect.",
+  "claim_refs": ["CLM-YYYYMMDD-xxxxxxxx"],
+  "open_question_refs": [],
+  "hypothesis_refs": [],
+  "related_model_refs": [],
+  "supersedes_refs": [],
+  "promoted_from_refs": [],
+  "project_refs": [],
+  "task_refs": [],
+  "updated_at": "2026-04-16T12:00:00+03:00",
+  "note": "Keep this record strictly derivative from claims."
+}

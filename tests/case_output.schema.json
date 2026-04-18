@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "reason",
+    "allowed_freedom",
+    "score_events",
+    "basis",
+    "used_rules",
+    "underdetermined_targets",
+    "audit_artifacts_used_as_premises"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "allowed_freedom": {
+      "type": "string",
+      "enum": ["proof-only", "implementation-choice"]
+    },
+    "score_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sign", "tag", "target", "delta", "note"],
+        "properties": {
+          "sign": {
+            "type": "string",
+            "enum": ["+", "-"]
+          },
+          "tag": {
+            "type": "string",
+            "enum": [
+              "linking",
+              "freshness",
+              "verification",
+              "scope",
+              "promotion",
+              "persistence"
+            ]
+          },
+          "target": {
+            "type": "string"
+          },
+          "delta": {
+            "type": "integer"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "basis": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["theory", "static-state", "practice", "goal", "control", "unclassified"]
+      }
+    },
+    "used_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "underdetermined_targets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "audit_artifacts_used_as_premises": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

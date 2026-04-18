@@ -1,0 +1,30 @@
+{
+  "id": "GLD-YYYYMMDD-xxxxxxxx",
+  "record_type": "guideline",
+  "scope": "example-scope",
+  "domain": "tests",
+  "status": "active",
+  "applies_to": "project",
+  "priority": "preferred",
+  "rule": "Write browser E2E tests through page objects instead of raw selectors.",
+  "rationale": "Keeps tests resilient when UI structure changes.",
+  "source_refs": [
+    "SRC-YYYYMMDD-xxxxxxxx"
+  ],
+  "project_refs": [
+    "PRJ-YYYYMMDD-xxxxxxxx"
+  ],
+  "task_refs": [],
+  "related_claim_refs": [],
+  "conflict_refs": [],
+  "supersedes_refs": [],
+  "examples": [
+    "Use PickerPage.open() rather than duplicating low-level selector setup."
+  ],
+  "created_at": "2026-04-16T12:30:00+03:00",
+  "updated_at": "2026-04-16T12:30:00+03:00",
+  "tags": [
+    "example"
+  ],
+  "note": "Guidelines are operational rules. They guide action but do not prove truth."
+}

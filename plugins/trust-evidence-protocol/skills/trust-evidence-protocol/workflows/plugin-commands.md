@@ -1,0 +1,252 @@
+# Plugin Commands Workflow
+
+Use plugin commands when available instead of manually editing canonical records.
+Write raw payload files directly only under `.codex_context/artifacts/`; write canonical records through `context_cli.py` commands.
+
+## MCP Read-Only Lookup
+
+When the plugin MCP server is available, prefer MCP for lookup-heavy work and keep CLI for mutation:
+
+- `brief_context`: equivalent to `brief-context --task "..."`
+- `search_records`: equivalent to `search-records --query "..."`
+- `record_detail`: equivalent to `record-detail --record ID`
+- `linked_records`: equivalent to `linked-records --record ID`
+- `guidelines_for`: equivalent to `guidelines-for --task "..."`
+- `code_search`: equivalent to `code-search`
+- `code_smell_report`: equivalent to `code-smell-report`
+- `code_info`: equivalent to `code-info`
+- `cleanup_candidates`: equivalent to `cleanup-candidates`
+- `topic_search`: equivalent to `topic-search`
+- `topic_info`: equivalent to `topic-info`
+- `topic_conflict_candidates`: equivalent to `topic-conflict-candidates`
+- `working_contexts`: equivalent to `working-context show`
+- `logic_search`: equivalent to `logic-search`
+- `logic_check`: equivalent to `logic-check`
+- `logic_conflict_candidates`: equivalent to `logic-conflict-candidates`
+
+MCP lookup is read-only and does not replace canonical records.
+Before citing a fact or rule, use `record_detail`, `linked_records`, or the equivalent CLI command to obtain the record id and quote.
+Use CLI commands for all record creation, updates, strictness changes, task changes, code-index mutation, lifecycle changes, and review regeneration.
+
+## Runtime Gate
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context hydrate-context
+python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context show-hydration
+python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context preflight-task --mode reasoning
+python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context preflight-task --mode planning
+python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context preflight-task --mode edit
+python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context preflight-task --mode action --kind edit
+python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context invalidate-hydration --reason "..."
+```
+
+## Review And Retrieval
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context help modes
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context review-context
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reindex-context
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context scan-conflicts
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context brief-context --task "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context search-records --query "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-detail --record CLM-*
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-neighborhood --record CLM-* --depth 2
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context linked-records --record CLM-* --direction both --depth 1
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context guidelines-for --task "..." --domain code
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context cleanup-candidates
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context cleanup-archives
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context cleanup-archives --archive ARC-*
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context cleanup-archive --dry-run
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context cleanup-archive --apply
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context cleanup-restore --archive ARC-* --dry-run
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context cleanup-restore --archive ARC-* --apply
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-search --query "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-info --record CLM-*
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-conflict-candidates
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-search --predicate PredicateName
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-check
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-conflict-candidates
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context build-reasoning-case --task "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context augment-chain --file evidence-chain.json --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-evidence-chain --file evidence-chain.json
+```
+
+Use `record-detail` after search when you need the exact record id, source quote, and direct links for a public reasoning checkpoint.
+Use `record-neighborhood` before changing or dismissing records with unknown dependents.
+Use `guidelines-for` before sizeable code/test edits and show the selected `GLD-*` ids plus short rule quotes.
+Use `cleanup-candidates` only as a read-only triage report; do not treat it as permission to delete or archive records.
+Use `cleanup-archives` to find restorable `ARC-*` bundles before asking the user to remember an archive id.
+Use `cleanup-archive --dry-run` to inspect a planned archive manifest before any `zip` is written.
+Use `cleanup-archive --apply` only to write a restorable archive; it must not delete originals.
+Use `cleanup-restore --dry-run` before restore; `--apply` restores missing files only and must not overwrite conflicts.
+Use `topic-search` only as a lexical prefilter, then inspect canonical records before citing facts.
+Use `topic-conflict-candidates` only to find records worth structured comparison; it does not replace `scan-conflicts`.
+Use `logic-search` / `logic-check` only as predicate prefilters over `CLM.logic`; they do not replace `CLM-*` and `SRC-*`.
+Use `build-reasoning-case` before non-trivial actions or recommendations that span several facts, models, or flows.
+Use `augment-chain` when you already have record refs but need the plugin to fill quotes, source refs, and validation output mechanically.
+Use `validate-evidence-chain` before asking permission, recording a mutating `ACT-*`, or presenting a user-facing proof chain.
+
+## Runtime Configuration
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --show
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --hook-verbosity quiet --context-budget hydration=compact
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis logic_solver.backend=z3 --analysis logic_solver.install_policy=ask
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis topic_prefilter.backend=nmf --analysis topic_prefilter.missing_dependency=warn
+```
+
+Use `hooks.verbosity=quiet` to reduce routine hook chatter while preserving stale/conflict/blocking messages.
+Use `context_budget` as policy for compact/normal/debug output; do not treat compact output as permission to omit decisive ids.
+Use `analysis` as policy for optional helpers such as Z3 and NMF; it is not proof and not permission to silently install dependencies.
+
+## Code Index
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context init-code-index --root .
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context index-code --root . --include "src/**/*.py" --include "tests/**/*.py"
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-refresh --root . --path "tests/**/*.py"
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-info --path tests/unit/test_example.py --fields target,imports,symbols,features,freshness
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --import pytest --fields target,imports,features --limit 20
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --annotation-kind smell --annotation-category mixed-responsibility --fields target,annotations
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-smell-report --category mixed-responsibility
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-entry create --target-kind directory --path tests/e2e --summary "E2E tests" --note "manual code area"
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context annotate-code --entry CIX-* --kind agent-note --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context annotate-code --entry CIX-* --kind smell --category mixed-responsibility --severity medium --suggestion "..." --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context link-code --entry CIX-* --guideline GLD-* --note "guideline applies here"
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context assign-code-index --record PLN-* --entry CIX-* --note "plan affects this code area"
+```
+
+Treat `CIX-*` as navigation/scope/impact only.
+Do not use CIX entries as proof, claim support, source support, action justification, or evidence-chain nodes.
+Read the code or cite a `SRC-*` before making truth claims about behavior or compliance.
+Use smell annotations as local critique/search signals, not hard rules.
+When a smell repeats and has support, create a `PRP-*` for options or a `GLD-*` through normal guideline recording; do not auto-promote smells.
+Agents should attach smells to the smallest applicable CIX target, preferring symbol over file and file over directory/area.
+Critical smell annotations require a supporting `CLM-*`.
+
+## Projects And Tasks
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-project --project-key "..." --title "..." --root-ref SRC-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context show-project
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context set-current-project --project PRJ-*
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context start-task --type investigation --scope "..." --title "..." --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context show-task
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context task-drift-check --intent "..." --type implementation
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context review-precedents --task-type investigation --query "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context pause-task --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context resume-task --task TASK-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context switch-task --task TASK-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context complete-task
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context stop-task
+```
+
+Use `task-drift-check` when intended work may no longer match the current `TASK-*`.
+If the work is adjacent, note or expand the task context.
+If it is drifted, pause/switch/start a task instead of silently continuing.
+Use `review-precedents` before substantial repeated task types to inspect prior tasks, linked plans, debt, actions, and open questions.
+
+## Working Context
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context working-context create --scope "..." --title "..." --pin CLM-* --topic-seed CLM-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context working-context show
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context working-context fork --context WCTX-* --add-pin CLM-* --add-topic-term "..." --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context working-context close --context WCTX-* --note "..."
+```
+
+Use `WCTX-*` for operational focus, pinned refs, local assumptions, concerns, and handoff.
+Working contexts are not proof and must not replace `CLM-*` plus `SRC-*`.
+Use `fork` for copy-on-write changes so plans/actions can later be tied to the context that existed at the time.
+
+## Topic Index
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-index build --method lexical
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-search --query "gateway retry" --type claim
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-info --record CLM-*
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-conflict-candidates
+```
+
+`topic_index/` is generated navigation data.
+It is useful for narrowing broad searches and finding records worth comparing, but topic overlap is not a contradiction and not proof.
+
+## Logic Index
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-index build
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-search --predicate Student
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-search --symbol person:alice
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-graph --symbol person:alice
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-graph --smells
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-check
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-check --solver z3 --closure rules --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-conflict-candidates
+```
+
+Use `CLM.logic` for typed symbols, atoms, and Horn-style rules attached to source-backed claims.
+`logic_index/` is generated checking/navigation data.
+Predicate candidates are not proof and must be resolved by reviewing/updating the underlying `CLM-*` records.
+Before adding a new `CLM.logic.symbols` entry, use `logic-graph` or MCP `logic_graph` to search existing symbols/predicates and avoid duplicate vocabulary.
+New `--logic-symbol` entries must include `symbol|kind|meaning[|note]`; `meaning` explains the semantic object the agent needs.
+If `analysis.logic_solver.backend` requests an optional solver such as `z3`, respect `missing_dependency` and `install_policy` instead of silently changing the environment.
+Use Z3 reports as claim-level contradiction candidates only.
+When Z3 returns `unsat`, inspect the reported `CLM-*`, logic refs, derived atoms, and underlying `SRC-*` records before changing claim status or lifecycle.
+
+## Control And Guidance
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-permission --scope "..." --applies-to task --grant "..." --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-restriction --scope "..." --title "..." --applies-to task --severity warning --rule "..." --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-guideline --scope "..." --domain code --applies-to project --priority preferred --rule "..." --source SRC-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context show-restrictions
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context show-guidelines
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context request-strictness-change evidence-authorized --reason "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-source --scope strictness.approval --source-kind theory --critique-status accepted --origin-kind user --origin-ref "user approval" --quote "TEP-APPROVE REQ-*" --note "strictness approval"
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context change-strictness evidence-authorized --request REQ-* --approval-source SRC-*
+```
+
+Do not run `change-strictness` upward from a permission alone.
+The user approval source must quote the exact `TEP-APPROVE REQ-*` line printed by `request-strictness-change`.
+Lowering strictness back to `proof-only` can be done directly.
+
+## Records
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-source --scope "..." --source-kind runtime --critique-status accepted --origin-kind command --origin-ref "..." --quote "..." --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-claim --scope "..." --statement "..." --plane runtime --status tentative --source SRC-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-claim --scope "..." --statement "Alice studies algebra." --plane runtime --status supported --source SRC-* --logic-symbol "person:alice|entity" --logic-symbol "subject:algebra|concept" --logic-atom "Studies|person:alice,subject:algebra|affirmed" --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context show-claim-lifecycle --claim CLM-*
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context resolve-claim --claim CLM-* --resolved-by-claim CLM-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context archive-claim --claim CLM-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context restore-claim --claim CLM-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-action --kind edit --scope "..." --justify CLM-* --safety-class guarded --status executed --evidence-chain evidence-chain.json --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-plan --scope "..." --title "..." --priority medium --justify CLM-* --step "..." --success "..." --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-debt --scope "..." --title "..." --priority medium --evidence CLM-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-model --knowledge-class domain --domain "..." --scope "..." --aspect "..." --summary "..." --claim CLM-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-flow --knowledge-class domain --domain "..." --scope "..." --summary "..." --model MODEL-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-open-question --domain "..." --scope "..." --aspect "..." --question "..." --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-proposal --scope "..." --subject "..." --position "..." --proposal "title|why|tradeoff|recommended" --claim CLM-* --note "..."
+```
+
+Use `resolve-claim` before repeated old facts become attention noise.
+Use `archive-claim` only when default retrieval should stop seeing the claim.
+Use `show-claim-lifecycle` before restoring old context into active use.
+
+## Hypotheses
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context hypothesis list
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context hypothesis add --claim CLM-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context hypothesis close --claim CLM-* --status confirmed --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context hypothesis remove --claim CLM-* --note "..."
+```
+
+## If Commands Are Missing
+
+If plugin commands are unavailable:
+
+- follow the same semantics manually
+- do not invent record ids unless writing records
+- state that mechanical validation was unavailable
+- keep public ids, quotes, and support edges explicit

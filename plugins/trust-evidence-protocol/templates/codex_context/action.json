@@ -1,0 +1,18 @@
+{
+  "id": "ACT-YYYYMMDD-xxxxxxxx",
+  "record_type": "action",
+  "kind": "edit",
+  "safety_class": "guarded",
+  "scope": "example-scope",
+  "justified_by": [
+    "CLM-YYYYMMDD-xxxxxxxx"
+  ],
+  "project_refs": [],
+  "task_refs": [],
+  "planned_at": "2026-04-16T12:15:00+03:00",
+  "status": "planned",
+  "tags": [
+    "example"
+  ],
+  "note": "Short note describing the intended or executed operation."
+}

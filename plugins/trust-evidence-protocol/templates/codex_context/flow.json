@@ -1,0 +1,38 @@
+{
+  "id": "FLOW-YYYYMMDD-xxxxxxxx",
+  "record_type": "flow",
+  "knowledge_class": "investigation",
+  "domain": "payments",
+  "scope": "checkout.payment-timeout",
+  "status": "draft",
+  "is_primary": false,
+  "summary": "Integrated flow with expected/observed tension captured at step level.",
+  "model_refs": ["MODEL-YYYYMMDD-xxxxxxxx"],
+  "open_question_refs": [],
+  "preconditions": {
+    "claim_refs": [],
+    "hypothesis_refs": [],
+    "note": "Conditions under which the flow should be considered applicable."
+  },
+  "oracle": {
+    "success_claim_refs": [],
+    "failure_claim_refs": [],
+    "hypothesis_refs": [],
+    "note": "Claims that define success or failure for this flow."
+  },
+  "steps": [
+    {
+      "id": "step-1",
+      "label": "Gateway receives checkout request",
+      "status": "aligned",
+      "claim_refs": ["CLM-YYYYMMDD-xxxxxxxx"],
+      "next_steps": []
+    }
+  ],
+  "supersedes_refs": [],
+  "promoted_from_refs": [],
+  "project_refs": [],
+  "task_refs": [],
+  "updated_at": "2026-04-16T12:05:00+03:00",
+  "note": "Expected and observed tension lives inside one flow."
+}

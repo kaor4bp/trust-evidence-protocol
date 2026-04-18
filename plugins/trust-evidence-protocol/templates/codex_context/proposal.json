@@ -1,0 +1,50 @@
+{
+  "id": "PRP-YYYYMMDD-xxxxxxxx",
+  "record_type": "proposal",
+  "scope": "example-scope",
+  "status": "active",
+  "subject": "Testing strategy for checkout retries",
+  "position": "Prefer a narrow regression test around retry timing before broad refactoring.",
+  "claim_refs": [
+    "CLM-YYYYMMDD-xxxxxxxx"
+  ],
+  "guideline_refs": [
+    "GLD-YYYYMMDD-xxxxxxxx"
+  ],
+  "model_refs": [],
+  "flow_refs": [],
+  "open_question_refs": [],
+  "assumptions": [
+    "The failing behavior is localized to retry timing until runtime evidence says otherwise."
+  ],
+  "concerns": [
+    "Broad refactoring may hide the failing oracle before it is understood."
+  ],
+  "proposals": [
+    {
+      "title": "Add a focused retry-timing regression test first",
+      "why": "It preserves the observable failure while keeping the implementation change small.",
+      "tradeoffs": [
+        "May need a second pass if the failure is caused by orchestration rather than timing."
+      ],
+      "recommended": true
+    }
+  ],
+  "risks": [
+    "If the current evidence is stale, this may optimize around the wrong behavior."
+  ],
+  "stop_conditions": [
+    "Stop and update claims if runtime evidence contradicts the localized retry-timing assumption."
+  ],
+  "confidence": "moderate",
+  "created_by": "agent",
+  "project_refs": [],
+  "task_refs": [],
+  "supersedes_refs": [],
+  "created_at": "2026-04-16T12:35:00+03:00",
+  "updated_at": "2026-04-16T12:35:00+03:00",
+  "tags": [
+    "example"
+  ],
+  "note": "Proposal records capture constructive agent critique and options. They are not proof or permission."
+}

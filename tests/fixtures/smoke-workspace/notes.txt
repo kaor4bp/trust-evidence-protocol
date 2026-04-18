@@ -1,0 +1,1 @@
+The smoke test should only modify README.md.

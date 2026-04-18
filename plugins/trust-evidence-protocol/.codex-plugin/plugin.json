@@ -1,0 +1,27 @@
+{
+  "name": "trust-evidence-protocol",
+  "version": "0.1.28",
+  "description": "Evidence-first reasoning protocol with scoped records, workflow-guided context lookup, action preflight, and persistent project memory.",
+  "keywords": [
+    "evidence",
+    "reasoning",
+    "protocol",
+    "safety"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "TEP Runtime",
+    "shortDescription": "Reason with claims, evidence, and safe hypotheses",
+    "longDescription": "Use an evidence-first reasoning protocol to separate truth from authorization, track provenance, classify claims, persist reusable context into records, and make safer changes based on supported claims and observations.",
+    "developerName": "Local",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use the Trust Evidence Protocol skill with TEP Runtime lookup, storage, and hook guardrails before making changes or decisions."
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "INP-YYYYMMDD-xxxxxxxx",
+  "record_type": "input",
+  "input_kind": "user_prompt",
+  "scope": "example-scope",
+  "captured_at": "2026-04-18T12:00:00+03:00",
+  "session_ref": "codex-session-id-or-thread-ref",
+  "origin": {
+    "kind": "user_prompt",
+    "ref": "chat-turn-or-hook-event"
+  },
+  "project_refs": [],
+  "task_refs": [],
+  "artifact_refs": [],
+  "text": "Raw user input or a compact excerpt when the full payload is stored as an artifact.",
+  "derived_record_refs": [],
+  "tags": [
+    "example"
+  ],
+  "note": "Captured input is provenance for later classification; it is not proof by itself."
+}

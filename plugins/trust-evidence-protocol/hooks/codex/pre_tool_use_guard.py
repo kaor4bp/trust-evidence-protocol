@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Repo-local Codex PreToolUse guard for obvious Bash mutations."""
+
+from __future__ import annotations
+
+import json
+from hook_common import (
+    active_permission_context,
+    hook_mode,
+    hooks_enabled,
+    infer_action_kind,
+    load_payload,
+    locate_context,
+    run_runtime_gate,
+    TEP_ICON,
+)
+
+
+def emit_denial(reason: str, *, permission_context: str | None = None) -> None:
+    hook_output: dict[str, object] = {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": reason,
+    }
+    if permission_context:
+        hook_output["additionalContext"] = permission_context
+    payload = {
+        "systemMessage": f"{TEP_ICON} {reason}",
+        "hookSpecificOutput": hook_output,
+    }
+    print(json.dumps(payload))
+
+
+def main() -> int:
+    payload = load_payload()
+    context_root = locate_context(payload.get("cwd"))
+    if context_root is None:
+        return 0
+    if not hooks_enabled(context_root):
+        return 0
+
+    mode = hook_mode(context_root, "pre_tool_use_guard")
+    if mode == "off":
+        return 0
+
+    command = str(payload.get("tool_input", {}).get("command", "")).strip()
+    action_kind = infer_action_kind(command, context_root)
+    if not action_kind:
+        return 0
+
+    result = run_runtime_gate(
+        "--context",
+        str(context_root),
+        "preflight-task",
+        "--mode",
+        "action",
+        "--kind",
+        action_kind,
+    )
+    if result.returncode == 0:
+        return 0
+
+    message = (result.stdout or result.stderr or "").strip()
+    if not message:
+        message = f"Bash mutation blocked: action kind {action_kind!r} failed preflight."
+    permission_context = active_permission_context(context_root, action_kind)
+    if mode == "warn":
+        print(
+            json.dumps(
+                {
+                    "systemMessage": f"{TEP_ICON} {message.splitlines()[0]}",
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "additionalContext": permission_context,
+                    },
+                }
+            )
+        )
+        return 0
+    emit_denial(message.splitlines()[0], permission_context=permission_context)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

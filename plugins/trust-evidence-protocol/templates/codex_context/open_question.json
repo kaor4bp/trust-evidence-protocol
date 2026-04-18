@@ -1,0 +1,17 @@
+{
+  "id": "OPEN-YYYYMMDD-xxxxxxxx",
+  "record_type": "open_question",
+  "domain": "payments",
+  "scope": "checkout.payment-timeout",
+  "aspect": "runtime-behavior",
+  "status": "open",
+  "question": "Does timeout happen before or after payment-orchestrator receives the request?",
+  "related_claim_refs": [],
+  "related_model_refs": [],
+  "related_flow_refs": [],
+  "resolved_by_claim_refs": [],
+  "project_refs": [],
+  "task_refs": [],
+  "created_at": "2026-04-16T12:10:00+03:00",
+  "note": "Deferred question instead of interrupting the user."
+}

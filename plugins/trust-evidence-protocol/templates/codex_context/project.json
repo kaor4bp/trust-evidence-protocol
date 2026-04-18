@@ -1,0 +1,18 @@
+{
+  "id": "PRJ-YYYYMMDD-xxxxxxxx",
+  "record_type": "project",
+  "scope": "example-project",
+  "project_key": "example-project",
+  "title": "Example Project",
+  "status": "active",
+  "root_refs": [
+    "/absolute/path/to/project"
+  ],
+  "related_project_refs": [],
+  "created_at": "2026-04-16T12:20:00+03:00",
+  "updated_at": "2026-04-16T12:20:00+03:00",
+  "tags": [
+    "example"
+  ],
+  "note": "Project records define context boundaries. They do not prove facts."
+}

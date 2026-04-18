@@ -1,0 +1,19 @@
+{
+  "id": "PRM-YYYYMMDD-xxxxxxxx",
+  "record_type": "permission",
+  "scope": "example-scope",
+  "applies_to": "task",
+  "granted_by": "user",
+  "granted_at": "2026-04-16T12:10:00+03:00",
+  "grants": [
+    "authorize_claim_use: CLM-YYYYMMDD-xxxxxxxx"
+  ],
+  "project_refs": [],
+  "task_refs": [
+    "TASK-YYYYMMDD-xxxxxxxx"
+  ],
+  "tags": [
+    "example"
+  ],
+  "note": "Short note describing the bounded authorization."
+}

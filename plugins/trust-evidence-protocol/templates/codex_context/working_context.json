@@ -1,0 +1,28 @@
+{
+  "id": "WCTX-YYYYMMDD-xxxxxxxx",
+  "record_type": "working_context",
+  "scope": "project-or-task.scope",
+  "title": "Short working context title",
+  "status": "active",
+  "context_kind": "investigation",
+  "pinned_refs": [],
+  "focus_paths": [],
+  "topic_terms": [],
+  "topic_seed_refs": [],
+  "assumptions": [
+    {
+      "text": "Local assumption used for exploration, handoff, or planning.",
+      "mode": "exploration-only",
+      "support_refs": []
+    }
+  ],
+  "concerns": [],
+  "parent_context_ref": "",
+  "supersedes_refs": [],
+  "project_refs": [],
+  "task_refs": [],
+  "created_at": "ISO-8601",
+  "updated_at": "ISO-8601",
+  "tags": [],
+  "note": "WCTX is operational context, not proof."
+}

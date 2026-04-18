@@ -1,0 +1,20 @@
+{
+  "id": "DEBT-YYYYMMDD-xxxxxxxx",
+  "record_type": "debt",
+  "scope": "example-scope",
+  "title": "Return to Stock UI assertions rely on stale labels",
+  "status": "open",
+  "priority": "high",
+  "evidence_refs": [
+    "CLM-YYYYMMDD-xxxxxxxx"
+  ],
+  "plan_refs": [],
+  "project_refs": [],
+  "task_refs": [],
+  "created_at": "2026-04-16T12:25:00+03:00",
+  "updated_at": "2026-04-16T12:25:00+03:00",
+  "tags": [
+    "example"
+  ],
+  "note": "Persistent technical debt record tied to known evidence."
+}

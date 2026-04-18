@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "trust-evidence-protocol": {
+      "command": "python3",
+      "args": [
+        "mcp/tep_server.py"
+      ]
+    }
+  }
+}

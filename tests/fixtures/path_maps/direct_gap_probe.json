@@ -1,0 +1,52 @@
+{
+  "id": "direct_gap_probe",
+  "description": "A direct unknown edge beats all retrospective routes, so replaying old route shapes is the wrong curiosity strategy.",
+  "source_grid": {
+    "rows": 18,
+    "cols": 12,
+    "points": {
+      "A": { "row": 13, "col": 2 },
+      "B": { "row": 5, "col": 4 },
+      "C": { "row": 5, "col": 8 },
+      "D": { "row": 18, "col": 4 },
+      "E": { "row": 10, "col": 6 },
+      "F": { "row": 13, "col": 12 }
+    }
+  },
+  "nodes": ["A", "B", "C", "D", "E", "F"],
+  "start": "A",
+  "goal": "F",
+  "current_known_edges": [
+    { "edge": ["A", "B"], "weight": 4, "source": "retro-route-1" },
+    { "edge": ["B", "C"], "weight": 4, "source": "retro-route-1" },
+    { "edge": ["C", "F"], "weight": 10, "source": "retro-route-1" },
+    { "edge": ["A", "D"], "weight": 6, "source": "retro-route-2" },
+    { "edge": ["D", "E"], "weight": 8, "source": "retro-route-2" },
+    { "edge": ["E", "F"], "weight": 9, "source": "retro-route-2" }
+  ],
+  "historical_routes": [
+    { "id": "retro-route-1", "path": ["A", "B", "C", "F"], "cost": 18 },
+    { "id": "retro-route-2", "path": ["A", "D", "E", "F"], "cost": 23 }
+  ],
+  "hidden_edges": [
+    { "edge": ["A", "C"], "weight": 12 },
+    { "edge": ["A", "E"], "weight": 15 },
+    { "edge": ["A", "F"], "weight": 7 },
+    { "edge": ["B", "D"], "weight": 14 },
+    { "edge": ["B", "E"], "weight": 13 },
+    { "edge": ["B", "F"], "weight": 9 },
+    { "edge": ["C", "D"], "weight": 11 },
+    { "edge": ["C", "E"], "weight": 12 },
+    { "edge": ["D", "F"], "weight": 18 }
+  ],
+  "expected": {
+    "initial_best_known": { "path": ["A", "B", "C", "F"], "cost": 18 },
+    "oracle_shortest": { "path": ["A", "F"], "cost": 7 },
+    "iteration_top_probes": [
+      { "revealed_edges": [], "edge": ["A", "F"] }
+    ],
+    "forbidden_current_claims": [
+      "known route shape is enough to find the best route"
+    ]
+  }
+}

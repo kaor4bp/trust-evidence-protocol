@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trust Evidence Protocol"
+  short_description: "Reason with claims, evidence, and safe hypotheses"
+  default_prompt: "Use $trust-evidence-protocol to reason from claims, observations, and evidence before making changes or decisions."

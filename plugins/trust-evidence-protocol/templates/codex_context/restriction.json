@@ -1,0 +1,26 @@
+{
+  "id": "RST-YYYYMMDD-xxxxxxxx",
+  "record_type": "restriction",
+  "scope": "example-scope",
+  "title": "Do not use remote destructive probes",
+  "status": "active",
+  "applies_to": "project",
+  "severity": "hard",
+  "rules": [
+    "Do not run destructive remote probes without explicit user approval."
+  ],
+  "project_refs": [
+    "PRJ-YYYYMMDD-xxxxxxxx"
+  ],
+  "task_refs": [],
+  "related_claim_refs": [],
+  "supersedes_refs": [],
+  "imposed_by": "user",
+  "imposed_at": "2026-04-16T12:20:00+03:00",
+  "created_at": "2026-04-16T12:20:00+03:00",
+  "updated_at": "2026-04-16T12:20:00+03:00",
+  "tags": [
+    "example"
+  ],
+  "note": "Restrictions are control records. They do not prove truth."
+}

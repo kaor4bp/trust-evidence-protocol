@@ -1,0 +1,389 @@
+#!/usr/bin/env python3
+"""Runtime hydration and preflight gates for the trust-evidence-protocol plugin."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from context_lib import (
+    RECORD_DIRS,
+    build_index,
+    collect_validation_errors,
+    compute_context_fingerprint,
+    context_write_lock,
+    hydration_state_path,
+    invalidate_hydration_state,
+    is_mutating_action_kind,
+    load_hydration_state,
+    load_settings,
+    now_timestamp,
+    resolve_context_root,
+    write_backlog,
+    write_conflicts_report,
+    write_flows_report,
+    write_hydration_state,
+    write_hypotheses_report,
+    write_attention_report,
+    write_models_report,
+    write_resolved_report,
+    write_stale_report,
+    write_validation_report,
+)
+
+
+VALID_HYDRATION_STATUSES = {"hydrated", "hydrated-with-conflicts"}
+TEP_ICON = "🛡️"
+
+
+def print_errors(errors) -> None:
+    for error in errors:
+        print(f"{error.path}: {error.message}")
+
+
+def refresh_generated_outputs(root: Path, records: dict[str, dict]) -> list[str]:
+    write_stale_report(root, records)
+    conflict_lines = write_conflicts_report(root, records)
+    write_models_report(root, records)
+    write_flows_report(root, records)
+    write_hypotheses_report(root, records)
+    write_resolved_report(root, records)
+    write_attention_report(root, records)
+    build_index(root, records)
+    write_backlog(root, records)
+    return conflict_lines
+
+
+def summarize_counts(records: dict[str, dict]) -> dict[str, int]:
+    counts = {record_type: 0 for record_type in RECORD_DIRS}
+    for data in records.values():
+        record_type = str(data.get("record_type", "")).strip()
+        if record_type in counts:
+            counts[record_type] += 1
+    return counts
+
+
+def current_task_summary(root: Path, records: dict[str, dict]) -> dict | None:
+    current_task_ref = str(load_settings(root).get("current_task_ref") or "").strip()
+    if not current_task_ref:
+        return None
+    task = records.get(current_task_ref)
+    if not task or task.get("record_type") != "task":
+        return {"id": current_task_ref, "status": "missing", "title": "", "scope": ""}
+    return {
+        "id": current_task_ref,
+        "status": str(task.get("status", "")).strip(),
+        "scope": str(task.get("scope", "")).strip(),
+        "task_type": str(task.get("task_type", "general")).strip() or "general",
+        "title": str(task.get("title", "")).strip(),
+    }
+
+
+def current_project_summary(root: Path, records: dict[str, dict]) -> dict | None:
+    current_project_ref = str(load_settings(root).get("current_project_ref") or "").strip()
+    if not current_project_ref:
+        return None
+    project = records.get(current_project_ref)
+    if not project or project.get("record_type") != "project":
+        return {"id": current_project_ref, "status": "missing", "project_key": "", "title": ""}
+    return {
+        "id": current_project_ref,
+        "status": str(project.get("status", "")).strip(),
+        "project_key": str(project.get("project_key", "")).strip(),
+        "title": str(project.get("title", "")).strip(),
+    }
+
+
+def active_restriction_summaries(records: dict[str, dict], project_ref: str | None, task_ref: str | None) -> list[dict]:
+    restrictions: list[dict] = []
+    for restriction in records.values():
+        if restriction.get("record_type") != "restriction":
+            continue
+        if str(restriction.get("status", "")).strip() != "active":
+            continue
+        applies_to = str(restriction.get("applies_to", "")).strip()
+        if applies_to == "global":
+            matched = True
+        elif applies_to == "project":
+            matched = bool(project_ref and project_ref in restriction.get("project_refs", []))
+        elif applies_to == "task":
+            matched = bool(task_ref and task_ref in restriction.get("task_refs", []))
+        else:
+            matched = False
+        if matched:
+            restrictions.append(
+                {
+                    "id": str(restriction.get("id", "")).strip(),
+                    "applies_to": applies_to,
+                    "severity": str(restriction.get("severity", "")).strip(),
+                    "title": str(restriction.get("title", "")).strip(),
+                }
+            )
+    return sorted(restrictions, key=lambda item: (item["severity"], item["id"]))
+
+
+def active_guideline_summaries(records: dict[str, dict], project_ref: str | None, task_ref: str | None) -> list[dict]:
+    guidelines: list[dict] = []
+    for guideline in records.values():
+        if guideline.get("record_type") != "guideline":
+            continue
+        if str(guideline.get("status", "")).strip() != "active":
+            continue
+        applies_to = str(guideline.get("applies_to", "")).strip()
+        if applies_to == "global":
+            matched = True
+        elif applies_to == "project":
+            matched = bool(project_ref and project_ref in guideline.get("project_refs", []))
+        elif applies_to == "task":
+            matched = bool(task_ref and task_ref in guideline.get("task_refs", []))
+        else:
+            matched = False
+        if matched:
+            guidelines.append(
+                {
+                    "id": str(guideline.get("id", "")).strip(),
+                    "domain": str(guideline.get("domain", "")).strip(),
+                    "applies_to": applies_to,
+                    "priority": str(guideline.get("priority", "")).strip(),
+                    "rule": str(guideline.get("rule", "")).strip(),
+                }
+            )
+    priority_order = {"required": 0, "preferred": 1, "optional": 2}
+    return sorted(guidelines, key=lambda item: (priority_order.get(item["priority"], 9), item["id"]))
+
+
+def render_current_task(task: dict) -> str:
+    title = str(task.get("title", "")).strip()
+    title_suffix = f" | {title}" if title else ""
+    return (
+        f"Current task: {task.get('id')} | status={task.get('status', '')} "
+        f"| type={task.get('task_type', 'general')} | scope={task.get('scope', '')}{title_suffix}"
+    )
+
+
+def render_current_project(project: dict) -> str:
+    title = str(project.get("title", "")).strip()
+    title_suffix = f" | {title}" if title else ""
+    return (
+        f"Current project: {project.get('id')} | status={project.get('status', '')} "
+        f"| key={project.get('project_key', '')}{title_suffix}"
+    )
+
+
+def cmd_hydrate_context(root: Path) -> int:
+    records, errors = collect_validation_errors(root)
+    write_validation_report(root, errors)
+    conflict_lines = refresh_generated_outputs(root, records)
+
+    fingerprint = compute_context_fingerprint(root)
+    settings = load_settings(root)
+    current_task = current_task_summary(root, records)
+    current_project = current_project_summary(root, records)
+    restrictions = active_restriction_summaries(
+        records,
+        current_project["id"] if current_project else None,
+        current_task["id"] if current_task else None,
+    )
+    guidelines = active_guideline_summaries(
+        records,
+        current_project["id"] if current_project else None,
+        current_task["id"] if current_task else None,
+    )
+    state = {
+        "status": "blocked" if errors else ("hydrated-with-conflicts" if conflict_lines else "hydrated"),
+        "hydrated_at": now_timestamp(),
+        "fingerprint": fingerprint,
+        "allowed_freedom": settings.get("allowed_freedom", "proof-only"),
+        "current_project": current_project,
+        "current_task": current_task,
+        "active_restrictions": restrictions,
+        "active_guidelines": guidelines,
+        "record_counts": summarize_counts(records),
+        "conflict_count": len(conflict_lines),
+        "error_count": len(errors),
+    }
+    write_hydration_state(root, state)
+
+    if errors:
+        print_errors(errors)
+        print(f"{hydration_state_path(root)}: hydration blocked by validation errors")
+        return 1
+    if current_project:
+        print(render_current_project(current_project))
+    if current_task:
+        print(render_current_task(current_task))
+    if restrictions:
+        print(f"Active restrictions: {len(restrictions)} ({', '.join(item['id'] for item in restrictions)})")
+    if guidelines:
+        print(f"Active guidelines: {len(guidelines)} ({', '.join(item['id'] for item in guidelines)})")
+    if conflict_lines:
+        print(f"{hydration_state_path(root)}: hydrated with {len(conflict_lines)} conflict issue(s)")
+        return 0
+    print(f"{TEP_ICON} Hydrated context: {root}")
+    return 0
+
+
+def cmd_show_hydration(root: Path) -> int:
+    state = load_hydration_state(root)
+    current_fingerprint = compute_context_fingerprint(root)
+    stored_fingerprint = str(state.get("fingerprint", ""))
+    is_current = stored_fingerprint == current_fingerprint and state.get("status") in VALID_HYDRATION_STATUSES
+
+    print(f"hydration_status={state.get('status', 'unhydrated')}")
+    print(f"hydrated_at={state.get('hydrated_at', '')}")
+    print(f"allowed_freedom={load_settings(root).get('allowed_freedom', 'proof-only')}")
+    current_project = state.get("current_project")
+    if isinstance(current_project, dict) and current_project.get("id"):
+        print(
+            "current_project="
+            f"{current_project.get('id')} status={current_project.get('status', '')} "
+            f"key={current_project.get('project_key', '')} title={current_project.get('title', '')}"
+        )
+    current_task = state.get("current_task")
+    if isinstance(current_task, dict) and current_task.get("id"):
+        print(
+            "current_task="
+            f"{current_task.get('id')} status={current_task.get('status', '')} "
+            f"type={current_task.get('task_type', 'general')} scope={current_task.get('scope', '')} "
+            f"title={current_task.get('title', '')}"
+        )
+    active_restrictions = state.get("active_restrictions")
+    if isinstance(active_restrictions, list):
+        print(f"active_restrictions={len(active_restrictions)}")
+    active_guidelines = state.get("active_guidelines")
+    if isinstance(active_guidelines, list):
+        print(f"active_guidelines={len(active_guidelines)}")
+    print(f"state_file={hydration_state_path(root)}")
+    print(f"fingerprint_current={is_current}")
+    if state.get("conflict_count") is not None:
+        print(f"conflict_count={state.get('conflict_count')}")
+    if state.get("error_count") is not None:
+        print(f"error_count={state.get('error_count')}")
+    return 0 if is_current else 1
+
+
+def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
+    state = load_hydration_state(root)
+    current_fingerprint = compute_context_fingerprint(root)
+    stored_fingerprint = str(state.get("fingerprint", ""))
+    status = str(state.get("status", "unhydrated")).strip()
+
+    if status not in VALID_HYDRATION_STATUSES or stored_fingerprint != current_fingerprint:
+        print(
+            f"Hydration required before {mode}. Run: "
+            f"python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context {root} hydrate-context"
+        )
+        return 1
+
+    strictness = load_settings(root).get("allowed_freedom", "proof-only")
+    active_restrictions = state.get("active_restrictions", [])
+
+    if status == "hydrated-with-conflicts" and mode == "planning":
+        print("Planning is blocked while hydrated conflicts remain unresolved. Review review/conflicts.md first.")
+        return 1
+
+    action_kind = ""
+    if mode == "edit":
+        action_kind = "edit"
+    if mode == "action":
+        action_kind = (kind or "").strip()
+        if not action_kind:
+            print("preflight-task --mode action requires --kind")
+            return 1
+
+    if action_kind and is_mutating_action_kind(action_kind) and strictness == "proof-only":
+        print(f"Mutating action kind {action_kind!r} requires implementation-choice strictness")
+        return 1
+    if action_kind and is_mutating_action_kind(action_kind) and strictness == "evidence-authorized":
+        current_task = state.get("current_task")
+        if not isinstance(current_task, dict) or not current_task.get("id"):
+            print("Mutating action in evidence-authorized mode requires an active TASK-*")
+            return 1
+        hard_restrictions = [
+            item
+            for item in active_restrictions
+            if isinstance(item, dict) and str(item.get("severity", "")).strip() == "hard"
+        ]
+        if hard_restrictions:
+            print(
+                "Mutating action in evidence-authorized mode is blocked by hard restriction(s): "
+                + ", ".join(str(item.get("id", "")) for item in hard_restrictions)
+            )
+            return 1
+        print("Evidence-authorized preflight passed; record-action still requires --evidence-chain.")
+
+    if status == "hydrated-with-conflicts":
+        print(f"Preflight passed with conflicts present for {mode}; proceed only with conflict-aware reasoning.")
+        if active_restrictions:
+            print(f"Active restrictions present: {', '.join(str(item.get('id', '')) for item in active_restrictions if isinstance(item, dict))}")
+        return 0
+
+    print(f"Preflight passed for {mode}")
+    if active_restrictions:
+        print(f"Active restrictions present: {', '.join(str(item.get('id', '')) for item in active_restrictions if isinstance(item, dict))}")
+    return 0
+
+
+def cmd_invalidate_hydration(root: Path, reason: str) -> int:
+    invalidate_hydration_state(root, reason=reason)
+    print(f"{hydration_state_path(root)}: marked stale ({reason})")
+    return 0
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Hydration and runtime preflight gates.")
+    parser.add_argument(
+        "--context",
+        default=None,
+        help="Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, ~/.tep_context, or legacy ./.codex_context.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    subparsers.add_parser("hydrate-context", help="Validate and mark the context as hydrated.")
+    subparsers.add_parser("show-hydration", help="Show hydration status and currentness.")
+
+    preflight = subparsers.add_parser(
+        "preflight-task",
+        help="Check whether the current context is hydrated and compatible with the task mode.",
+    )
+    preflight.add_argument("--mode", required=True, choices=["reasoning", "planning", "edit", "action"])
+    preflight.add_argument("--kind")
+
+    invalidate = subparsers.add_parser(
+        "invalidate-hydration",
+        help="Mark hydration state stale after an external mutation.",
+    )
+    invalidate.add_argument("--reason", required=True)
+
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    root = resolve_context_root(args.context, start=Path.cwd())
+    if root is None:
+        print("Could not resolve TEP context root")
+        raise SystemExit(1)
+    if args.command == "hydrate-context":
+        try:
+            with context_write_lock(root):
+                raise SystemExit(cmd_hydrate_context(root))
+        except TimeoutError as exc:
+            print(exc)
+            raise SystemExit(1)
+    if args.command == "show-hydration":
+        raise SystemExit(cmd_show_hydration(root))
+    if args.command == "preflight-task":
+        raise SystemExit(cmd_preflight_task(root, mode=args.mode, kind=args.kind))
+    if args.command == "invalidate-hydration":
+        try:
+            with context_write_lock(root):
+                raise SystemExit(cmd_invalidate_hydration(root, reason=args.reason))
+        except TimeoutError as exc:
+            print(exc)
+            raise SystemExit(1)
+    raise SystemExit(2)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,26 @@
+{
+  "id": "TASK-YYYYMMDD-xxxxxxxx",
+  "record_type": "task",
+  "scope": "example-scope",
+  "title": "Debug bridge check-r1 retry behavior",
+  "description": "Current execution focus for the agent.",
+  "status": "active",
+  "task_type": "investigation",
+  "related_claim_refs": [
+    "CLM-YYYYMMDD-xxxxxxxx"
+  ],
+  "related_model_refs": [],
+  "related_flow_refs": [],
+  "open_question_refs": [],
+  "plan_refs": [],
+  "debt_refs": [],
+  "action_refs": [],
+  "project_refs": [],
+  "restriction_refs": [],
+  "created_at": "2026-04-16T12:20:00+03:00",
+  "updated_at": "2026-04-16T12:20:00+03:00",
+  "tags": [
+    "example"
+  ],
+  "note": "Task records describe the execution focus, not truth or authorization."
+}

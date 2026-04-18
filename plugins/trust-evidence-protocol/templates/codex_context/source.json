@@ -1,0 +1,25 @@
+{
+  "id": "SRC-YYYYMMDD-xxxxxxxx",
+  "record_type": "source",
+  "source_kind": "runtime",
+  "scope": "example-scope",
+  "captured_at": "2026-04-16T12:00:00+03:00",
+  "critique_status": "accepted",
+  "confidence": "high",
+  "independence_group": "runtime-run-20260416-1200",
+  "origin": {
+    "kind": "command",
+    "ref": "uv run pytest ..."
+  },
+  "project_refs": [],
+  "task_refs": [],
+  "artifact_refs": [
+    "../../artifacts/ART-YYYYMMDD-xxxxxxxx.txt"
+  ],
+  "quote": "Replace with a short decisive excerpt or leave empty when artifact_refs are sufficient.",
+  "tags": [
+    "example"
+  ],
+  "red_flags": [],
+  "note": "Short note about provenance or context."
+}
