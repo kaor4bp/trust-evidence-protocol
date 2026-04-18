@@ -838,3 +838,41 @@ def test_pre_tool_hook_does_not_block_read_only_shell_checks_with_stderr_redirec
         hook_payload(context, "patch -p1 < /tmp/change.diff"),
     )
     assert patch_command["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_tool_hooks_ignore_heredoc_body_when_classifying_shell_policy(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    run_cli(context, "change-strictness", "proof-only")
+    run_runtime(context, "hydrate-context")
+
+    read_only_version_check = """git status --short && git rev-parse --short HEAD && python3 - <<'PY'
+import json
+from pathlib import Path
+print(json.loads(Path('plugins/trust-evidence-protocol/.codex-plugin/plugin.json').read_text())['version'])
+PY"""
+    pre_result = run_script(HOOK_DIR / "pre_tool_use_guard.py", hook_payload(context, read_only_version_check))
+    assert pre_result.stdout.strip() == ""
+    post_result = run_script(HOOK_DIR / "post_tool_use_review.py", hook_payload(context, read_only_version_check))
+    assert post_result.stdout.strip() == ""
+
+    heredoc_with_mutating_text = """python3 - <<'PY'
+print("rm -rf /tmp/example")
+print("patch -p1 < /tmp/change.diff")
+print("not a redirect > /tmp/not-written")
+PY"""
+    pre_result = run_script(HOOK_DIR / "pre_tool_use_guard.py", hook_payload(context, heredoc_with_mutating_text))
+    assert pre_result.stdout.strip() == ""
+    post_result = run_script(HOOK_DIR / "post_tool_use_review.py", hook_payload(context, heredoc_with_mutating_text))
+    assert post_result.stdout.strip() == ""
+
+    heredoc_redirect = hook_json(
+        HOOK_DIR / "pre_tool_use_guard.py",
+        hook_payload(
+            context,
+            """python3 - <<'PY' > /tmp/heredoc-output
+print("hello")
+PY""",
+        ),
+    )
+    assert heredoc_redirect["hookSpecificOutput"]["permissionDecision"] == "deny"

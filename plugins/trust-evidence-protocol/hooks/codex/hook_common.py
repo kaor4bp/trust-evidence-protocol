@@ -110,6 +110,7 @@ COMBINED_REDIRECTION_PATTERN = re.compile(r"(^|[\s;|&])&>>?")
 STDOUT_REDIRECT_TARGET_PATTERN = re.compile(r"(?:^|[\s;|&])(?:1)?>>?\s*(?![&])(?P<target>\"[^\"]+\"|'[^']+'|[^\s;|&]+)")
 COMBINED_REDIRECT_TARGET_PATTERN = re.compile(r"(?:^|[\s;|&])&>>?\s*(?P<target>\"[^\"]+\"|'[^']+'|[^\s;|&]+)")
 TEE_TARGET_PATTERN = re.compile(r"\btee(?:\s+-a)?\s+(?P<target>\"[^\"]+\"|'[^']+'|[^\s;|&]+)", re.IGNORECASE)
+HEREDOC_PATTERN = re.compile(r"<<-?\s*(?P<delimiter>\"[^\"]+\"|'[^']+'|\\?[A-Za-z_][A-Za-z0-9_]*)")
 
 
 def load_payload() -> dict:
@@ -117,6 +118,29 @@ def load_payload() -> dict:
     if not raw:
         return {}
     return json.loads(raw)
+
+
+def strip_heredoc_bodies(command: str) -> str:
+    """Remove heredoc payload lines so policy only scans shell syntax."""
+    lines = command.splitlines()
+    if len(lines) <= 1:
+        return command
+
+    sanitized: list[str] = []
+    pending_delimiters: list[str] = []
+    for line in lines:
+        if pending_delimiters:
+            delimiter = pending_delimiters[0]
+            if line.strip() == delimiter:
+                pending_delimiters.pop(0)
+            continue
+
+        sanitized.append(line)
+        for match in HEREDOC_PATTERN.finditer(line):
+            delimiter = unquote_shell_token(match.group("delimiter").lstrip("\\"))
+            if delimiter:
+                pending_delimiters.append(delimiter)
+    return "\n".join(sanitized)
 
 
 def locate_context(start: str | None) -> Path | None:
@@ -232,7 +256,7 @@ def is_artifact_output_target(target: str, context_root: Path | None) -> bool:
 
 
 def is_artifact_write_command(command: str, context_root: Path | None) -> bool:
-    normalized = command.strip()
+    normalized = strip_heredoc_bodies(command).strip()
     if not normalized:
         return False
     targets = [
@@ -244,7 +268,7 @@ def is_artifact_write_command(command: str, context_root: Path | None) -> bool:
 
 
 def infer_action_kind(command: str, context_root: Path | None = None) -> str | None:
-    normalized = command.strip()
+    normalized = strip_heredoc_bodies(command).strip()
     if not normalized:
         return None
     if is_artifact_write_command(normalized, context_root):
