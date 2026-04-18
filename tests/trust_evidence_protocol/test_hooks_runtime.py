@@ -159,6 +159,22 @@ def hook_json(script: Path, payload: dict) -> dict:
     return json.loads(output)
 
 
+def hook_json_with_env(script: Path, payload: dict, env: dict[str, str]) -> dict:
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        input=json.dumps(payload),
+        cwd=REPO_ROOT,
+        env={**os.environ, **env},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = result.stdout.strip()
+    assert output, f"expected hook output from {script}"
+    return json.loads(output)
+
+
 def test_runtime_gate_hydration_and_invalidation_cycle(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
@@ -596,6 +612,84 @@ def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_
     assert aligned.returncode == 0
     assert "snapshot_mismatch=" not in aligned.stdout
     assert f"current_workspace={anchor_workspace_id}" in aligned.stdout
+
+
+def test_hooks_preserve_anchored_hydration_from_unanchored_cwd(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    run_cli(
+        context,
+        "record-workspace",
+        "--workspace-key",
+        "global-workspace",
+        "--title",
+        "Global Workspace",
+        "--root-ref",
+        str(tmp_path / "global"),
+        "--note",
+        "global workspace",
+    )
+    global_workspace_id = record_ids(context, "workspace")[0]
+    run_cli(context, "set-current-workspace", "--workspace", global_workspace_id)
+
+    workdir = tmp_path / "anchored-workdir"
+    workdir.mkdir()
+    run_cli(
+        context,
+        "record-workspace",
+        "--workspace-key",
+        "anchor-workspace",
+        "--title",
+        "Anchor Workspace",
+        "--root-ref",
+        str(workdir),
+        "--note",
+        "anchor workspace",
+    )
+    anchor_workspace_id = [record_id for record_id in record_ids(context, "workspace") if record_id != global_workspace_id][0]
+    (workdir / ".tep").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "context_root": str(context),
+                "workspace_ref": anchor_workspace_id,
+                "note": "local anchor",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    anchored_hydrate = subprocess.run(
+        [sys.executable, str(RUNTIME_GATE), "--context", str(context), "hydrate-context"],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert anchored_hydrate.returncode == 0, anchored_hydrate.stdout + anchored_hydrate.stderr
+
+    unanchored = tmp_path / "unanchored-cwd"
+    unanchored.mkdir()
+    payload = {"cwd": str(unanchored), "prompt": "continue TEP work", "session_id": "session-unanchored"}
+    env = {"TEP_CONTEXT_ROOT": str(context)}
+
+    prompt_output = hook_json_with_env(HOOK_DIR / "user_prompt_hydration_notice.py", payload, env)
+    assert prompt_output["systemMessage"] == "🛡️ Anchored context preserved."
+    assert f"Preserved workspace: {anchor_workspace_id}" in prompt_output["hookSpecificOutput"]["additionalContext"]
+
+    session_output = hook_json_with_env(HOOK_DIR / "session_start_hydrate.py", {"cwd": str(unanchored)}, env)
+    assert session_output["systemMessage"] == "🛡️ Anchored context preserved."
+
+    aligned = subprocess.run(
+        [sys.executable, str(RUNTIME_GATE), "--context", str(context), "show-hydration"],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert aligned.returncode == 0
+    assert f"current_workspace={anchor_workspace_id}" in aligned.stdout
+    assert not record_ids(context, "input")
 
 
 def test_session_start_hook_reports_conflicts(tmp_path: Path) -> None:

@@ -253,6 +253,7 @@ def cmd_hydrate_context(root: Path) -> int:
         "hydrated_at": now_timestamp(),
         "fingerprint": fingerprint,
         "allowed_freedom": settings.get("allowed_freedom", "proof-only"),
+        "anchor_path": settings.get("anchor_path", ""),
         "current_workspace": current_workspace,
         "current_project": current_project,
         "current_task": current_task,

@@ -1093,6 +1093,7 @@ Current behavior is intentionally conservative:
 
 - `SessionStart` hydrates the resolved TEP context root, preferring `~/.tep_context`, and injects the active context summary plus protocol obligations
 - `UserPromptSubmit` injects a warning when hydration is stale or missing; in `remind` mode it also injects a compact evidence-chain/guideline-disclosure reminder while hydration is fresh
+- If a hook runs from a cwd without a `.tep` anchor while the hydration snapshot was created from an anchored workdir, hooks preserve the existing anchored focus instead of silently overwriting workspace/project focus from global settings
 - `PreToolUse` inspects `Bash` commands for obvious mutating intent and denies them when runtime preflight fails
 - `PostToolUse` marks hydration stale after obvious mutating `Bash` commands complete and injects a re-hydration warning
 - no automatic `Stop` continuation loop is configured

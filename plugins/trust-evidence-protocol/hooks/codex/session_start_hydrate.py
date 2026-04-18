@@ -5,7 +5,18 @@ from __future__ import annotations
 
 import json
 
-from hook_common import TEP_ICON, hook_mode, hook_verbosity, hooks_enabled, load_payload, locate_context, next_step_hint, run_runtime_gate
+from hook_common import (
+    TEP_ICON,
+    anchored_hydration_preserved_message,
+    hook_mode,
+    hook_verbosity,
+    hooks_enabled,
+    load_payload,
+    locate_context,
+    next_step_hint,
+    run_runtime_gate,
+    should_preserve_anchored_hydration,
+)
 
 
 PROTOCOL_REMINDER = (
@@ -77,6 +88,12 @@ def main() -> int:
     if not hooks_enabled(context_root):
         return 0
     if hook_mode(context_root, "session_start_hydrate") == "off":
+        return 0
+    if should_preserve_anchored_hydration(context_root, cwd):
+        emit(
+            additional_context=anchored_hydration_preserved_message(context_root),
+            system_message="Anchored context preserved.",
+        )
         return 0
 
     result = run_runtime_gate("--context", str(context_root), "hydrate-context", cwd=cwd)

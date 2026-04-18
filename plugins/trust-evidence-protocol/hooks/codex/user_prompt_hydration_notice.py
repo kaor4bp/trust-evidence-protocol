@@ -7,6 +7,7 @@ import json
 
 from hook_common import (
     TEP_ICON,
+    anchored_hydration_preserved_message,
     hook_mode,
     hook_verbosity,
     hooks_enabled,
@@ -16,6 +17,7 @@ from hook_common import (
     next_step_hint,
     run_context_cli,
     run_runtime_gate,
+    should_preserve_anchored_hydration,
 )
 
 
@@ -134,6 +136,12 @@ def main() -> int:
         return 0
     mode = hook_mode(context_root, "user_prompt_notice")
     if mode == "off":
+        return 0
+    if should_preserve_anchored_hydration(context_root, cwd):
+        emit(
+            additional_context=anchored_hydration_preserved_message(context_root),
+            system_message="Anchored context preserved.",
+        )
         return 0
     capture_user_prompt(context_root, payload)
 

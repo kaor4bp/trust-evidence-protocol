@@ -64,6 +64,7 @@ from context_lib import (  # noqa: E402
     DEFAULT_HOOK_SETTINGS,
     build_next_step_payload,
     load_effective_settings,
+    load_hydration_state,
     load_records,
     load_settings,
     next_step_inline,
@@ -178,6 +179,36 @@ def hook_verbosity(context_root: Path | None) -> str:
 def hooks_enabled(context_root: Path | None) -> bool:
     hooks = load_hook_settings(context_root)
     return bool(hooks.get("enabled", True))
+
+
+def has_context_anchor(context_root: Path, cwd: str | Path | None) -> bool:
+    settings = load_effective_settings(context_root, start=cwd)
+    return bool(str(settings.get("anchor_path") or "").strip())
+
+
+def should_preserve_anchored_hydration(context_root: Path, cwd: str | Path | None) -> bool:
+    if has_context_anchor(context_root, cwd):
+        return False
+    state = load_hydration_state(context_root)
+    return bool(str(state.get("anchor_path") or "").strip())
+
+
+def anchored_hydration_preserved_message(context_root: Path) -> str:
+    state = load_hydration_state(context_root)
+    workspace = state.get("current_workspace") if isinstance(state, dict) else None
+    project = state.get("current_project") if isinstance(state, dict) else None
+    task = state.get("current_task") if isinstance(state, dict) else None
+    lines = [
+        "TEP kept the existing anchored hydration because the hook cwd has no `.tep` anchor.",
+        "Run `hydrate-context` from the intended workdir if you are switching workspace/project focus.",
+    ]
+    if isinstance(workspace, dict) and workspace.get("id"):
+        lines.append(f"Preserved workspace: {workspace.get('id')} | {workspace.get('workspace_key', '')}")
+    if isinstance(project, dict) and project.get("id"):
+        lines.append(f"Preserved project: {project.get('id')} | {project.get('project_key', '')}")
+    if isinstance(task, dict) and task.get("id"):
+        lines.append(f"Preserved task: {task.get('id')} | {task.get('scope', '')}")
+    return "\n".join(lines)
 
 
 def permission_applies(permission: dict, project_ref: str | None, task_ref: str | None) -> bool:

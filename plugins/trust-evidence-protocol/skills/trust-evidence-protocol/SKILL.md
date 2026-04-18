@@ -50,6 +50,7 @@ Persistence write boundary:
 - Do not create or edit canonical records with shell redirection, `tee`, ad hoc scripts, or manual JSON edits.
 - Workdir-local `.tep` anchors may select `context_root`, `workspace_ref`, `project_ref`, hook verbosity, context budget, and stricter local `allowed_freedom`; they must not store records, facts, permissions, restrictions, guidelines, or proposals.
 - Local `.tep.settings.allowed_freedom` may only keep or lower effective freedom. It is not a way to raise permission above canonical context policy.
+- If hooks report `Anchored context preserved`, continue using the preserved workspace/project/task unless you are intentionally switching focus; then hydrate from the intended workdir that contains the right `.tep` anchor.
 - `<context>/artifacts/` may receive raw diagnostic payloads directly, such as screenshots, logs, and copied command output.
 - A raw artifact is not proof by itself; create or update a `SRC-*` record that cites the artifact before using it as durable support.
 - The artifact exception must not be used to write source files, arbitrary workspace paths, `/tmp`, settings, indexes, generated views, or records.
