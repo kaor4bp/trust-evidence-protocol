@@ -137,6 +137,7 @@ from context_lib import (
     code_index_entry_path,
     active_restrictions_for,
     attention_diagram_mermaid_lines,
+    attention_diagram_metrics,
     attention_diagram_payload,
     attention_diagram_text_lines,
     augment_evidence_chain_payload,
@@ -2673,7 +2674,7 @@ def cmd_attention_map(root: Path, limit: int, output_format: str, scope: str) ->
     return 0
 
 
-def cmd_attention_diagram(root: Path, limit: int, output_format: str, scope: str) -> int:
+def cmd_attention_diagram(root: Path, limit: int, output_format: str, scope: str, detail: str) -> int:
     _, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -2683,11 +2684,13 @@ def cmd_attention_diagram(root: Path, limit: int, output_format: str, scope: str
         return 1
     payload = scoped_attention_payload(root, payload, scope)
     if output_format == "json":
-        diagram = attention_diagram_payload(payload, limit=limit)
-        diagram["mermaid"] = "\n".join(attention_diagram_mermaid_lines(payload, limit=limit))
+        diagram = attention_diagram_payload(payload, limit=limit, detail=detail)
+        mermaid = "\n".join(attention_diagram_mermaid_lines(payload, limit=limit, detail=detail))
+        diagram["mermaid"] = mermaid
+        diagram["metrics"] = attention_diagram_metrics(diagram, mermaid=mermaid, detail=detail)
         print(json.dumps(diagram, indent=2, ensure_ascii=False))
         return 0
-    print("\n".join(attention_diagram_text_lines(payload, limit=limit)))
+    print("\n".join(attention_diagram_text_lines(payload, limit=limit, detail=detail)))
     return 0
 
 
@@ -3114,7 +3117,7 @@ def build_probe_route_payload(root: Path, records: dict, scoped_payload: dict, p
     probe = inspection["probe"]
     refs = [str(ref) for ref in probe.get("record_refs", [])]
     commands = [
-        f"attention-diagram --scope {scope} --limit 8",
+        f"attention-diagram --scope {scope} --limit 8 --detail compact",
         f"probe-inspect --index {probe_index} --scope {scope}",
         f"probe-chain-draft --index {probe_index} --scope {scope} --format json",
         f"probe-pack-compare --budget {max(1, probe_index)} --scope {scope}",
@@ -5000,6 +5003,7 @@ def parse_args() -> argparse.Namespace:
     attention_diagram.add_argument("--limit", type=int, default=8)
     attention_diagram.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     attention_diagram.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    attention_diagram.add_argument("--detail", choices=("compact", "full"), default="compact")
     curiosity_probes = subparsers.add_parser(
         "curiosity-probes",
         help="Show generated bounded curiosity probes. Not proof.",
@@ -6077,7 +6081,15 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
     if args.command == "attention-map":
         raise SystemExit(cmd_attention_map(root, limit=args.limit, output_format=args.output_format, scope=args.scope))
     if args.command == "attention-diagram":
-        raise SystemExit(cmd_attention_diagram(root, limit=args.limit, output_format=args.output_format, scope=args.scope))
+        raise SystemExit(
+            cmd_attention_diagram(
+                root,
+                limit=args.limit,
+                output_format=args.output_format,
+                scope=args.scope,
+                detail=args.detail,
+            )
+        )
     if args.command == "curiosity-probes":
         raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format, scope=args.scope))
     if args.command == "probe-inspect":

@@ -369,7 +369,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "attention_diagram",
-                    "arguments": {"context": str(context), "limit": 3, "scope": "all", "format": "json"},
+                    "arguments": {"context": str(context), "limit": 3, "scope": "all", "detail": "compact", "format": "json"},
                 },
             },
             {
@@ -486,6 +486,8 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     attention_diagram = by_id[18]["result"]
     assert attention_diagram["isError"] is False
     assert '"diagram_is_proof": false' in attention_diagram["content"][0]["text"]
+    assert '"detail": "compact"' in attention_diagram["content"][0]["text"]
+    assert '"omitted_fields": [' in attention_diagram["content"][0]["text"]
     assert "graph TD" in attention_diagram["content"][0]["text"]
 
     probe_route = by_id[19]["result"]

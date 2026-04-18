@@ -522,7 +522,20 @@ def record_diagram_summary(record: dict) -> str:
     return str(summary)
 
 
-def attention_diagram_payload(payload: dict, *, limit: int) -> dict:
+def attention_diagram_metrics(payload: dict, *, mermaid: str, detail: str) -> dict:
+    return {
+        "detail": detail,
+        "cluster_count": len(payload.get("clusters", [])),
+        "record_count": len(payload.get("records", {})),
+        "bridge_count": len(payload.get("bridges", [])),
+        "probe_count": len(payload.get("probes", [])),
+        "payload_char_count": len(json.dumps({**payload, "mermaid": mermaid}, ensure_ascii=False, sort_keys=True)),
+        "omitted_fields": [] if detail == "full" else ["record_summaries"],
+        "metrics_are_proof": False,
+    }
+
+
+def attention_diagram_payload(payload: dict, *, limit: int, detail: str = "compact") -> dict:
     clusters = sorted(
         payload.get("clusters", {}).values(),
         key=lambda item: (-item.get("activity_score", 0), -item.get("record_count", 0), item.get("term", "")),
@@ -546,23 +559,39 @@ def attention_diagram_payload(payload: dict, *, limit: int) -> dict:
     ][: max(1, limit)]
     for probe in probes:
         record_ids.update(str(record_id) for record_id in probe.get("record_refs", []) if str(record_id) in records)
+    selected_records = {record_id: records[record_id] for record_id in sorted(record_ids)}
+    if detail != "full":
+        selected_records = {
+            record_id: {
+                "id": record.get("id", record_id),
+                "record_type": record.get("record_type", ""),
+                "status": record.get("status", ""),
+                "activity_score": record.get("activity_score", 0.0),
+                "tap_count": record.get("tap_count", 0),
+                "top_topic_id": record.get("top_topic_id", ""),
+                "top_topic_term": record.get("top_topic_term", ""),
+                "attention_index_is_proof": False,
+            }
+            for record_id, record in selected_records.items()
+        }
     return {
         "diagram_is_proof": False,
         "attention_index_is_proof": False,
+        "detail": detail,
         "scope": payload.get("scope", "all"),
         "workspace_ref": payload.get("workspace_ref", ""),
         "project_ref": payload.get("project_ref", ""),
         "task_ref": payload.get("task_ref", ""),
         "clusters": clusters,
-        "records": {record_id: records[record_id] for record_id in sorted(record_ids)},
+        "records": selected_records,
         "bridges": bridges,
         "probes": probes,
         "note": "Generated Mermaid attention diagram data. Navigation only; not proof.",
     }
 
 
-def attention_diagram_mermaid_lines(payload: dict, *, limit: int) -> list[str]:
-    diagram = attention_diagram_payload(payload, limit=limit)
+def attention_diagram_mermaid_lines(payload: dict, *, limit: int, detail: str = "compact") -> list[str]:
+    diagram = attention_diagram_payload(payload, limit=limit, detail=detail)
     records = diagram["records"]
     lines = [
         "%% TEP attention diagram. Generated navigation only; not proof.",
@@ -583,7 +612,11 @@ def attention_diagram_mermaid_lines(payload: dict, *, limit: int) -> list[str]:
                 continue
             record_node = mermaid_node_id("record", record_ref)
             if record_ref not in declared_records:
-                record_label = mermaid_label(f"{record_ref}\\n{record_diagram_summary(records[record_ref])}", limit=90)
+                record_label = (
+                    mermaid_label(f"{record_ref}\\n{record_diagram_summary(records[record_ref])}", limit=90)
+                    if detail == "full"
+                    else mermaid_label(record_ref, limit=90)
+                )
                 lines.append(f'  {record_node}["{record_label}"]')
                 declared_records.add(record_ref)
             lines.append(f"  {node_id} --> {record_node}")
@@ -601,16 +634,20 @@ def attention_diagram_mermaid_lines(payload: dict, *, limit: int) -> list[str]:
     return lines
 
 
-def attention_diagram_text_lines(payload: dict, *, limit: int) -> list[str]:
+def attention_diagram_text_lines(payload: dict, *, limit: int, detail: str = "compact") -> list[str]:
+    diagram = attention_diagram_payload(payload, limit=limit, detail=detail)
+    mermaid = "\n".join(attention_diagram_mermaid_lines(payload, limit=limit, detail=detail))
+    metrics = attention_diagram_metrics(diagram, mermaid=mermaid, detail=detail)
     lines = [
         "# Attention Diagram",
         "",
         "Mode: generated Mermaid attention/navigation diagram. Not proof.",
         f"scope: `{payload.get('scope', 'all')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"detail: `{detail}` metrics_are_proof=`{metrics['metrics_are_proof']}` omitted=`{', '.join(metrics['omitted_fields']) or 'none'}` payload_chars=`{metrics['payload_char_count']}`",
         "",
         "```mermaid",
     ]
-    lines.extend(attention_diagram_mermaid_lines(payload, limit=limit))
+    lines.extend(mermaid.splitlines())
     lines.extend(["```", "", "Inspect canonical records before citing any diagram relationship."])
     return lines
 

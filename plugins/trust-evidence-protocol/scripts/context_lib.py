@@ -70,6 +70,7 @@ from tep_runtime.attention import (
     TAP_KINDS,
     append_tap_event,
     attention_diagram_mermaid_lines,
+    attention_diagram_metrics,
     attention_diagram_payload,
     attention_diagram_text_lines,
     attention_map_text_lines,

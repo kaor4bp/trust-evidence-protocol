@@ -1134,6 +1134,8 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert "```mermaid" in diagram_text
     assert "Not proof" in diagram_text
     assert "graph TD" in diagram_text
+    assert "detail: `compact`" in diagram_text
+    assert "omitted=`record_summaries`" in diagram_text
     probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
     assert probes_payload["attention_index_is_proof"] is False
     assert all(ref.startswith("CLM-") for probe in probes_payload["probes"] for ref in probe["record_refs"])
@@ -1392,8 +1394,16 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     assert "route_is_proof=`False`" in route_text
     assert "Recommended Commands" in route_text
     diagram_payload = json.loads(run_cli(context, "attention-diagram", "--limit", "2", "--format", "json").stdout)
+    full_diagram_payload = json.loads(
+        run_cli(context, "attention-diagram", "--limit", "2", "--detail", "full", "--format", "json").stdout
+    )
     assert diagram_payload["diagram_is_proof"] is False
+    assert diagram_payload["detail"] == "compact"
     assert diagram_payload["scope"] == "current"
+    assert diagram_payload["metrics"]["omitted_fields"] == ["record_summaries"]
+    assert full_diagram_payload["detail"] == "full"
+    assert full_diagram_payload["metrics"]["omitted_fields"] == []
+    assert full_diagram_payload["metrics"]["payload_char_count"] > diagram_payload["metrics"]["payload_char_count"]
     assert "graph TD" in diagram_payload["mermaid"]
 
     all_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "20", "--scope", "all", "--format", "json").stdout)
