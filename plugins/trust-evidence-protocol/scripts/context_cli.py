@@ -1798,6 +1798,7 @@ def cmd_help(topic: str) -> int:
             "working context: pin WCTX-* focus/context snapshots for retrospective and handoff",
             "topic index: generated lexical prefilter for navigation and candidate review",
             "attention index: generated tap-aware map, cold zones, and curiosity probes",
+            "probe inspect: mechanically expand one curiosity probe into record details and link status",
             "logic index: generated predicate atom/rule projection over CLM.logic blocks",
             "code index: index files/symbols/areas and attach navigation-only CIX annotations",
             "strictness: inspect or change allowed_freedom through user-backed requests",
@@ -1815,7 +1816,7 @@ def cmd_help(topic: str) -> int:
             "record-input --input-kind user_prompt --origin-kind user --origin-ref ... --text ...",
             "working-context create|fork|show|close",
             "topic-index build --method lexical | topic-search --query ...",
-            "tap-record --record CLM-* --kind cited --intent support | attention-index build | attention-map | curiosity-probes --budget 5",
+            "tap-record --record CLM-* --kind cited --intent support | attention-index build | attention-map | curiosity-probes --budget 5 | probe-inspect --index 1",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3",
         ],
@@ -2692,6 +2693,94 @@ def cmd_curiosity_probes(root: Path, budget: int, output_format: str, scope: str
         )
         return 0
     print("\n".join(curiosity_probe_text_lines(limited_payload, limit=budget)))
+    return 0
+
+
+def direct_probe_edges(records: dict[str, dict], record_refs: list[str]) -> list[dict]:
+    wanted = {tuple(sorted([left, right])) for left in record_refs for right in record_refs if left < right}
+    return [
+        edge
+        for edge in collect_link_edges(records)
+        if tuple(sorted([str(edge.get("from", "")), str(edge.get("to", ""))])) in wanted
+    ]
+
+
+def probe_inspect_text_lines(payload: dict) -> list[str]:
+    probe = payload["probe"]
+    refs = probe.get("record_refs", [])
+    lines = [
+        "# Curiosity Probe Inspection",
+        "",
+        "Mode: mechanical navigation context. Not proof.",
+        f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"probe_index: `{payload.get('probe_index')}` score: `{probe.get('score', 0)}` score_is_proof=`{probe.get('score_is_proof', False)}`",
+        f"record_refs: {', '.join(f'`{ref}`' for ref in refs)}",
+        f"reason: {probe.get('reason', '')}",
+        "",
+        "## Direct Link Status",
+    ]
+    if payload["direct_edges"]:
+        for edge in payload["direct_edges"]:
+            lines.append(f"- established `{edge['from']}` -> `{edge['to']}` via `{', '.join(edge.get('fields', []))}`")
+    else:
+        lines.append("- no direct canonical link found between probe records")
+    lines.extend(["", "## Records"])
+    for detail in payload["record_details"]:
+        summary = detail["summary"]
+        lines.append(
+            f"- `{summary.get('id')}` type=`{summary.get('record_type')}` status=`{summary.get('status')}`: {summary.get('summary')}"
+        )
+        for source in detail.get("source_quotes", [])[:2]:
+            quote = concise(str(source.get("quote", "")), 160)
+            lines.append(f"  source `{source.get('id')}` kind=`{source.get('source_kind')}` critique=`{source.get('critique_status')}`: {quote}")
+    lines.extend(["", "## Suggested Follow-Up"])
+    for command in payload["suggested_commands"]:
+        lines.append(f"- `{command}`")
+    lines.append("")
+    lines.append("Do not cite this inspection as proof; cite canonical `SRC-*` / `CLM-*` records after inspection.")
+    return lines
+
+
+def cmd_probe_inspect(root: Path, probe_index: int, output_format: str, scope: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    attention_payload = load_attention_payload(root)
+    if not attention_payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+    probes = scoped_payload.get("probes", [])
+    if not probes:
+        print("no curiosity probes available for this scope")
+        return 1
+    index = max(1, probe_index) - 1
+    if index >= len(probes):
+        print(f"probe index out of range: {probe_index}; available={len(probes)}")
+        return 1
+    probe = probes[index]
+    record_refs = [str(ref) for ref in probe.get("record_refs", []) if str(ref) in records]
+    payload = {
+        "attention_index_is_proof": False,
+        "inspection_is_proof": False,
+        "scope": scoped_payload.get("scope", scope),
+        "workspace_ref": scoped_payload.get("workspace_ref", ""),
+        "project_ref": scoped_payload.get("project_ref", ""),
+        "task_ref": scoped_payload.get("task_ref", ""),
+        "probe_index": probe_index,
+        "probe": probe,
+        "direct_edges": direct_probe_edges(records, record_refs),
+        "record_details": [record_detail_payload(records, record_ref) for record_ref in record_refs],
+        "suggested_commands": [
+            *(f"record-detail --record {record_ref}" for record_ref in record_refs),
+            *(f"linked-records --record {record_ref} --depth 1" for record_ref in record_refs),
+            "build-reasoning-case --task \"inspect whether the probed records should be linked\"",
+        ],
+    }
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(probe_inspect_text_lines(payload)))
     return 0
 
 
@@ -4477,6 +4566,13 @@ def parse_args() -> argparse.Namespace:
     curiosity_probes.add_argument("--budget", type=int, default=8)
     curiosity_probes.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     curiosity_probes.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    probe_inspect = subparsers.add_parser(
+        "probe-inspect",
+        help="Inspect one curiosity probe with canonical record details and link status. Not proof.",
+    )
+    probe_inspect.add_argument("--index", dest="probe_index", type=int, default=1)
+    probe_inspect.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    probe_inspect.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     logic_index = subparsers.add_parser(
         "logic-index",
         help="Build generated predicate logic indexes over CLM.logic blocks.",
@@ -5512,6 +5608,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(cmd_attention_map(root, limit=args.limit, output_format=args.output_format, scope=args.scope))
     if args.command == "curiosity-probes":
         raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format, scope=args.scope))
+    if args.command == "probe-inspect":
+        raise SystemExit(cmd_probe_inspect(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
     if args.command == "logic-index":
         if args.logic_index_command == "build":
             raise SystemExit(cmd_logic_index_build(root, candidate_limit=args.candidate_limit))

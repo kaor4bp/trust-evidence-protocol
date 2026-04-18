@@ -127,6 +127,44 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         ),
         "claim",
     )
+    related_claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "mcp.test",
+            "--plane",
+            "theory",
+            "--status",
+            "supported",
+            "--statement",
+            "Facility inventory reaches Program marketplace listings.",
+            "--source",
+            source_id,
+            "--note",
+            "mcp server related claim",
+        ),
+        "claim",
+    )
+    probe_pair_claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "mcp.test",
+            "--plane",
+            "theory",
+            "--status",
+            "supported",
+            "--statement",
+            "Program marketplace listings imply Facility inventory dependency.",
+            "--source",
+            source_id,
+            "--note",
+            "mcp server probe pair claim",
+        ),
+        "claim",
+    )
     run_cli(context, "topic-index", "build", "--method", "lexical")
     run_cli(context, "logic-index", "build")
     run_cli(context, "tap-record", "--record", claim_id, "--kind", "cited", "--intent", "mcp test")
@@ -289,6 +327,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "budget": 3, "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 14,
+                "method": "tools/call",
+                "params": {
+                    "name": "probe_inspect",
+                    "arguments": {"context": str(context), "index": 1, "scope": "all", "format": "json"},
+                },
+            },
         ]
     )
 
@@ -309,6 +356,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "topic_conflict_candidates",
         "attention_map",
         "curiosity_probes",
+        "probe_inspect",
         "working_contexts",
         "logic_search",
         "logic_check",
@@ -360,6 +408,12 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     curiosity = by_id[13]["result"]
     assert curiosity["isError"] is False
     assert '"attention_index_is_proof": false' in curiosity["content"][0]["text"]
+
+    probe_inspect = by_id[14]["result"]
+    assert probe_inspect["isError"] is False
+    assert '"inspection_is_proof": false' in probe_inspect["content"][0]["text"]
+    assert related_claim_id in probe_inspect["content"][0]["text"]
+    assert probe_pair_claim_id in probe_inspect["content"][0]["text"]
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:

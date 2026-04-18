@@ -219,6 +219,7 @@ def generate_cluster_probes(
     probe_limit: int,
 ) -> list[dict]:
     candidates = []
+    seen_pairs: set[tuple[str, str]] = set()
     ordered_clusters = sorted(
         clusters.values(),
         key=lambda item: (float(item.get("activity_score", 0.0)), -int(item.get("record_count", 0)), str(item.get("term", ""))),
@@ -232,8 +233,10 @@ def generate_cluster_probes(
         ]
         for index, left in enumerate(member_ids):
             for right in member_ids[index + 1 :]:
-                if sorted_pair(left, right) in established_pairs:
+                pair = sorted_pair(left, right)
+                if pair in established_pairs or pair in seen_pairs:
                     continue
+                seen_pairs.add(pair)
                 candidates.append(build_probe(left, right, topic_id, cluster, record_items))
     candidates.sort(key=lambda item: (-float(item.get("score", 0.0)), item.get("record_refs", [])))
     return candidates[: max(1, probe_limit)]

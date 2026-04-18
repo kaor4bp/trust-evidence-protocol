@@ -27,6 +27,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `topic_conflict_candidates`: equivalent to `topic-conflict-candidates`
 - `attention_map`: equivalent to `attention-map`; defaults to current `.tep` focus
 - `curiosity_probes`: equivalent to `curiosity-probes`; defaults to current `.tep` focus
+- `probe_inspect`: equivalent to `probe-inspect`; expands one generated probe into canonical inspection context
 - `working_contexts`: equivalent to `working-context show`
 - `logic_search`: equivalent to `logic-search`
 - `logic_check`: equivalent to `logic-check`
@@ -76,6 +77,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-index build
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-map --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context curiosity-probes --budget 5 --scope current
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-inspect --index 1 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-search --predicate PredicateName
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-check
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-conflict-candidates
@@ -98,6 +100,7 @@ Use `tap-record` to record non-proof activity when a record was retrieved, opene
 Use `attention-map` and `curiosity-probes` to reduce token-heavy context exploration by asking the runtime for cold zones and bounded inspection questions.
 They default to `--scope current`, using the current workspace/project/task from settings or `.tep`; use `--scope all` only for deliberate cross-scope triage.
 Probe `score` and `explanation` fields are mechanical ranking hints for what to inspect first, not evidence confidence.
+Use `probe-inspect` to mechanically fetch record summaries, source quotes, direct link status, and suggested follow-up commands for a selected probe.
 Do not use attention output as proof; follow up with `record-detail`, `linked-records`, sources, and normal claims.
 Use `logic-search` / `logic-check` only as predicate prefilters over `CLM.logic`; they do not replace `CLM-*` and `SRC-*`.
 Use `build-reasoning-case` before non-trivial actions or recommendations that span several facts, models, or flows.

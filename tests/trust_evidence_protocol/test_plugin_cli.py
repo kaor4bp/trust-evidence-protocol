@@ -1135,10 +1135,17 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert all(probe["score_is_proof"] is False for probe in probes_payload["probes"])
     assert all(probe["score"] > 0 for probe in probes_payload["probes"])
     assert all("navigation_only=true" in probe["explanation"] for probe in probes_payload["probes"])
+    assert len({tuple(sorted(probe["record_refs"])) for probe in probes_payload["probes"]}) == len(probes_payload["probes"])
     assert any(
         {facility_claim_id, program_claim_id}.issubset(set(probe["record_refs"]))
         for probe in probes_payload["probes"]
     )
+    inspection = json.loads(run_cli(context, "probe-inspect", "--index", "1", "--scope", "all", "--format", "json").stdout)
+    assert inspection["inspection_is_proof"] is False
+    assert inspection["probe"]["score_is_proof"] is False
+    assert inspection["direct_edges"] == []
+    assert inspection["record_details"]
+    assert any(command.startswith("record-detail --record") for command in inspection["suggested_commands"])
 
 
 def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> None:
@@ -1306,6 +1313,11 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     assert current_claim_id in current_refs
     assert current_pair_id in current_refs
     assert other_claim_id not in current_refs
+
+    inspection_text = run_cli(context, "probe-inspect", "--index", "1").stdout
+    assert "Curiosity Probe Inspection" in inspection_text
+    assert "no direct canonical link" in inspection_text
+    assert "Do not cite this inspection as proof" in inspection_text
 
     all_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "20", "--scope", "all", "--format", "json").stdout)
     all_refs = {ref for probe in all_payload["probes"] for ref in probe["record_refs"]}
