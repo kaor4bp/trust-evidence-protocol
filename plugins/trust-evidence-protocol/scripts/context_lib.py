@@ -66,11 +66,13 @@ from tep_runtime.code_index import (
 )
 from tep_runtime.actions import build_action_payload
 from tep_runtime.attention import (
+    ATTENTION_SCOPES,
     TAP_KINDS,
     append_tap_event,
     attention_map_text_lines,
     build_attention_index,
     curiosity_probe_text_lines,
+    filter_attention_payload,
     load_attention_payload,
     load_tap_events,
     write_attention_index_reports,

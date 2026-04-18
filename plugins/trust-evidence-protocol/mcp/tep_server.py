@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.32"
+SERVER_VERSION = "0.1.33"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -295,6 +295,7 @@ TOOLS: list[JsonObject] = [
             {
                 "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 12},
+                "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
@@ -306,6 +307,7 @@ TOOLS: list[JsonObject] = [
             {
                 "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
                 "budget": {"type": "integer", "minimum": 1, "maximum": 100, "default": 8},
+                "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
@@ -687,6 +689,8 @@ def tool_attention_map(args: JsonObject) -> tuple[bool, str]:
             "attention-map",
             "--limit",
             str(as_int(args.get("limit"), 12, 1, 100)),
+            "--scope",
+            str(args.get("scope") or "current"),
             "--format",
             as_format(args.get("format")),
         ],
@@ -700,6 +704,8 @@ def tool_curiosity_probes(args: JsonObject) -> tuple[bool, str]:
             "curiosity-probes",
             "--budget",
             str(as_int(args.get("budget"), 8, 1, 100)),
+            "--scope",
+            str(args.get("scope") or "current"),
             "--format",
             as_format(args.get("format")),
         ],

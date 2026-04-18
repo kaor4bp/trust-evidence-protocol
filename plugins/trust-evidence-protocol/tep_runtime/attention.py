@@ -28,6 +28,7 @@ TAP_WEIGHTS = {
     "contradicted": 3.0,
 }
 DEFAULT_HALF_LIFE_DAYS = 7.0
+ATTENTION_SCOPES = {"current", "all"}
 
 
 def activity_root(root: Path) -> Path:
@@ -127,6 +128,33 @@ def link_pairs(records: dict[str, dict]) -> set[tuple[str, str]]:
     return pairs
 
 
+def list_refs(data: dict, key: str) -> list[str]:
+    return [str(ref).strip() for ref in data.get(key, []) if str(ref).strip()]
+
+
+def record_focus_score(data: dict, *, workspace_ref: str = "", project_ref: str = "", task_ref: str = "") -> int:
+    score = 0
+    record_id = str(data.get("id", "")).strip()
+    if workspace_ref and (record_id == workspace_ref or workspace_ref in list_refs(data, "workspace_refs")):
+        score += 2
+    if project_ref and (record_id == project_ref or project_ref in list_refs(data, "project_refs")):
+        score += 3
+    if task_ref and (record_id == task_ref or task_ref in list_refs(data, "task_refs")):
+        score += 4
+    return score
+
+
+def record_matches_focus(data: dict, *, workspace_ref: str = "", project_ref: str = "", task_ref: str = "") -> bool:
+    record_id = str(data.get("id", "")).strip()
+    if task_ref and (record_id == task_ref or task_ref in list_refs(data, "task_refs")):
+        return True
+    if project_ref:
+        return record_id == project_ref or project_ref in list_refs(data, "project_refs")
+    if workspace_ref:
+        return record_id == workspace_ref or workspace_ref in list_refs(data, "workspace_refs")
+    return True
+
+
 def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: list[dict], *, probe_limit: int = 20) -> dict:
     generated_at = now_timestamp()
     topic_records = topic_payload.get("records", {}) if isinstance(topic_payload.get("records"), dict) else {}
@@ -153,6 +181,9 @@ def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: l
             "tap_count": tap_counts.get(record_id, 0),
             "top_topic_id": top_topic_id(topic_item),
             "top_topic_term": top_topic_term(topic_item),
+            "workspace_refs": list_refs(data, "workspace_refs"),
+            "project_refs": list_refs(data, "project_refs"),
+            "task_refs": list_refs(data, "task_refs"),
             "attention_index_is_proof": False,
         }
 
@@ -166,6 +197,7 @@ def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: l
             "term": topic.get("term", ""),
             "record_count": len(member_ids),
             "activity_score": round(activity, 4),
+            "record_refs": member_ids,
             "top_records": member_ids[:8],
             "attention_index_is_proof": False,
         }
@@ -246,6 +278,77 @@ def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: l
     }
 
 
+def filter_attention_payload(
+    payload: dict,
+    *,
+    scope: str = "current",
+    workspace_ref: str = "",
+    project_ref: str = "",
+    task_ref: str = "",
+) -> dict:
+    if scope == "all" or not any([workspace_ref, project_ref, task_ref]):
+        return {**payload, "scope": "all"}
+
+    records = payload.get("records", {}) if isinstance(payload.get("records"), dict) else {}
+    kept_records = {
+        record_id: {**record, "focus_score": record_focus_score(record, workspace_ref=workspace_ref, project_ref=project_ref, task_ref=task_ref)}
+        for record_id, record in records.items()
+        if isinstance(record, dict)
+        and record_matches_focus(record, workspace_ref=workspace_ref, project_ref=project_ref, task_ref=task_ref)
+    }
+    kept_ids = set(kept_records)
+
+    clusters = {}
+    for topic_id, cluster in (payload.get("clusters", {}) or {}).items():
+        if not isinstance(cluster, dict):
+            continue
+        source_refs = cluster.get("record_refs") or cluster.get("top_records") or []
+        member_ids = [str(record_id) for record_id in source_refs if str(record_id) in kept_ids]
+        if not member_ids:
+            continue
+        activity = sum(float(kept_records[record_id].get("activity_score", 0.0)) for record_id in member_ids)
+        clusters[topic_id] = {
+            **cluster,
+            "record_refs": member_ids,
+            "top_records": member_ids[:8],
+            "record_count": len(member_ids),
+            "activity_score": round(activity, 4),
+            "attention_index_is_proof": False,
+        }
+
+    cold_zones = [
+        {**zone, "record_count": clusters[zone["topic_id"]]["record_count"], "activity_score": clusters[zone["topic_id"]]["activity_score"]}
+        for zone in payload.get("cold_zones", [])
+        if isinstance(zone, dict) and zone.get("topic_id") in clusters and clusters[zone["topic_id"]]["record_count"] >= 2
+    ]
+    probes = [
+        probe
+        for probe in payload.get("probes", [])
+        if isinstance(probe, dict) and all(str(record_ref) in kept_ids for record_ref in probe.get("record_refs", []))
+    ]
+    bridges = [
+        bridge
+        for bridge in payload.get("bridges", [])
+        if isinstance(bridge, dict) and str(bridge.get("from", "")) in kept_ids and str(bridge.get("to", "")) in kept_ids
+    ]
+
+    return {
+        **payload,
+        "scope": "current",
+        "workspace_ref": workspace_ref,
+        "project_ref": project_ref,
+        "task_ref": task_ref,
+        "records": kept_records,
+        "clusters": clusters,
+        "record_count": len(kept_records),
+        "cluster_count": len(clusters),
+        "tap_count": sum(int(record.get("tap_count", 0)) for record in kept_records.values()),
+        "bridges": bridges,
+        "cold_zones": cold_zones,
+        "probes": probes,
+    }
+
+
 def write_attention_index_reports(root: Path, payload: dict) -> None:
     paths = attention_index_paths(root)
     write_json_file(paths["records"], payload["records"])
@@ -290,6 +393,7 @@ def attention_map_text_lines(payload: dict, *, limit: int) -> list[str]:
         "# Attention Map",
         "",
         "Mode: generated attention/navigation map. Not proof.",
+        f"scope: `{payload.get('scope', 'all')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         f"records: `{payload.get('record_count', len(payload.get('records', {})))}` clusters: `{payload.get('cluster_count', len(payload.get('clusters', {})))}` taps: `{payload.get('tap_count', 0)}`",
         "",
         "## Active Clusters",
@@ -316,6 +420,7 @@ def curiosity_probe_text_lines(payload: dict, *, limit: int) -> list[str]:
         "# Curiosity Probes",
         "",
         "Mode: generated questions for bounded inspection. Not proof.",
+        f"scope: `{payload.get('scope', 'all')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         "",
     ]
     for probe in probes[: max(1, limit)]:

@@ -285,8 +285,8 @@ Exposed tools:
 - `topic_search`: generated lexical topic search
 - `topic_info`: generated topic terms and similar records for one record
 - `topic_conflict_candidates`: generated lexical overlap candidates for review
-- `attention_map`: generated attention-map clusters and cold zones
-- `curiosity_probes`: generated bounded curiosity questions
+- `attention_map`: generated attention-map clusters and cold zones; defaults to current `.tep` workspace/project/task focus
+- `curiosity_probes`: generated bounded curiosity questions; defaults to current `.tep` workspace/project/task focus
 - `working_contexts`: read-only `WCTX-*` working-context lookup
 - `logic_search`: generated predicate atom/rule search
 - `logic_check`: read-only predicate consistency summary
@@ -297,6 +297,7 @@ Rules:
 
 - Prefer MCP read-only tools when available for lookup-heavy work.
 - Pass `cwd` when the caller knows the active workdir so MCP can resolve the nearest `.tep` anchor instead of the MCP server's own cwd.
+- For attention tools, use default `scope=current` during normal work; use `scope=all` only for cross-workspace/project triage.
 - Fall back to `context_cli.py` commands when MCP is unavailable or when mutation is needed.
 - Do not expose mutating commands through MCP until authorization, hook, and audit behavior is explicitly designed.
 - MCP results are navigation unless they include canonical `CLM-*`, `SRC-*`, `GLD-*`, or other record ids with enough detail to cite.

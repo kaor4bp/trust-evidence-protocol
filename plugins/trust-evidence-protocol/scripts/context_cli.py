@@ -62,6 +62,7 @@ from context_lib import (
     RESTRICTION_SEVERITIES,
     RESTRICTION_STATUSES,
     SOURCE_KINDS,
+    ATTENTION_SCOPES,
     TAP_KINDS,
     TASK_STATUSES,
     TASK_TYPES,
@@ -148,6 +149,7 @@ from context_lib import (
     guideline_summary_line,
     invalidate_hydration_state,
     is_strictness_escalation,
+    filter_attention_payload,
     join_quote_items,
     linked_records_payload,
     load_attention_payload,
@@ -2642,11 +2644,22 @@ def cmd_attention_index_build(root: Path, probe_limit: int) -> int:
     return 0
 
 
-def cmd_attention_map(root: Path, limit: int, output_format: str) -> int:
+def scoped_attention_payload(root: Path, payload: dict, scope: str) -> dict:
+    return filter_attention_payload(
+        payload,
+        scope=scope,
+        workspace_ref=current_workspace_ref(root),
+        project_ref=current_project_ref(root),
+        task_ref=current_task_ref(root),
+    )
+
+
+def cmd_attention_map(root: Path, limit: int, output_format: str, scope: str) -> int:
     payload = load_attention_payload(root)
     if not payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
+    payload = scoped_attention_payload(root, payload, scope)
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
@@ -2654,17 +2667,22 @@ def cmd_attention_map(root: Path, limit: int, output_format: str) -> int:
     return 0
 
 
-def cmd_curiosity_probes(root: Path, budget: int, output_format: str) -> int:
+def cmd_curiosity_probes(root: Path, budget: int, output_format: str, scope: str) -> int:
     payload = load_attention_payload(root)
     if not payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
+    payload = scoped_attention_payload(root, payload, scope)
     limited_payload = {**payload, "probes": payload.get("probes", [])[: max(1, budget)]}
     if output_format == "json":
         print(
             json.dumps(
                 {
                     "attention_index_is_proof": False,
+                    "scope": limited_payload.get("scope", scope),
+                    "workspace_ref": limited_payload.get("workspace_ref", ""),
+                    "project_ref": limited_payload.get("project_ref", ""),
+                    "task_ref": limited_payload.get("task_ref", ""),
                     "budget": budget,
                     "probes": limited_payload["probes"],
                 },
@@ -4451,12 +4469,14 @@ def parse_args() -> argparse.Namespace:
     )
     attention_map.add_argument("--limit", type=int, default=12)
     attention_map.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    attention_map.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     curiosity_probes = subparsers.add_parser(
         "curiosity-probes",
         help="Show generated bounded curiosity probes. Not proof.",
     )
     curiosity_probes.add_argument("--budget", type=int, default=8)
     curiosity_probes.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    curiosity_probes.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     logic_index = subparsers.add_parser(
         "logic-index",
         help="Build generated predicate logic indexes over CLM.logic blocks.",
@@ -5489,9 +5509,9 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         if args.attention_index_command == "build":
             raise SystemExit(cmd_attention_index_build(root, probe_limit=args.probe_limit))
     if args.command == "attention-map":
-        raise SystemExit(cmd_attention_map(root, limit=args.limit, output_format=args.output_format))
+        raise SystemExit(cmd_attention_map(root, limit=args.limit, output_format=args.output_format, scope=args.scope))
     if args.command == "curiosity-probes":
-        raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format))
+        raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format, scope=args.scope))
     if args.command == "logic-index":
         if args.logic_index_command == "build":
             raise SystemExit(cmd_logic_index_build(root, candidate_limit=args.candidate_limit))

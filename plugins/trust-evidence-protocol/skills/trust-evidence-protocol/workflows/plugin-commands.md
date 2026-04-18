@@ -25,8 +25,8 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `topic_search`: equivalent to `topic-search`
 - `topic_info`: equivalent to `topic-info`
 - `topic_conflict_candidates`: equivalent to `topic-conflict-candidates`
-- `attention_map`: equivalent to `attention-map`
-- `curiosity_probes`: equivalent to `curiosity-probes`
+- `attention_map`: equivalent to `attention-map`; defaults to current `.tep` focus
+- `curiosity_probes`: equivalent to `curiosity-probes`; defaults to current `.tep` focus
 - `working_contexts`: equivalent to `working-context show`
 - `logic_search`: equivalent to `logic-search`
 - `logic_check`: equivalent to `logic-check`
@@ -74,8 +74,8 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-conflict-candidates
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context tap-record --record CLM-* --kind cited --intent support
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-index build
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-map
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context curiosity-probes --budget 5
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-map --scope current
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context curiosity-probes --budget 5 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-search --predicate PredicateName
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-check
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-conflict-candidates
@@ -96,6 +96,7 @@ Use `topic-search` only as a lexical prefilter, then inspect canonical records b
 Use `topic-conflict-candidates` only to find records worth structured comparison; it does not replace `scan-conflicts`.
 Use `tap-record` to record non-proof activity when a record was retrieved, opened, cited, decisive, updated, challenged, or contradicted.
 Use `attention-map` and `curiosity-probes` to reduce token-heavy context exploration by asking the runtime for cold zones and bounded inspection questions.
+They default to `--scope current`, using the current workspace/project/task from settings or `.tep`; use `--scope all` only for deliberate cross-scope triage.
 Do not use attention output as proof; follow up with `record-detail`, `linked-records`, sources, and normal claims.
 Use `logic-search` / `logic-check` only as predicate prefilters over `CLM.logic`; they do not replace `CLM-*` and `SRC-*`.
 Use `build-reasoning-case` before non-trivial actions or recommendations that span several facts, models, or flows.

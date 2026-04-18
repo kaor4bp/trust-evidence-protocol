@@ -1137,6 +1137,176 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     )
 
 
+def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "attention-scope",
+            "--title",
+            "Attention Scope Workspace",
+            "--root-ref",
+            "/tmp/attention-scope",
+            "--note",
+            "attention scope workspace",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    current_project_id = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "current-scope",
+            "--title",
+            "Current Scope",
+            "--root-ref",
+            "/tmp/current-scope",
+            "--note",
+            "current project",
+        ),
+        "project",
+    )
+    other_project_id = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "other-scope",
+            "--title",
+            "Other Scope",
+            "--root-ref",
+            "/tmp/other-scope",
+            "--note",
+            "other project",
+        ),
+        "project",
+    )
+
+    run_cli(context, "set-current-project", "--project", current_project_id)
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "attention.scope",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "current project observation",
+            "--quote",
+            "Current project has Facility and Program relation candidates.",
+            "--note",
+            "current source",
+        ),
+        "source",
+    )
+    current_claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "attention.scope",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Current Facility inventory reaches Current Program listings.",
+            "--source",
+            source_id,
+            "--note",
+            "current claim",
+        ),
+        "claim",
+    )
+    current_pair_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "attention.scope",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Current Program listings depend on Current Facility inventory.",
+            "--source",
+            source_id,
+            "--note",
+            "current pair claim",
+        ),
+        "claim",
+    )
+
+    run_cli(context, "set-current-project", "--project", other_project_id)
+    other_source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "attention.scope",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "other project observation",
+            "--quote",
+            "Other project has Facility and Program relation candidates.",
+            "--note",
+            "other source",
+        ),
+        "source",
+    )
+    other_claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "attention.scope",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Other Facility inventory reaches Other Program listings.",
+            "--source",
+            other_source_id,
+            "--note",
+            "other claim",
+        ),
+        "claim",
+    )
+
+    run_cli(context, "set-current-project", "--project", current_project_id)
+    run_cli(context, "attention-index", "build", "--probe-limit", "20")
+
+    current_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "20", "--format", "json").stdout)
+    current_refs = {ref for probe in current_payload["probes"] for ref in probe["record_refs"]}
+    assert current_payload["attention_index_is_proof"] is False
+    assert current_payload["scope"] == "current"
+    assert current_claim_id in current_refs
+    assert current_pair_id in current_refs
+    assert other_claim_id not in current_refs
+
+    all_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "20", "--scope", "all", "--format", "json").stdout)
+    all_refs = {ref for probe in all_payload["probes"] for ref in probe["record_refs"]}
+    assert all_payload["scope"] == "all"
+    assert other_claim_id in all_refs
+
+
 def test_claim_logic_index_validates_symbols_rules_and_conflict_candidates(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
