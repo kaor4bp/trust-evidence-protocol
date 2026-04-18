@@ -1799,6 +1799,7 @@ def cmd_help(topic: str) -> int:
             "topic index: generated lexical prefilter for navigation and candidate review",
             "attention index: generated tap-aware map, cold zones, and curiosity probes",
             "probe inspect: mechanically expand one curiosity probe into record details and link status",
+            "probe chain draft: mechanically draft an evidence-chain skeleton from one curiosity probe",
             "logic index: generated predicate atom/rule projection over CLM.logic blocks",
             "code index: index files/symbols/areas and attach navigation-only CIX annotations",
             "strictness: inspect or change allowed_freedom through user-backed requests",
@@ -1816,7 +1817,7 @@ def cmd_help(topic: str) -> int:
             "record-input --input-kind user_prompt --origin-kind user --origin-ref ... --text ...",
             "working-context create|fork|show|close",
             "topic-index build --method lexical | topic-search --query ...",
-            "tap-record --record CLM-* --kind cited --intent support | attention-index build | attention-map | curiosity-probes --budget 5 | probe-inspect --index 1",
+            "tap-record --record CLM-* --kind cited --intent support | attention-index build | attention-map | curiosity-probes --budget 5 | probe-inspect --index 1 | probe-chain-draft --index 1",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3",
         ],
@@ -2741,6 +2742,112 @@ def probe_inspect_text_lines(payload: dict) -> list[str]:
     return lines
 
 
+def probe_record_chain_role(record: dict) -> str:
+    record_type = str(record.get("record_type", "")).strip()
+    if record_type == "claim":
+        if str(record.get("status", "")).strip() == "tentative":
+            return "hypothesis"
+        return "fact"
+    return {
+        "model": "model",
+        "flow": "flow",
+        "open_question": "open_question",
+        "proposal": "proposal",
+        "task": "task",
+        "working_context": "working_context",
+        "project": "project",
+        "guideline": "guideline",
+        "permission": "permission",
+        "restriction": "restriction",
+    }.get(record_type, "exploration_context")
+
+
+def probe_record_chain_quote(record: dict) -> str:
+    for key in ("statement", "summary", "question", "position", "title", "subject", "rule", "note"):
+        value = str(record.get(key, "")).strip()
+        if value:
+            return value
+    return record_summary(record)
+
+
+def build_probe_chain_draft_payload(root: Path, records: dict[str, dict], scoped_payload: dict, probe_index: int) -> dict:
+    probes = scoped_payload.get("probes", [])
+    index = max(1, probe_index) - 1
+    if not probes:
+        raise ValueError("no curiosity probes available for this scope")
+    if index >= len(probes):
+        raise ValueError(f"probe index out of range: {probe_index}; available={len(probes)}")
+    probe = probes[index]
+    record_refs = [str(ref) for ref in probe.get("record_refs", []) if str(ref) in records]
+    nodes = [
+        {
+            "role": probe_record_chain_role(records[record_ref]),
+            "ref": record_ref,
+            "quote": probe_record_chain_quote(records[record_ref]),
+        }
+        for record_ref in record_refs
+    ]
+    edges = [
+        {
+            "from": record_refs[0],
+            "to": record_refs[1],
+            "relation": "candidate_relation_to_inspect",
+        }
+    ] if len(record_refs) >= 2 else []
+    chain = {
+        "task": "Inspect whether selected curiosity-probe records should be linked",
+        "draft_is_proof": False,
+        "attention_index_is_proof": False,
+        "probe_index": probe_index,
+        "probe": probe,
+        "scope": scoped_payload.get("scope", ""),
+        "workspace_ref": scoped_payload.get("workspace_ref", ""),
+        "project_ref": scoped_payload.get("project_ref", ""),
+        "task_ref": scoped_payload.get("task_ref", ""),
+        "nodes": nodes,
+        "edges": edges,
+        "notes": [
+            "This is a mechanical draft for inspection, not proof.",
+            "Validate and augment before presenting it as an evidence chain.",
+            "Do not treat the curiosity probe score or explanation as support.",
+        ],
+    }
+    hypothesis_entries = active_hypothesis_entry_by_claim(root, records)
+    augmented = augment_evidence_chain_payload(records, hypothesis_entries, chain)
+    return {
+        "draft_is_proof": False,
+        "attention_index_is_proof": False,
+        "inspection_is_proof": False,
+        "chain": chain,
+        "augmented": augmented,
+    }
+
+
+def probe_chain_draft_text_lines(payload: dict) -> list[str]:
+    validation = payload["augmented"]["validation"]
+    chain = payload["chain"]
+    lines = [
+        "# Probe Evidence-Chain Draft",
+        "",
+        "Mode: mechanical draft. Draft is not proof.",
+        f"probe_index: `{chain.get('probe_index')}` draft_is_proof=`{payload.get('draft_is_proof')}`",
+        f"validation_ok: `{validation.get('ok')}` errors=`{validation.get('error_count')}` warnings=`{validation.get('warning_count')}`",
+        "",
+        "## Nodes",
+    ]
+    for node in chain.get("nodes", []):
+        lines.append(f"- `{node.get('ref')}` role=`{node.get('role')}` quote=\"{concise(str(node.get('quote', '')), 180)}\"")
+    lines.extend(["", "## Edges"])
+    for edge in chain.get("edges", []):
+        lines.append(f"- `{edge.get('from')}` -> `{edge.get('to')}` relation=`{edge.get('relation')}`")
+    if not chain.get("edges"):
+        lines.append("- none")
+    lines.extend(["", "## Required Next Step"])
+    lines.append("- Run `augment-chain` / `validate-evidence-chain` on this draft before user-facing proof.")
+    lines.append("- If the draft is used for a conclusion, cite canonical source-backed records, not the probe.")
+    return lines
+
+
 def cmd_probe_inspect(root: Path, probe_index: int, output_format: str, scope: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
@@ -2781,6 +2888,27 @@ def cmd_probe_inspect(root: Path, probe_index: int, output_format: str, scope: s
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
     print("\n".join(probe_inspect_text_lines(payload)))
+    return 0
+
+
+def cmd_probe_chain_draft(root: Path, probe_index: int, output_format: str, scope: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    attention_payload = load_attention_payload(root)
+    if not attention_payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+    try:
+        payload = build_probe_chain_draft_payload(root, records, scoped_payload, probe_index)
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(probe_chain_draft_text_lines(payload)))
     return 0
 
 
@@ -4573,6 +4701,13 @@ def parse_args() -> argparse.Namespace:
     probe_inspect.add_argument("--index", dest="probe_index", type=int, default=1)
     probe_inspect.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     probe_inspect.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    probe_chain_draft = subparsers.add_parser(
+        "probe-chain-draft",
+        help="Draft an evidence-chain skeleton from one curiosity probe. Draft is not proof.",
+    )
+    probe_chain_draft.add_argument("--index", dest="probe_index", type=int, default=1)
+    probe_chain_draft.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    probe_chain_draft.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     logic_index = subparsers.add_parser(
         "logic-index",
         help="Build generated predicate logic indexes over CLM.logic blocks.",
@@ -5610,6 +5745,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format, scope=args.scope))
     if args.command == "probe-inspect":
         raise SystemExit(cmd_probe_inspect(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
+    if args.command == "probe-chain-draft":
+        raise SystemExit(cmd_probe_chain_draft(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
     if args.command == "logic-index":
         if args.logic_index_command == "build":
             raise SystemExit(cmd_logic_index_build(root, candidate_limit=args.candidate_limit))

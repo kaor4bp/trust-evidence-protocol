@@ -1146,6 +1146,12 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert inspection["direct_edges"] == []
     assert inspection["record_details"]
     assert any(command.startswith("record-detail --record") for command in inspection["suggested_commands"])
+    draft = json.loads(run_cli(context, "probe-chain-draft", "--index", "1", "--scope", "all", "--format", "json").stdout)
+    assert draft["draft_is_proof"] is False
+    assert draft["chain"]["draft_is_proof"] is False
+    assert draft["augmented"]["validation"]["ok"] is True
+    assert draft["chain"]["nodes"][0]["role"] == "fact"
+    assert {facility_claim_id, program_claim_id} == {node["ref"] for node in draft["chain"]["nodes"]}
 
 
 def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> None:
@@ -1318,6 +1324,9 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     assert "Curiosity Probe Inspection" in inspection_text
     assert "no direct canonical link" in inspection_text
     assert "Do not cite this inspection as proof" in inspection_text
+    draft_text = run_cli(context, "probe-chain-draft", "--index", "1").stdout
+    assert "Probe Evidence-Chain Draft" in draft_text
+    assert "Draft is not proof" in draft_text
 
     all_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "20", "--scope", "all", "--format", "json").stdout)
     all_refs = {ref for probe in all_payload["probes"] for ref in probe["record_refs"]}

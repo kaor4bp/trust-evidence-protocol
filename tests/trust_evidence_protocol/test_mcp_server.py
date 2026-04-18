@@ -336,6 +336,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "index": 1, "scope": "all", "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 15,
+                "method": "tools/call",
+                "params": {
+                    "name": "probe_chain_draft",
+                    "arguments": {"context": str(context), "index": 1, "scope": "all", "format": "json"},
+                },
+            },
         ]
     )
 
@@ -357,6 +366,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "attention_map",
         "curiosity_probes",
         "probe_inspect",
+        "probe_chain_draft",
         "working_contexts",
         "logic_search",
         "logic_check",
@@ -414,6 +424,11 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert '"inspection_is_proof": false' in probe_inspect["content"][0]["text"]
     assert related_claim_id in probe_inspect["content"][0]["text"]
     assert probe_pair_claim_id in probe_inspect["content"][0]["text"]
+
+    probe_chain_draft = by_id[15]["result"]
+    assert probe_chain_draft["isError"] is False
+    assert '"draft_is_proof": false' in probe_chain_draft["content"][0]["text"]
+    assert '"ok": true' in probe_chain_draft["content"][0]["text"]
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
