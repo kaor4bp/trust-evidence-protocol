@@ -193,7 +193,129 @@ def _append_record_list(lines: list[str], title: str, records: list[dict], empty
         lines.append(claim_line(record))
 
 
-def context_brief_text_lines(payload: dict, icon: str) -> list[str]:
+def _compact_claim_line(record: dict) -> str:
+    return (
+        f"`{record.get('id')}` {record.get('status')}/{record.get('plane')}: "
+        f"{concise(record.get('statement', ''), 110)}"
+    )
+
+
+def _compact_model_line(model: dict) -> str:
+    return f"`{model.get('id')}` {model.get('status')} {model.get('domain')}/{model.get('aspect')}: {concise(model.get('summary', ''), 100)}"
+
+
+def _compact_flow_line(flow: dict) -> str:
+    return f"`{flow.get('id')}` {flow.get('status')} {flow.get('domain')}: {concise(flow.get('summary', ''), 100)}"
+
+
+def _append_compact_items(lines: list[str], label: str, items: list[str], empty: str = "none") -> None:
+    if items:
+        lines.append(f"- {label}: " + "; ".join(items))
+    else:
+        lines.append(f"- {label}: {empty}")
+
+
+def compact_context_brief_text_lines(payload: dict, icon: str) -> list[str]:
+    limit = min(int(payload.get("limit", 8)), 3)
+    lines = [f"# {icon} Context Brief (compact)", ""]
+    current_workspace = payload.get("current_workspace")
+    current_project = payload.get("current_project")
+    current_task = payload.get("current_task")
+    if current_workspace:
+        lines.append(
+            f"- workspace: `{current_workspace.get('id')}` key=`{current_workspace.get('workspace_key')}` "
+            f"status=`{current_workspace.get('status')}`"
+        )
+    if current_project:
+        lines.append(
+            f"- project: `{current_project.get('id')}` key=`{current_project.get('project_key')}` "
+            f"status=`{current_project.get('status')}`"
+        )
+    if current_task:
+        lines.append(
+            f"- task: `{current_task.get('id')}` type=`{current_task.get('task_type', 'general')}` "
+            f"scope=`{current_task.get('scope')}` status=`{current_task.get('status')}`"
+        )
+    lines.append(f"- requested: {concise(payload.get('task', ''), 160)}")
+    project_ref = payload.get("project_ref", "")
+    if project_ref:
+        lines.append(f"- project filter: `{project_ref}`")
+
+    lines.extend(["", "## Evidence"])
+    _append_compact_items(lines, "models", [_compact_model_line(model) for model in payload.get("models", [])[:limit]])
+    _append_compact_items(lines, "flows", [_compact_flow_line(flow) for flow in payload.get("flows", [])[:limit]])
+    _append_compact_items(
+        lines,
+        "facts",
+        [_compact_claim_line(record) for record in payload.get("active_facts", [])[:limit]],
+        "none; gather sources before decisive claims",
+    )
+    fallback_facts = payload.get("fallback_facts", [])
+    if fallback_facts:
+        _append_compact_items(lines, "fallback facts", [_compact_claim_line(record) for record in fallback_facts[:limit]])
+
+    lines.extend(["", "## Controls"])
+    _append_compact_items(
+        lines,
+        "permissions",
+        [
+            f"`{permission.get('id')}` {permission.get('applies_to') or 'global'}: {concise('; '.join(str(grant) for grant in permission.get('grants', [])), 90)}"
+            for permission in payload.get("permissions", [])[:limit]
+        ],
+    )
+    _append_compact_items(
+        lines,
+        "guidelines",
+        [
+            f"`{guideline.get('id')}` {guideline.get('priority')}: {concise(guideline.get('rule', ''), 100)}"
+            for guideline in payload.get("guidelines", [])[:limit]
+        ],
+        "none active",
+    )
+    _append_compact_items(
+        lines,
+        "restrictions",
+        [
+            f"`{restriction.get('id')}` {restriction.get('severity')}: {concise(restriction.get('title', ''), 100)}"
+            for restriction in payload.get("restrictions", [])[:limit]
+        ],
+        "none active",
+    )
+
+    followups: list[str] = []
+    for label, key, formatter in (
+        (
+            "hypotheses",
+            "hypotheses",
+            lambda item: f"`{item.get('claim_ref')}` {concise(item.get('_claim', {}).get('statement', item.get('note', '')), 90)}",
+        ),
+        ("questions", "open_questions", lambda item: f"`{item.get('id')}` {concise(item.get('question', ''), 90)}"),
+        ("proposals", "proposals", lambda item: f"`{item.get('id')}` {concise(item.get('position', ''), 90)}"),
+        ("plans", "plans", lambda item: f"`{item.get('id')}` {item.get('priority')}: {concise(item.get('title', ''), 80)}"),
+        ("debt", "debts", lambda item: f"`{item.get('id')}` {item.get('priority')}: {concise(item.get('title', ''), 80)}"),
+    ):
+        items = payload.get(key, [])
+        if items:
+            followups.append(f"{label}: " + "; ".join(formatter(item) for item in items[:3]))
+    if followups:
+        lines.extend(["", "## Follow-ups"])
+        lines.extend(f"- {item}" for item in followups)
+
+    lines.extend(
+        [
+            "",
+            "## Reasoning",
+            "- Use `record_detail`, `linked_records`, or `brief-context --detail full` before citing detailed proof.",
+            "- Publish a compact Evidence Chain / Reasoning Checkpoint before planning, permission, persistence, or edits.",
+        ]
+    )
+    return lines
+
+
+def context_brief_text_lines(payload: dict, icon: str, detail: str = "compact") -> list[str]:
+    if detail == "compact":
+        return compact_context_brief_text_lines(payload, icon)
+
     limit = int(payload.get("limit", 8))
     lines = [f"# {icon} Context Brief", ""]
     current_workspace = payload.get("current_workspace")

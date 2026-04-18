@@ -418,7 +418,7 @@ def test_claim_lifecycle_pushes_resolved_claims_to_fallback_retrieval(tmp_path: 
     assert "Reviewed context:" in review
     assert "comparable claims disagree" not in (context / "review" / "conflicts.md").read_text(encoding="utf-8")
 
-    brief = run_cli(context, "brief-context", "--task", "smartpick browser-use gateway blocker").stdout
+    brief = run_cli(context, "brief-context", "--task", "smartpick browser-use gateway blocker", "--detail", "full").stdout
     candidate_section = brief.split("## Candidate Facts", 1)[1].split("## Fallback Historical Facts", 1)[0]
     fallback_section = brief.split("## Fallback Historical Facts", 1)[1].split("## Active Hypotheses", 1)[0]
     assert current_claim_id in candidate_section
@@ -529,7 +529,9 @@ def test_claim_lifecycle_pushes_resolved_claims_to_fallback_retrieval(tmp_path: 
     assert "lifecycle fallback claim" in blocked_model.stdout
 
     run_cli(context, "archive-claim", "--claim", old_claim_id, "--note", "audit-only after repeated no-repro checks")
-    brief_after_archive = run_cli(context, "brief-context", "--task", "smartpick browser-use gateway blocker").stdout
+    brief_after_archive = run_cli(
+        context, "brief-context", "--task", "smartpick browser-use gateway blocker", "--detail", "full"
+    ).stdout
     fallback_after_archive = brief_after_archive.split("## Fallback Historical Facts", 1)[1].split("## Active Hypotheses", 1)[0]
     assert old_claim_id not in fallback_after_archive
     assert "lifecycle.state: archived" in run_cli(context, "show-claim-lifecycle", "--claim", old_claim_id).stdout
@@ -3611,7 +3613,7 @@ def test_guidelines_store_operational_coding_rules_separately_from_claims(tmp_pa
     assert "page objects" in shown.stdout
 
     brief = run_cli(context, "brief-context", "--task", "write browser e2e tests")
-    assert "Active Guidelines" in brief.stdout
+    assert "## Controls" in brief.stdout
     assert guideline_id in brief.stdout
 
     run_cli(context, "review-context")
@@ -3854,7 +3856,7 @@ def test_proposals_are_recorded_scoped_surfaced_and_not_proof(tmp_path: Path) ->
     assert proposal["proposals"][0]["recommended"] is True
 
     brief = run_cli(context, "brief-context", "--task", "retry test strategy").stdout
-    assert "Active Proposals" in brief
+    assert "## Follow-ups" in brief
     assert proposal_id in brief
     assert "Prefer a focused regression test" in brief
 

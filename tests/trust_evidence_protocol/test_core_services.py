@@ -1149,7 +1149,18 @@ def test_context_brief_core_builds_payload_and_text(tmp_path: Path) -> None:
     assert [item["id"] for item in payload["plans"]] == [plan_id]
     assert [item["id"] for item in payload["debts"]] == [debt_id]
 
-    lines = context_brief_text_lines(payload, "TEP")
+    compact_lines = context_brief_text_lines(payload, "TEP")
+    compact_text = "\n".join(compact_lines)
+    assert compact_lines[0] == "# TEP Context Brief (compact)"
+    assert f"- workspace: `{workspace_id}` key=`qa-tim` status=`active`" in compact_lines
+    assert f"- project: `{project_id}` key=`tep` status=`active`" in compact_lines
+    assert f"- task: `{task_id}` type=`coding` scope=`tep-runtime` status=`active`" in compact_lines
+    assert claim_id in compact_text
+    assert guideline_id in compact_text
+    assert "Use `record_detail`, `linked_records`, or `brief-context --detail full`" in compact_text
+    assert len(compact_text) < 2200
+
+    lines = context_brief_text_lines(payload, "TEP", detail="full")
     assert lines[:6] == [
         "# TEP Context Brief",
         "",
@@ -1183,7 +1194,7 @@ def test_context_brief_core_builds_payload_and_text(tmp_path: Path) -> None:
     assert lines[-1] == "- If the brief has facts but no model/flow for the scope, update the context after the next supported observation."
 
     empty_payload = build_context_brief_payload({}, root, "unknown brief", "", "", "", 3)
-    empty_lines = context_brief_text_lines(empty_payload, "TEP")
+    empty_lines = context_brief_text_lines(empty_payload, "TEP", detail="full")
     assert "- none found; gather sources before making decisive claims" in empty_lines
     assert "- none; create `PRP-*` when the agent has a constructive alternative or critique" in empty_lines
 

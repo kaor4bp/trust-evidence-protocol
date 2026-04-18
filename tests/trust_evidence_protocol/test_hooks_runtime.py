@@ -446,7 +446,8 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
     assert "active_restrictions=1" in show.stdout
 
     brief = run_cli(context, "brief-context", "--task", "project scoped claim").stdout
-    assert "Current Project" in brief
+    assert "Context Brief (compact)" in brief
+    assert "project:" in brief
     assert project_id in brief
     assert permission_id in brief
     assert restriction_id in brief

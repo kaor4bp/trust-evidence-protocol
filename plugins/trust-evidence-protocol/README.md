@@ -39,7 +39,7 @@ Current implementation:
 - `skills/trust-evidence-protocol/SKILL.md` contains only core semantics and workflow routing
 - `skills/trust-evidence-protocol/workflows/` contains task-specific operating procedures
 
-Runtime hook output is intentionally compact by default. Detailed context should be pulled through MCP tools such as `brief_context`, `search_records`, `guidelines_for`, `code_search`, and `code_info`.
+Runtime hook output is intentionally compact by default. Use compact MCP/CLI projections first, then expand only the specific records or sections needed with tools such as `brief_context(detail=full)`, `search_records`, `record_detail`, `linked_records`, `guidelines_for`, `code_search`, and `code_info`.
 Human-facing TEP Runtime output uses the `🛡️` marker so plugin messages are easy to distinguish from normal agent prose.
 Machine-readable JSON fields and canonical records do not rely on the marker.
 
@@ -271,7 +271,7 @@ MCP is intentionally read-only in this plugin version. It is a faster context lo
 
 Exposed tools:
 
-- `brief_context`: task-oriented context brief
+- `brief_context`: task-oriented context brief; compact by default, `detail=full` for the expanded sectioned brief
 - `search_records`: keyword search across canonical records
 - `record_detail`: one record with source quotes and direct links
 - `linked_records`: graph expansion around one record
@@ -388,7 +388,8 @@ Commands:
   - proposal assumptions are not truth support and cannot be used as proof in evidence chains
 
 - `brief-context --task "..."`
-  - prints a task-oriented reasoning brief from the current `.codex_context`
+  - prints a compact task-oriented reasoning brief from the current `.codex_context`
+  - accepts `--detail full` for the expanded sectioned brief
   - surfaces relevant primary `MODEL-*` / `FLOW-*`, candidate claims, fallback historical claims, active hypotheses, open questions, applicable permissions, active guidelines, active restrictions, active proposals, plans, and debt
   - filters relevance sections by `settings.json.current_project_ref` when a current project is set
   - excludes records tied to another `TASK-*` through `task_refs`

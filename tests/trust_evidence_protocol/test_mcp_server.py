@@ -574,7 +574,7 @@ def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "brief_context",
-                    "arguments": {"cwd": str(workdir), "task": "mcp cwd anchor lookup"},
+                    "arguments": {"cwd": str(workdir), "task": "mcp cwd anchor lookup", "detail": "full"},
                 },
             },
         ]

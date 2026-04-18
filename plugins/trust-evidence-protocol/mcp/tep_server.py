@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.46"
+SERVER_VERSION = "0.1.47"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -57,6 +57,12 @@ TOOLS: list[JsonObject] = [
                 "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
                 "task": {"type": "string", "description": "Concrete task or question to brief."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 8},
+                "detail": {
+                    "type": "string",
+                    "enum": ["compact", "full"],
+                    "default": "compact",
+                    "description": "Output detail. Compact is token-light; full preserves the expanded sectioned brief.",
+                },
             },
             ["task"],
         ),
@@ -545,6 +551,8 @@ def tool_brief_context(args: JsonObject) -> tuple[bool, str]:
             str(args.get("task", "")),
             "--limit",
             str(as_int(args.get("limit"), 8, 1, 50)),
+            "--detail",
+            str(args.get("detail") or "compact"),
         ],
     )
 

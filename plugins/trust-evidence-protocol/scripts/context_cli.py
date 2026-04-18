@@ -1591,7 +1591,7 @@ def cmd_augment_chain(root: Path, chain_file: Path, output_format: str) -> int:
     return 1 if augmented["validation"]["error_count"] else 0
 
 
-def cmd_brief_context(root: Path, task: str, limit: int) -> int:
+def cmd_brief_context(root: Path, task: str, limit: int, detail: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -1604,7 +1604,7 @@ def cmd_brief_context(root: Path, task: str, limit: int) -> int:
         current_project_ref(root),
         limit,
     )
-    for line in context_brief_text_lines(payload, TEP_ICON):
+    for line in context_brief_text_lines(payload, TEP_ICON, detail=detail):
         print(line)
     return 0
 
@@ -4954,6 +4954,7 @@ def parse_args() -> argparse.Namespace:
     )
     brief_context.add_argument("--task", required=True)
     brief_context.add_argument("--limit", type=int, default=8)
+    brief_context.add_argument("--detail", choices=("compact", "full"), default="compact")
     search_records = subparsers.add_parser(
         "search-records",
         help="Search canonical records by keyword before expanding links.",
@@ -6053,7 +6054,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
     if args.command == "reindex-context":
         raise SystemExit(cmd_reindex_context(root))
     if args.command == "brief-context":
-        raise SystemExit(cmd_brief_context(root, task=args.task, limit=args.limit))
+        raise SystemExit(cmd_brief_context(root, task=args.task, limit=args.limit, detail=args.detail))
     if args.command == "search-records":
         raise SystemExit(
             cmd_search_records(

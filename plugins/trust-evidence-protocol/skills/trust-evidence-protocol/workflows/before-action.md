@@ -16,7 +16,7 @@ Use this workflow before planning, editing, running mutating commands, persistin
 
 ## Planning And Reasoning
 
-- Use `brief-context --task "..."` before planning substantial work.
+- Use compact `brief-context --task "..."` before planning substantial work; request `--detail full` only when compact context is insufficient.
 - Use `working-context show` when the current task has pinned refs, focus paths, or local assumptions that affect continuity.
 - Use `topic-search` only to find candidate records faster; do not use topic overlap as proof.
 - Use `logic-check` when the decision depends on typed predicate facts or rules; do not use logic-index output as proof without underlying `CLM-*` / `SRC-*`.
