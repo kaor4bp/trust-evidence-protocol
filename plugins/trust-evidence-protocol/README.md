@@ -290,6 +290,7 @@ Exposed tools:
 - `probe_inspect`: generated probe context with canonical record summaries, source quotes, direct link status, and follow-up commands
 - `probe_chain_draft`: generated evidence-chain skeleton for one probe; validates/augments the draft but does not make it proof
 - `probe_pack`: compact generated bundle of top probes, inspection summaries, and chain-draft validation
+- `probe_pack_compare`: compact/full probe-pack metric comparison for deciding whether expanded context is worth requesting
 - `working_contexts`: read-only `WCTX-*` working-context lookup
 - `logic_search`: generated predicate atom/rule search
 - `logic_check`: read-only predicate consistency summary
@@ -307,6 +308,7 @@ Rules:
 - Use `probe_pack` when you need a compact first pass over top probes without manually chaining several lookup tools.
 - `probe_pack` defaults to `detail=compact`; request `detail=full` only when source quotes and full chain draft payload are needed.
 - `probe_pack.metrics` reports mechanical payload size and omitted fields; metrics are budget hints, not proof.
+- Use `probe_pack_compare` when deciding mechanically whether full detail is worth the extra payload; the comparison and metrics are not proof.
 - Fall back to `context_cli.py` commands when MCP is unavailable or when mutation is needed.
 - Do not expose mutating commands through MCP until authorization, hook, and audit behavior is explicitly designed.
 - MCP results are navigation unless they include canonical `CLM-*`, `SRC-*`, `GLD-*`, or other record ids with enough detail to cite.

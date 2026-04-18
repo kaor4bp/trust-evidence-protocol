@@ -1179,6 +1179,17 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert full_pack["metrics"]["omitted_fields"] == []
     assert "source_quotes" in full_pack["items"][0]
     assert "chain" in full_pack["items"][0]
+    comparison = json.loads(
+        run_cli(context, "probe-pack-compare", "--budget", "1", "--scope", "all", "--format", "json").stdout
+    )
+    assert comparison["comparison_is_proof"] is False
+    assert comparison["metrics_are_proof"] is False
+    assert comparison["compact"]["detail"] == "compact"
+    assert comparison["full"]["detail"] == "full"
+    assert comparison["delta"]["payload_char_count"] > 0
+    assert comparison["delta"]["source_quote_count"] > 0
+    assert comparison["delta"]["chain_node_count"] > 0
+    assert comparison["delta"]["omitted_fields_compact"] == ["source_quotes", "chain"]
 
 
 def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> None:
@@ -1359,6 +1370,10 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     assert "detail: `compact`" in pack_text
     assert "metrics: returned=`" in pack_text
     assert "pack_is_proof=`False`" in pack_text
+    compare_text = run_cli(context, "probe-pack-compare", "--budget", "1").stdout
+    assert "# Probe Pack Detail Comparison" in compare_text
+    assert "comparison_is_proof=`False`" in compare_text
+    assert "Recommendation:" in compare_text
 
     all_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "20", "--scope", "all", "--format", "json").stdout)
     all_refs = {ref for probe in all_payload["probes"] for ref in probe["record_refs"]}

@@ -30,6 +30,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `probe_inspect`: equivalent to `probe-inspect`; expands one generated probe into canonical inspection context
 - `probe_chain_draft`: equivalent to `probe-chain-draft`; generates a non-proof evidence-chain draft from one probe
 - `probe_pack`: equivalent to `probe-pack`; compactly bundles top probes with inspection summaries and draft validation
+- `probe_pack_compare`: equivalent to `probe-pack-compare`; compares compact/full metrics before requesting expanded context
 - `working_contexts`: equivalent to `working-context show`
 - `logic_search`: equivalent to `logic-search`
 - `logic_check`: equivalent to `logic-check`
@@ -82,6 +83,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-inspect --index 1 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-chain-draft --index 1 --scope current --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-pack --budget 3 --scope current --detail compact
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-pack-compare --budget 3 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-search --predicate PredicateName
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-check
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-conflict-candidates
@@ -109,6 +111,7 @@ Use `probe-chain-draft` to mechanically assemble a draft evidence chain from a s
 Use `probe-pack` when the agent needs a compact first pass over several top probes without manually composing multiple lookup commands.
 Use `probe-pack --detail full` only when the compact pack shows a probe worth expanding with source quotes and full chain draft payload.
 Use `probe-pack.metrics` to compare payload size and omitted fields mechanically; metrics are not proof.
+Use `probe-pack-compare` to compare compact/full payload cost mechanically before requesting full detail; comparison output is not proof.
 Do not use attention output as proof; follow up with `record-detail`, `linked-records`, sources, and normal claims.
 Use `logic-search` / `logic-check` only as predicate prefilters over `CLM.logic`; they do not replace `CLM-*` and `SRC-*`.
 Use `build-reasoning-case` before non-trivial actions or recommendations that span several facts, models, or flows.

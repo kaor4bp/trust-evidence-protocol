@@ -2961,15 +2961,7 @@ def probe_pack_metrics(payload: dict, available_probes: int, detail: str) -> dic
     return metrics
 
 
-def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, detail: str) -> int:
-    records, exit_code = load_valid_context_readonly(root)
-    if exit_code:
-        return exit_code
-    attention_payload = load_attention_payload(root)
-    if not attention_payload:
-        print("attention index is missing or empty; run `attention-index build` first")
-        return 1
-    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+def build_probe_pack_payload(root: Path, records: dict, scoped_payload: dict, budget: int, detail: str) -> dict:
     probes = scoped_payload.get("probes", [])
     items = []
     for probe_index in range(1, min(max(1, budget), len(probes)) + 1):
@@ -2994,7 +2986,7 @@ def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, deta
         "attention_index_is_proof": False,
         "inspection_is_proof": False,
         "draft_is_proof": False,
-        "scope": scoped_payload.get("scope", scope),
+        "scope": scoped_payload.get("scope", ""),
         "workspace_ref": scoped_payload.get("workspace_ref", ""),
         "project_ref": scoped_payload.get("project_ref", ""),
         "task_ref": scoped_payload.get("task_ref", ""),
@@ -3003,10 +2995,91 @@ def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, deta
         "items": items,
     }
     payload["metrics"] = probe_pack_metrics(payload, len(probes), detail)
+    return payload
+
+
+def probe_pack_compare_payload(compact_payload: dict, full_payload: dict) -> dict:
+    compact_metrics = compact_payload.get("metrics", {})
+    full_metrics = full_payload.get("metrics", {})
+    delta = {
+        "payload_char_count": full_metrics.get("payload_char_count", 0) - compact_metrics.get("payload_char_count", 0),
+        "source_quote_count": full_metrics.get("source_quote_count", 0) - compact_metrics.get("source_quote_count", 0),
+        "chain_node_count": full_metrics.get("chain_node_count", 0) - compact_metrics.get("chain_node_count", 0),
+        "record_summary_count": full_metrics.get("record_summary_count", 0) - compact_metrics.get("record_summary_count", 0),
+        "omitted_fields_compact": compact_metrics.get("omitted_fields", []),
+    }
+    return {
+        "comparison_is_proof": False,
+        "attention_index_is_proof": False,
+        "metrics_are_proof": False,
+        "scope": compact_payload.get("scope", ""),
+        "workspace_ref": compact_payload.get("workspace_ref", ""),
+        "project_ref": compact_payload.get("project_ref", ""),
+        "task_ref": compact_payload.get("task_ref", ""),
+        "budget": compact_payload.get("budget", 0),
+        "compact": compact_metrics,
+        "full": full_metrics,
+        "delta": delta,
+        "recommendation": (
+            "Use compact first; request full only when selected probes need source quotes "
+            "or full chain payload for follow-up inspection."
+        ),
+    }
+
+
+def probe_pack_compare_text_lines(payload: dict) -> list[str]:
+    compact = payload.get("compact", {})
+    full = payload.get("full", {})
+    delta = payload.get("delta", {})
+    lines = [
+        "# Probe Pack Detail Comparison",
+        "",
+        "Mode: mechanical compact/full comparison. Not proof.",
+        f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"budget: `{payload.get('budget')}` comparison_is_proof=`{payload.get('comparison_is_proof')}` metrics_are_proof=`{payload.get('metrics_are_proof')}`",
+        "",
+        f"- compact: chars=`{compact.get('payload_char_count', 0)}` quotes=`{compact.get('source_quote_count', 0)}` chain_nodes=`{compact.get('chain_node_count', 0)}` omitted=`{', '.join(compact.get('omitted_fields', [])) or 'none'}`",
+        f"- full: chars=`{full.get('payload_char_count', 0)}` quotes=`{full.get('source_quote_count', 0)}` chain_nodes=`{full.get('chain_node_count', 0)}` omitted=`{', '.join(full.get('omitted_fields', [])) or 'none'}`",
+        f"- delta: chars=`{delta.get('payload_char_count', 0)}` quotes=`{delta.get('source_quote_count', 0)}` chain_nodes=`{delta.get('chain_node_count', 0)}`",
+        "",
+        f"Recommendation: {payload.get('recommendation', '')}",
+    ]
+    return lines
+
+
+def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, detail: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    attention_payload = load_attention_payload(root)
+    if not attention_payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+    payload = build_probe_pack_payload(root, records, scoped_payload, budget, detail)
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
     print("\n".join(probe_pack_text_lines(payload)))
+    return 0
+
+
+def cmd_probe_pack_compare(root: Path, budget: int, output_format: str, scope: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    attention_payload = load_attention_payload(root)
+    if not attention_payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+    compact_payload = build_probe_pack_payload(root, records, scoped_payload, budget, "compact")
+    full_payload = build_probe_pack_payload(root, records, scoped_payload, budget, "full")
+    payload = probe_pack_compare_payload(compact_payload, full_payload)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(probe_pack_compare_text_lines(payload)))
     return 0
 
 
@@ -4835,6 +4908,13 @@ def parse_args() -> argparse.Namespace:
     probe_pack.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     probe_pack.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     probe_pack.add_argument("--detail", choices=("compact", "full"), default="compact")
+    probe_pack_compare = subparsers.add_parser(
+        "probe-pack-compare",
+        help="Compare compact and full probe-pack detail metrics. Not proof.",
+    )
+    probe_pack_compare.add_argument("--budget", type=int, default=3)
+    probe_pack_compare.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    probe_pack_compare.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     logic_index = subparsers.add_parser(
         "logic-index",
         help="Build generated predicate logic indexes over CLM.logic blocks.",
@@ -5876,6 +5956,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(cmd_probe_chain_draft(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
     if args.command == "probe-pack":
         raise SystemExit(cmd_probe_pack(root, budget=args.budget, output_format=args.output_format, scope=args.scope, detail=args.detail))
+    if args.command == "probe-pack-compare":
+        raise SystemExit(cmd_probe_pack_compare(root, budget=args.budget, output_format=args.output_format, scope=args.scope))
     if args.command == "logic-index":
         if args.logic_index_command == "build":
             raise SystemExit(cmd_logic_index_build(root, candidate_limit=args.candidate_limit))

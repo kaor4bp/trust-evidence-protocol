@@ -354,6 +354,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "budget": 1, "scope": "all", "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 17,
+                "method": "tools/call",
+                "params": {
+                    "name": "probe_pack_compare",
+                    "arguments": {"context": str(context), "budget": 1, "scope": "all", "format": "json"},
+                },
+            },
         ]
     )
 
@@ -377,6 +386,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "probe_inspect",
         "probe_chain_draft",
         "probe_pack",
+        "probe_pack_compare",
         "working_contexts",
         "logic_search",
         "logic_check",
@@ -446,6 +456,12 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert '"detail": "compact"' in probe_pack["content"][0]["text"]
     assert '"metrics_are_proof": false' in probe_pack["content"][0]["text"]
     assert '"chain_validation"' in probe_pack["content"][0]["text"]
+
+    probe_pack_compare = by_id[17]["result"]
+    assert probe_pack_compare["isError"] is False
+    assert '"comparison_is_proof": false' in probe_pack_compare["content"][0]["text"]
+    assert '"payload_char_count"' in probe_pack_compare["content"][0]["text"]
+    assert '"omitted_fields_compact"' in probe_pack_compare["content"][0]["text"]
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
