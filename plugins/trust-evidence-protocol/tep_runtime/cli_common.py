@@ -57,6 +57,7 @@ MUTATING_COMMANDS = {
     "record-claim",
     "record-plan",
     "record-debt",
+    "record-feedback",
     "record-model",
     "record-flow",
     "record-open-question",

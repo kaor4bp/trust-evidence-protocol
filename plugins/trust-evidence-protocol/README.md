@@ -14,6 +14,7 @@ Responsibilities:
 - manage claim lifecycle so true historical/resolved claims stay searchable without dominating current task context
 - keep persistent plan/debt records and generate an active prioritization view
 - keep constructive `PRP-*` agent proposals with cited context, options, risks, and stop conditions
+- keep agent plugin feedback as `SRC-*` plus `DEBT-*` through `record-feedback`
 - keep `WCTX-*` working-context snapshots for focus, handoff, assumptions, and retrospective
 - build generated lexical `topic_index/` data for search prefiltering and candidate review
 - build generated predicate `logic_index/` data from `CLM.logic` for symbol, atom, rule, and conflict-candidate checks
@@ -100,6 +101,13 @@ Additional transient index:
 - `artifact_policy` for when referenced files are copied or only linked
 - `cleanup` staging and retention thresholds
 - optional `analysis` backend policy for logic solving and topic prefiltering
+
+Tick-tock development should target `~/.tep_context`: use the current plugin to
+develop the next plugin version, merge local context into the unified context,
+then switch agents to the next version. Agents should record plugin bugs,
+friction, false positives, false negatives, docs gaps, and migration issues with
+`record-feedback` so maintainers can process them through normal debt/search
+workflows.
 
 Default retention/capture policy:
 

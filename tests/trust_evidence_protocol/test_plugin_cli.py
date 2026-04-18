@@ -238,6 +238,51 @@ def test_record_input_creates_prompt_provenance_and_runtime_configures_capture(t
     assert run_cli(context, "review-context").returncode == 0
 
 
+def test_record_feedback_creates_source_and_debt(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    result = run_cli(
+        context,
+        "record-feedback",
+        "--scope",
+        "tep.plugin",
+        "--kind",
+        "false-positive",
+        "--surface",
+        "hook",
+        "--severity",
+        "high",
+        "--title",
+        "Read-only command was blocked",
+        "--actual",
+        "The hook classified rg as a mutating write.",
+        "--expected",
+        "Read-only search should pass without strictness escalation.",
+        "--repro",
+        "Run rg over plugin docs.",
+        "--suggestion",
+        "Classify shell commands by parsed operation, not path substrings.",
+        "--origin-ref",
+        "beta-agent-report",
+        "--created-by",
+        "beta-agent",
+    )
+    assert "Recorded source SRC-" in result.stdout
+    debt_id = recorded_id(result, "feedback debt")
+    debt = load_record(context, "debt", debt_id)
+
+    assert debt["title"] == "[feedback:false-positive] Read-only command was blocked"
+    assert debt["priority"] == "high"
+    assert debt["evidence_refs"][0].startswith("SRC-")
+    assert "feedback:false-positive" in debt["tags"]
+    assert "surface:hook" in debt["tags"]
+    assert "Read-only search should pass" in debt["note"]
+    source = load_record(context, "source", debt["evidence_refs"][0])
+    assert source["source_kind"] == "memory"
+    assert source["origin"] == {"kind": "agent-feedback", "ref": "beta-agent-report"}
+    assert run_cli(context, "review-context").returncode == 0
+
+
 def test_claim_lifecycle_pushes_resolved_claims_to_fallback_retrieval(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 

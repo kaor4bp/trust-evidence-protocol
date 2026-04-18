@@ -13,6 +13,7 @@ Move stable data contracts to `docs/reference/`. Move exploratory material to
 - [TEP Developer Reference](TEP_DEVELOPER_REFERENCE.md)
 - [TEP Core Rewrite Working Context](TEP_CORE_REWRITE_CONTEXT.md)
 - [TEP Core Baseline](TEP_CORE_BASELINE.md)
+- [Tick-Tock Adoption Contract](TICK_TOCK_ADOPTION.md)
 
 ## Maintenance Rules
 

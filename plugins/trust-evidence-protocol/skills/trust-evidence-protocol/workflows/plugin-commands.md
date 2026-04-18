@@ -226,6 +226,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-action --kind edit --scope "..." --justify CLM-* --safety-class guarded --status executed --evidence-chain evidence-chain.json --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-plan --scope "..." --title "..." --priority medium --justify CLM-* --step "..." --success "..." --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-debt --scope "..." --title "..." --priority medium --evidence CLM-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-feedback --scope "tep.plugin" --kind false-positive --surface hook --severity high --title "..." --actual "..." --expected "..." --repro "..." --suggestion "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-model --knowledge-class domain --domain "..." --scope "..." --aspect "..." --summary "..." --claim CLM-* --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-flow --knowledge-class domain --domain "..." --scope "..." --summary "..." --model MODEL-* --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-open-question --domain "..." --scope "..." --aspect "..." --question "..." --note "..."
@@ -235,6 +236,9 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 Use `resolve-claim` before repeated old facts become attention noise.
 Use `archive-claim` only when default retrieval should stop seeing the claim.
 Use `show-claim-lifecycle` before restoring old context into active use.
+Use `record-feedback` when the plugin, hook, MCP server, skill, docs, reasoning
+workflow, code index, or context merge causes agent-visible friction. It creates
+a feedback `SRC-*` and an open `DEBT-*`; it is not proof by itself.
 
 ## Hypotheses
 

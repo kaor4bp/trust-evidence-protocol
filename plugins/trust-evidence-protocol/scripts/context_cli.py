@@ -291,6 +291,38 @@ from tep_runtime.topic_index import (
 )
 
 
+FEEDBACK_KINDS = {
+    "bug",
+    "friction",
+    "false-positive",
+    "false-negative",
+    "docs-gap",
+    "performance",
+    "missing-tool",
+    "policy-conflict",
+    "migration-issue",
+    "other",
+}
+FEEDBACK_SURFACES = {
+    "cli",
+    "hook",
+    "mcp",
+    "skill",
+    "docs",
+    "context-merge",
+    "code-index",
+    "reasoning",
+    "runtime",
+    "other",
+}
+FEEDBACK_SEVERITY_TO_PRIORITY = {
+    "critical": "critical",
+    "high": "high",
+    "medium": "medium",
+    "low": "low",
+}
+
+
 def cmd_hypothesis_add(
     root: Path,
     claim_ref: str,
@@ -3356,6 +3388,115 @@ def cmd_record_debt(
     return persist_candidate(root, records, payload, "debt")
 
 
+def cmd_record_feedback(
+    root: Path,
+    scope: str,
+    kind: str,
+    severity: str,
+    surface: str,
+    title: str,
+    actual: str,
+    expected: str | None,
+    repro_steps: list[str],
+    suggestions: list[str],
+    evidence_refs: list[str],
+    project_refs: list[str],
+    task_refs: list[str],
+    tags: list[str],
+    note: str,
+    origin_ref: str,
+    created_by: str,
+) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+
+    timestamp = now_timestamp()
+    resolved_project_refs = project_refs_for_write(root, project_refs)
+    resolved_task_refs = task_refs_for_write(root, task_refs)
+    feedback_tags = sorted({*tags, "feedback", f"feedback:{kind}", f"surface:{surface}"})
+
+    source_id = next_record_id(records, "SRC-")
+    quote_parts = [f"{title.strip()}: {actual.strip()}"]
+    if expected and expected.strip():
+        quote_parts.append(f"Expected: {expected.strip()}")
+    source_payload = build_source_payload(
+        record_id=source_id,
+        source_kind="memory",
+        scope=scope,
+        critique_status="audited",
+        origin_kind="agent-feedback",
+        origin_ref=origin_ref,
+        quote=" ".join(quote_parts),
+        artifact_refs=[],
+        confidence=None,
+        independence_group=f"agent-feedback-{created_by}-{timestamp}",
+        captured_at=timestamp,
+        captured_timestamp=timestamp,
+        independence_timestamp=timestamp,
+        project_refs=resolved_project_refs,
+        task_refs=resolved_task_refs,
+        tags=feedback_tags,
+        red_flags=[],
+        note=f"Agent feedback source created_by={created_by}.",
+    )
+    source_candidate, source_errors = validate_candidate_record(root, records, source_payload)
+    if source_errors:
+        print_errors(source_errors)
+        return 1
+
+    note_lines = [
+        f"kind={kind}",
+        f"surface={surface}",
+        f"severity={severity}",
+        f"created_by={created_by}",
+        "",
+        "Actual:",
+        actual.strip(),
+    ]
+    if expected and expected.strip():
+        note_lines.extend(["", "Expected:", expected.strip()])
+    if repro_steps:
+        note_lines.extend(["", "Reproduction:"])
+        note_lines.extend(f"- {step.strip()}" for step in repro_steps if step.strip())
+    if suggestions:
+        note_lines.extend(["", "Suggested fixes:"])
+        note_lines.extend(f"- {suggestion.strip()}" for suggestion in suggestions if suggestion.strip())
+    if note.strip():
+        note_lines.extend(["", "Note:", note.strip()])
+
+    records_with_source = dict(records)
+    records_with_source[source_id] = source_candidate
+    debt_payload = build_debt_payload(
+        record_id=next_record_id(records_with_source, "DEBT-"),
+        timestamp=timestamp,
+        scope=scope,
+        title=f"[feedback:{kind}] {title.strip()}",
+        priority=FEEDBACK_SEVERITY_TO_PRIORITY[severity],
+        status="open",
+        evidence_refs=[source_id, *evidence_refs],
+        plan_refs=[],
+        project_refs=resolved_project_refs,
+        task_refs=resolved_task_refs,
+        tags=feedback_tags,
+        note="\n".join(note_lines).strip(),
+    )
+    debt_candidate, debt_errors = validate_candidate_record(root, records_with_source, debt_payload)
+    if debt_errors:
+        print_errors(debt_errors)
+        return 1
+
+    write_json_file(record_path(root, "source", source_payload["id"]), source_payload)
+    write_json_file(record_path(root, "debt", debt_payload["id"]), debt_payload)
+    updated_records = dict(records_with_source)
+    updated_records[debt_payload["id"]] = debt_candidate
+    refresh_generated_outputs(root, updated_records)
+    invalidate_hydration_state(root, f"recorded feedback {debt_payload['id']}")
+    print(f"Recorded source {source_payload['id']} at {record_path(root, 'source', source_payload['id'])}")
+    print(f"Recorded feedback debt {debt_payload['id']} at {record_path(root, 'debt', debt_payload['id'])}")
+    return 0
+
+
 def cmd_record_source(
     root: Path,
     scope: str,
@@ -4561,6 +4702,27 @@ def parse_args() -> argparse.Namespace:
     record_debt.add_argument("--tag", dest="tags", action="append", default=[])
     record_debt.add_argument("--note", required=True)
 
+    record_feedback = subparsers.add_parser(
+        "record-feedback",
+        help="Create an agent feedback source plus an open DEBT-* item for TEP/plugin problems.",
+    )
+    record_feedback.add_argument("--scope", required=True)
+    record_feedback.add_argument("--kind", required=True, choices=sorted(FEEDBACK_KINDS))
+    record_feedback.add_argument("--severity", default="medium", choices=sorted(FEEDBACK_SEVERITY_TO_PRIORITY))
+    record_feedback.add_argument("--surface", required=True, choices=sorted(FEEDBACK_SURFACES))
+    record_feedback.add_argument("--title", required=True)
+    record_feedback.add_argument("--actual", required=True)
+    record_feedback.add_argument("--expected")
+    record_feedback.add_argument("--repro", dest="repro_steps", action="append", default=[])
+    record_feedback.add_argument("--suggestion", dest="suggestions", action="append", default=[])
+    record_feedback.add_argument("--evidence", dest="evidence_refs", action="append", default=[])
+    record_feedback.add_argument("--project", dest="project_refs", action="append", default=[])
+    record_feedback.add_argument("--task", dest="task_refs", action="append", default=[])
+    record_feedback.add_argument("--tag", dest="tags", action="append", default=[])
+    record_feedback.add_argument("--note", default="")
+    record_feedback.add_argument("--origin-ref", default="agent feedback")
+    record_feedback.add_argument("--created-by", default="agent")
+
     record_model = subparsers.add_parser(
         "record-model",
         help="Create a canonical model record and refresh generated views.",
@@ -5382,6 +5544,28 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 task_refs=args.task_refs,
                 tags=args.tags,
                 note=args.note,
+            )
+        )
+    if args.command == "record-feedback":
+        raise SystemExit(
+            cmd_record_feedback(
+                root,
+                scope=args.scope,
+                kind=args.kind,
+                severity=args.severity,
+                surface=args.surface,
+                title=args.title,
+                actual=args.actual,
+                expected=args.expected,
+                repro_steps=args.repro_steps,
+                suggestions=args.suggestions,
+                evidence_refs=args.evidence_refs,
+                project_refs=args.project_refs,
+                task_refs=args.task_refs,
+                tags=args.tags,
+                note=args.note,
+                origin_ref=args.origin_ref,
+                created_by=args.created_by,
             )
         )
     if args.command == "record-model":
