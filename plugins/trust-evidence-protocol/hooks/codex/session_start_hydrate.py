@@ -22,9 +22,8 @@ from hook_common import (
 
 
 PROTOCOL_REMINDER = (
-    "Use the Trust Evidence Protocol skill: search the resolved TEP context first, cite `CLM-*`/`GLD-*` ids with "
-    "short quotes for planning, permission, persistence, and substantial edits, keep detailed lookup in MCP/brief-context, "
-    "and never make green/red/ask decisions by deriving unknown values from target assertions or user pressure."
+    "Use TEP skill: search resolved context first, cite `CLM-*`/`GLD-* + quote` for planning, permission, "
+    "persistence, and substantial edits, and never derive green/red/ask values from target assertions."
 )
 
 

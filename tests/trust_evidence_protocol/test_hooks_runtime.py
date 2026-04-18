@@ -318,7 +318,11 @@ def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:
 
     payload = hook_json(HOOK_DIR / "session_start_hydrate.py", hook_payload(context, ""))
     assert payload["systemMessage"] == "🛡️ Context hydrated with current task."
-    assert task_id in payload["hookSpecificOutput"]["additionalContext"]
+    session_context = payload["hookSpecificOutput"]["additionalContext"]
+    assert task_id in session_context
+    assert "TEP route:" in session_context
+    assert "graph=" in session_context
+    assert "Use TEP skill" in session_context
 
     complete = run_cli(context, "complete-task", "--note", "done")
     assert f"Completed task {task_id}" in complete.stdout
@@ -936,6 +940,7 @@ def test_quiet_hook_verbosity_compacts_session_and_suppresses_fresh_prompt_remin
     additional_context = session_payload["hookSpecificOutput"]["additionalContext"]
     assert "Current task:" in additional_context
     assert "TEP route:" in additional_context
+    assert "graph=" in additional_context
     assert "Use TEP skill" not in additional_context
 
     quiet_prompt = hook_payload(context, "")
