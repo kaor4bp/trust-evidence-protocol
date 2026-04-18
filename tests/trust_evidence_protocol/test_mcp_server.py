@@ -381,6 +381,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "index": 1, "scope": "all", "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 20,
+                "method": "tools/call",
+                "params": {
+                    "name": "attention_diagram_compare",
+                    "arguments": {"context": str(context), "limit": 3, "scope": "all", "format": "json"},
+                },
+            },
         ]
     )
 
@@ -401,6 +410,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "topic_conflict_candidates",
         "attention_map",
         "attention_diagram",
+        "attention_diagram_compare",
         "curiosity_probes",
         "probe_inspect",
         "probe_chain_draft",
@@ -495,6 +505,12 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert '"route_is_proof": false' in probe_route["content"][0]["text"]
     assert '"recommended_commands"' in probe_route["content"][0]["text"]
     assert "probe-pack-compare" in probe_route["content"][0]["text"]
+
+    attention_diagram_compare = by_id[20]["result"]
+    assert attention_diagram_compare["isError"] is False
+    assert '"comparison_is_proof": false' in attention_diagram_compare["content"][0]["text"]
+    assert '"record_summaries"' in attention_diagram_compare["content"][0]["text"]
+    assert '"payload_char_count"' in attention_diagram_compare["content"][0]["text"]
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:

@@ -1136,6 +1136,14 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert "graph TD" in diagram_text
     assert "detail: `compact`" in diagram_text
     assert "omitted=`record_summaries`" in diagram_text
+    diagram_compare = json.loads(
+        run_cli(context, "attention-diagram-compare", "--limit", "3", "--scope", "all", "--format", "json").stdout
+    )
+    assert diagram_compare["comparison_is_proof"] is False
+    assert diagram_compare["metrics_are_proof"] is False
+    assert diagram_compare["compact"]["omitted_fields"] == ["record_summaries"]
+    assert diagram_compare["full"]["omitted_fields"] == []
+    assert diagram_compare["delta"]["payload_char_count"] > 0
     probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
     assert probes_payload["attention_index_is_proof"] is False
     assert all(ref.startswith("CLM-") for probe in probes_payload["probes"] for ref in probe["record_refs"])
@@ -1405,6 +1413,10 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     assert full_diagram_payload["metrics"]["omitted_fields"] == []
     assert full_diagram_payload["metrics"]["payload_char_count"] > diagram_payload["metrics"]["payload_char_count"]
     assert "graph TD" in diagram_payload["mermaid"]
+    diagram_compare_text = run_cli(context, "attention-diagram-compare", "--limit", "2").stdout
+    assert "# Attention Diagram Detail Comparison" in diagram_compare_text
+    assert "comparison_is_proof=`False`" in diagram_compare_text
+    assert "Recommendation:" in diagram_compare_text
 
     all_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "20", "--scope", "all", "--format", "json").stdout)
     all_refs = {ref for probe in all_payload["probes"] for ref in probe["record_refs"]}

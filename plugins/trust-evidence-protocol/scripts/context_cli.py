@@ -2694,6 +2694,74 @@ def cmd_attention_diagram(root: Path, limit: int, output_format: str, scope: str
     return 0
 
 
+def attention_diagram_compare_payload(scoped_payload: dict, *, limit: int) -> dict:
+    compact = attention_diagram_payload(scoped_payload, limit=limit, detail="compact")
+    compact_mermaid = "\n".join(attention_diagram_mermaid_lines(scoped_payload, limit=limit, detail="compact"))
+    compact_metrics = attention_diagram_metrics(compact, mermaid=compact_mermaid, detail="compact")
+    full = attention_diagram_payload(scoped_payload, limit=limit, detail="full")
+    full_mermaid = "\n".join(attention_diagram_mermaid_lines(scoped_payload, limit=limit, detail="full"))
+    full_metrics = attention_diagram_metrics(full, mermaid=full_mermaid, detail="full")
+    delta = {
+        "payload_char_count": full_metrics.get("payload_char_count", 0) - compact_metrics.get("payload_char_count", 0),
+        "record_summary_count": full_metrics.get("record_count", 0) - compact_metrics.get("record_count", 0),
+        "mermaid_char_count": len(full_mermaid) - len(compact_mermaid),
+        "omitted_fields_compact": compact_metrics.get("omitted_fields", []),
+    }
+    return {
+        "comparison_is_proof": False,
+        "attention_index_is_proof": False,
+        "metrics_are_proof": False,
+        "scope": scoped_payload.get("scope", "all"),
+        "workspace_ref": scoped_payload.get("workspace_ref", ""),
+        "project_ref": scoped_payload.get("project_ref", ""),
+        "task_ref": scoped_payload.get("task_ref", ""),
+        "limit": limit,
+        "compact": compact_metrics,
+        "full": full_metrics,
+        "delta": delta,
+        "recommendation": (
+            "Use compact first; request full only when record-summary labels are needed "
+            "for diagram orientation."
+        ),
+    }
+
+
+def attention_diagram_compare_text_lines(payload: dict) -> list[str]:
+    compact = payload.get("compact", {})
+    full = payload.get("full", {})
+    delta = payload.get("delta", {})
+    return [
+        "# Attention Diagram Detail Comparison",
+        "",
+        "Mode: mechanical compact/full diagram comparison. Not proof.",
+        f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"limit: `{payload.get('limit')}` comparison_is_proof=`{payload.get('comparison_is_proof')}` metrics_are_proof=`{payload.get('metrics_are_proof')}`",
+        "",
+        f"- compact: chars=`{compact.get('payload_char_count', 0)}` records=`{compact.get('record_count', 0)}` omitted=`{', '.join(compact.get('omitted_fields', [])) or 'none'}`",
+        f"- full: chars=`{full.get('payload_char_count', 0)}` records=`{full.get('record_count', 0)}` omitted=`{', '.join(full.get('omitted_fields', [])) or 'none'}`",
+        f"- delta: chars=`{delta.get('payload_char_count', 0)}` mermaid_chars=`{delta.get('mermaid_char_count', 0)}`",
+        "",
+        f"Recommendation: {payload.get('recommendation', '')}",
+    ]
+
+
+def cmd_attention_diagram_compare(root: Path, limit: int, output_format: str, scope: str) -> int:
+    _, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload = load_attention_payload(root)
+    if not payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    scoped_payload = scoped_attention_payload(root, payload, scope)
+    comparison = attention_diagram_compare_payload(scoped_payload, limit=limit)
+    if output_format == "json":
+        print(json.dumps(comparison, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(attention_diagram_compare_text_lines(comparison)))
+    return 0
+
+
 def cmd_curiosity_probes(root: Path, budget: int, output_format: str, scope: str) -> int:
     payload = load_attention_payload(root)
     if not payload:
@@ -5004,6 +5072,13 @@ def parse_args() -> argparse.Namespace:
     attention_diagram.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     attention_diagram.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     attention_diagram.add_argument("--detail", choices=("compact", "full"), default="compact")
+    attention_diagram_compare = subparsers.add_parser(
+        "attention-diagram-compare",
+        help="Compare compact and full attention-diagram metrics. Not proof.",
+    )
+    attention_diagram_compare.add_argument("--limit", type=int, default=8)
+    attention_diagram_compare.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    attention_diagram_compare.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     curiosity_probes = subparsers.add_parser(
         "curiosity-probes",
         help="Show generated bounded curiosity probes. Not proof.",
@@ -6088,6 +6163,15 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 output_format=args.output_format,
                 scope=args.scope,
                 detail=args.detail,
+            )
+        )
+    if args.command == "attention-diagram-compare":
+        raise SystemExit(
+            cmd_attention_diagram_compare(
+                root,
+                limit=args.limit,
+                output_format=args.output_format,
+                scope=args.scope,
             )
         )
     if args.command == "curiosity-probes":

@@ -287,6 +287,7 @@ Exposed tools:
 - `topic_conflict_candidates`: generated lexical overlap candidates for review
 - `attention_map`: generated attention-map clusters and cold zones; defaults to current `.tep` workspace/project/task focus
 - `attention_diagram`: generated Mermaid attention graph over clusters, top records, established bridges, and curiosity probes; defaults to `detail=compact`
+- `attention_diagram_compare`: compact/full diagram metric comparison for deciding whether summary labels are worth requesting
 - `curiosity_probes`: generated bounded curiosity questions; defaults to current `.tep` workspace/project/task focus
 - `probe_inspect`: generated probe context with canonical record summaries, source quotes, direct link status, and follow-up commands
 - `probe_chain_draft`: generated evidence-chain skeleton for one probe; validates/augments the draft but does not make it proof
@@ -306,6 +307,7 @@ Rules:
 - For attention tools, use default `scope=current` during normal work; use `scope=all` only for cross-workspace/project triage.
 - Use `attention_diagram` when a visual cluster/link map is cheaper than reading several textual reports; Mermaid output is navigation only, not proof.
 - `attention_diagram` defaults to `detail=compact` and omits record summaries; request `detail=full` only when node labels need summaries.
+- Use `attention_diagram_compare` to compare compact/full diagram payload cost mechanically; comparison output is not proof.
 - Curiosity probe `score` and `explanation` fields are mechanical navigation hints, not confidence or proof.
 - Use `probe_inspect` after choosing a curiosity probe so the runtime, not the agent, expands the pair into canonical inspection context.
 - Use `probe_chain_draft` when you need a mechanically assembled proof skeleton from a selected probe, then validate and revise before user-facing proof.
