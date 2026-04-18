@@ -52,6 +52,7 @@ MUTATING_COMMANDS = {
     "restore-claim",
     "record-permission",
     "record-action",
+    "record-input",
     "record-source",
     "record-claim",
     "record-plan",

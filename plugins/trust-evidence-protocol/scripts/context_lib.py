@@ -191,6 +191,7 @@ from tep_runtime.hypotheses import (
     validate_hypotheses_index,
     write_hypotheses_index,
 )
+from tep_runtime.inputs import build_input_payload
 from tep_runtime.knowledge import mark_knowledge_records_stale_payloads, stale_knowledge_target_ids
 from tep_runtime.io import context_write_lock, parse_json_file, write_json_file, write_text_file
 from tep_runtime.links import (
@@ -339,6 +340,7 @@ from tep_runtime.schemas import (
     GUIDELINE_DOMAINS,
     GUIDELINE_PRIORITIES,
     GUIDELINE_STATUSES,
+    INPUT_KINDS,
     MODEL_KNOWLEDGE_CLASSES,
     MODEL_STATUSES,
     OPEN_QUESTION_STATUSES,
@@ -399,6 +401,8 @@ from tep_runtime.settings import (
     DEFAULT_HOOK_SETTINGS,
     DEFAULT_SETTINGS,
     HOOK_MODE_VALUES,
+    INPUT_CAPTURE_MODES,
+    INPUT_FILE_MENTION_MODES,
     LOGIC_SOLVER_BACKENDS,
     LOGIC_SOLVER_MODES,
     LOGIC_SOLVER_OPTIONAL_BACKENDS,

@@ -117,6 +117,7 @@ A resolved or historical claim may still be true, but normal reasoning should us
 
 Canonical objects:
 
+- `Input`: raw prompt-level provenance captured as `INP-*`; not proof until classified into source-backed records
 - `Source`: carrier of information such as user message, code, test output, documentation, log, screenshot, artifact, or memory record
 - `Claim`: normalized assertion extracted from sources
 - `Logic Projection`: optional `CLM.logic` atoms/rules/symbols that mechanically project one claim
@@ -407,7 +408,7 @@ For project-claim work:
 4. If intended work no longer matches the current `TASK-*`, pause/switch/start the correct task instead of silently drifting.
 5. If beginning or switching to a substantial repeated `task_type`, review past precedents when available.
 6. Search existing `.codex_context` records before deriving from scratch.
-7. Classify incoming user messages, files, diffs, docs, outputs, logs, and memory records as sources.
+7. Treat hook-captured `INP-*` records as prompt provenance, then classify incoming user messages, files, diffs, docs, outputs, logs, and memory records into appropriate `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, `PRP-*`, or other records when they matter.
 8. Reconcile new observations against existing supported/corroborated `CLM-*` records.
 9. Publish a `Reasoning Checkpoint` before long or plan-changing analysis.
 10. Build and validate an `Evidence Chain` before non-trivial action.

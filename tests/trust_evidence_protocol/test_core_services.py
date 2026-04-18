@@ -157,6 +157,7 @@ from context_lib import validate_records_state as compat_validate_records_state 
 from context_lib import validate_refs as compat_validate_refs  # noqa: E402
 from context_lib import build_action_payload as compat_build_action_payload  # noqa: E402
 from context_lib import build_source_payload as compat_build_source_payload  # noqa: E402
+from context_lib import build_input_payload as compat_build_input_payload  # noqa: E402
 from context_lib import source_line as compat_source_line  # noqa: E402
 from context_lib import default_independence_group as compat_default_independence_group  # noqa: E402
 from context_lib import build_index as compat_build_index  # noqa: E402
@@ -344,6 +345,7 @@ from tep_runtime.planning import build_debt_payload, build_plan_payload  # noqa:
 from tep_runtime.permissions import build_permission_payload, resolve_permission_scope  # noqa: E402
 from tep_runtime.restrictions import build_restriction_payload, resolve_restriction_scope  # noqa: E402
 from tep_runtime.sources import build_source_payload, default_independence_group  # noqa: E402
+from tep_runtime.inputs import build_input_payload  # noqa: E402
 from tep_runtime.display import (  # noqa: E402
     claim_line,
     guideline_summary_line,
@@ -2786,6 +2788,61 @@ def test_action_core_builds_payload_timestamps() -> None:
     )
     assert "planned_at" not in explicit_execution
     assert explicit_execution["executed_at"] == "2026-04-18T08:15:00+03:00"
+
+
+def test_input_core_builds_prompt_provenance_payload() -> None:
+    prompt = "Please remember this testing guideline."
+    payload = build_input_payload(
+        record_id="INP-20260418-abcdef12",
+        scope=" tep-plugin-development ",
+        input_kind="user_prompt",
+        origin_kind=" codex-hook ",
+        origin_ref=" UserPromptSubmit:session-1 ",
+        text=prompt,
+        artifact_refs=[],
+        session_ref=" session-1 ",
+        derived_record_refs=["GLD-20260418-aaaa1111"],
+        captured_at=None,
+        captured_timestamp="2026-04-18T08:00:00+03:00",
+        project_refs=["PRJ-20260418-bbbb2222"],
+        task_refs=["TASK-20260418-cccc3333"],
+        tags=["hook", "user-prompt"],
+        note=" captured prompt ",
+    )
+
+    assert payload == {
+        "id": "INP-20260418-abcdef12",
+        "record_type": "input",
+        "input_kind": "user_prompt",
+        "scope": "tep-plugin-development",
+        "captured_at": "2026-04-18T08:00:00+03:00",
+        "origin": {"kind": "codex-hook", "ref": "UserPromptSubmit:session-1"},
+        "project_refs": ["PRJ-20260418-bbbb2222"],
+        "task_refs": ["TASK-20260418-cccc3333"],
+        "artifact_refs": [],
+        "text": prompt,
+        "derived_record_refs": ["GLD-20260418-aaaa1111"],
+        "tags": ["hook", "user-prompt"],
+        "note": "captured prompt",
+        "session_ref": "session-1",
+    }
+    assert compat_build_input_payload(
+        record_id="INP-20260418-bcdef123",
+        scope="demo",
+        input_kind="tool_payload",
+        origin_kind="hook",
+        origin_ref="event",
+        text="payload",
+        artifact_refs=[],
+        session_ref=None,
+        derived_record_refs=[],
+        captured_at="2026-04-18T08:10:00+03:00",
+        captured_timestamp="unused",
+        project_refs=[],
+        task_refs=[],
+        tags=[],
+        note="compat",
+    )["captured_at"] == "2026-04-18T08:10:00+03:00"
 
 
 def test_source_core_builds_payload_and_default_independence_group() -> None:

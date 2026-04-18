@@ -17,6 +17,7 @@ Responsibilities:
 - keep `WCTX-*` working-context snapshots for focus, handoff, assumptions, and retrospective
 - build generated lexical `topic_index/` data for search prefiltering and candidate review
 - build generated predicate `logic_index/` data from `CLM.logic` for symbol, atom, rule, and conflict-candidate checks
+- capture `INP-*` user-prompt provenance through the UserPromptSubmit hook when enabled by `input_capture`
 - push agents to preserve reusable discoveries, rules, actions, plans, debt, questions, models, flows, and proposals as records
 
 Non-responsibilities:
@@ -144,6 +145,15 @@ The baseline runtime must work with structural logic checks and lexical topic pr
 Optional backends such as `z3` and `nmf` may be enabled per project, but missing dependencies should warn or error according to settings instead of silently installing packages.
 When `install_policy = "ask"`, the agent may propose the install command and record the action only after user approval.
 
+Prompt capture mechanics:
+
+- `record-input` creates canonical `INP-*` provenance records.
+- UserPromptSubmit hook capture follows `settings.input_capture.user_prompts`.
+- `capture` stores the prompt text in the `INP-*` record.
+- `metadata-only` stores a placeholder and prompt/session metadata without raw text.
+- `off` disables prompt capture.
+- The hook rehydrates after a successful capture so prompt provenance does not leave the next agent turn mechanically stale.
+
 ## Agent Operating Path
 
 When an agent needs to answer a question, plan, ask for permission, or edit code, it should search existing context first.
@@ -200,6 +210,7 @@ Persistence rule:
 Write boundary:
 
 - Canonical records under `.codex_context/records/` must be created or updated through plugin commands such as `record-source`, `record-claim`, `record-guideline`, `record-action`, `resolve-claim`, or `archive-claim`.
+- Captured prompt provenance should use `record-input`; an `INP-*` is not proof until later classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
 - Do not write `.codex_context/records/*.json`, indexes, settings, or generated views with shell redirection, `tee`, ad hoc scripts, or manual JSON edits when a plugin command exists.
 - Diagnostic payloads may be written directly only under `.codex_context/artifacts/`; this is for screenshots, logs, copied command output, and similar raw material.
 - After writing a raw artifact, create or update a `SRC-*` record with `record-source --artifact-ref artifacts/...` when the artifact should support future reasoning.
@@ -628,6 +639,15 @@ Guideline disclosure for code edits:
   - defaults `captured_at` to now and auto-generates `independence_group` if omitted
   - refuses to write into an already invalid `.codex_context`
   - refreshes `index.md`, `backlog.md`, and generated review files
+
+- `record-input`
+  - creates a canonical `INP-*` provenance record for prompts, referenced files, attachments, or tool payloads
+  - requires explicit `input_kind`, `origin.kind`, `origin.ref`, `scope`, and `note`
+  - requires prompt `text` or `artifact_refs`
+  - accepts `--text-stdin` for hook capture without passing large prompts as command arguments
+  - can link to a session with `--session-ref` and to later classified records with `--derived-record`
+  - attaches the current project/current task automatically unless explicit refs are supplied
+  - refreshes generated views and marks hydration stale unless a hook rehydrates immediately after capture
 
 - `record-claim`
   - creates a canonical `CLM-*` record

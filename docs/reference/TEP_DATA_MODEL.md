@@ -100,6 +100,13 @@ Required semantics:
 `GLD-*`, `PRP-*`, `TASK-*`, or project records came from, but reasoning must
 still cite classified canonical records.
 
+Runtime mechanics:
+
+- `record-input` creates `INP-*` records through the normal record write path.
+- UserPromptSubmit hook capture may create `INP-*` records automatically according to `settings.input_capture`.
+- `metadata-only` prompt capture preserves prompt/session provenance while replacing raw prompt text with an explicit placeholder.
+- Hook capture should rehydrate immediately after a successful write so prompt provenance does not make the next agent turn stale by itself.
+
 ## Source Records
 
 `SRC-*` records preserve provenance.

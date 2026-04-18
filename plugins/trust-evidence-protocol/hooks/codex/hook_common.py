@@ -55,6 +55,7 @@ def _locate_plugin_root() -> Path:
 
 PLUGIN_ROOT = _locate_plugin_root()
 RUNTIME_GATE = PLUGIN_ROOT / "scripts" / "runtime_gate.py"
+CONTEXT_CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
 PLUGIN_SCRIPTS = PLUGIN_ROOT / "scripts"
 if str(PLUGIN_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(PLUGIN_SCRIPTS))
@@ -268,6 +269,17 @@ def infer_action_kind(command: str, context_root: Path | None = None) -> str | N
 def run_runtime_gate(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(RUNTIME_GATE), *args],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+        check=False,
+    )
+
+
+def run_context_cli(*args: str, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(CONTEXT_CLI), *args],
+        input=input_text,
         capture_output=True,
         text=True,
         cwd=str(REPO_ROOT),

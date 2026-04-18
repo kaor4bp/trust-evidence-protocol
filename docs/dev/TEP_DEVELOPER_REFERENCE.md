@@ -219,6 +219,9 @@ Only canonical records and artifacts can be durable sources for future reasoning
 `INP-*` records are canonical provenance for captured input, but they are not
 classified proof until a `SRC-*`/`CLM-*`/`GLD-*`/other appropriate record is
 created from them.
+The runtime should expose prompt provenance mechanically through `record-input`
+and UserPromptSubmit hook capture so agents spend tokens classifying input
+rather than manually preserving raw prompt context.
 
 The live TEP context root is operational memory and should not be committed to a
 project repository.

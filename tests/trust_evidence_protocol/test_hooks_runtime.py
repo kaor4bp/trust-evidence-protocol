@@ -505,6 +505,34 @@ def test_user_prompt_hook_reminds_when_context_is_fresh(tmp_path: Path) -> None:
     assert "GLD-* + quote" in additional_context
 
 
+def test_user_prompt_hook_captures_prompt_input_and_keeps_hydration_fresh(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    run_runtime(context, "hydrate-context")
+    payload = hook_payload(context, "")
+    payload.update(
+        {
+            "prompt": "Remember that deterministic tests should avoid live agents.",
+            "session_id": "session-123",
+        }
+    )
+
+    hook_output = hook_json(HOOK_DIR / "user_prompt_hydration_notice.py", payload)
+    assert hook_output["systemMessage"] == "🛡️ Trust Evidence Protocol reminder."
+    assert "Use the Trust Evidence Protocol skill" in hook_output["hookSpecificOutput"]["additionalContext"]
+
+    input_ids = record_ids(context, "input")
+    assert len(input_ids) == 1
+    record = json.loads((context / "records" / "input" / f"{input_ids[0]}.json").read_text(encoding="utf-8"))
+    assert record["input_kind"] == "user_prompt"
+    assert record["origin"] == {"kind": "codex-hook", "ref": "UserPromptSubmit:session-123"}
+    assert record["session_ref"] == "session-123"
+    assert record["text"] == "Remember that deterministic tests should avoid live agents."
+
+    show = run_runtime(context, "show-hydration")
+    assert "hydration_status=hydrated" in show.stdout
+
+
 def test_quiet_hook_verbosity_compacts_session_and_suppresses_fresh_prompt_reminder(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 

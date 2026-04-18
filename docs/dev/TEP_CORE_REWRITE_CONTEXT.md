@@ -272,6 +272,7 @@ Current first extraction:
 - `tep_runtime/ids.py`: timestamp and random-suffix id allocation
 - `tep_runtime/sources.py`: source payload and default independence-group
   helpers
+- `tep_runtime/inputs.py`: input provenance payload helpers
 - `tep_runtime/tasks.py`: task payload construction, pure lifecycle mutation,
   drift-check payload/rendering, and precedent-review selection/rendering
   helpers

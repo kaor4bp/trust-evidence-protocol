@@ -75,6 +75,7 @@ plugins/trust-evidence-protocol/
     display.py              # deterministic public record summary line renderers
     search.py               # record search text, ranking, and summaries
     sources.py              # SRC payload helpers
+    inputs.py               # INP prompt/input provenance payload helpers
     tasks.py                # TASK payload, lifecycle, drift, and precedent helpers
     retrieval.py            # scope-aware record selection and fallback lookup
     hypotheses.py           # hypothesis index IO, mutation, validation, and lookup
@@ -185,6 +186,8 @@ Current rebuild status:
   `tep_runtime/search.py` behind the compatibility facade.
 - Source payload and default independence-group helpers now live in
   `tep_runtime/sources.py` behind the compatibility facade.
+- Input provenance payload helpers now live in `tep_runtime/inputs.py` behind
+  the compatibility facade.
 - Task payload construction, pure lifecycle mutation, drift-check payloads, and
   precedent-review selection/rendering helpers now live in
   `tep_runtime/tasks.py` behind the compatibility facade.

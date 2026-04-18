@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import shutil
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
@@ -42,6 +43,9 @@ from context_lib import (
     GUIDELINE_DOMAINS,
     GUIDELINE_PRIORITIES,
     GUIDELINE_STATUSES,
+    INPUT_CAPTURE_MODES,
+    INPUT_FILE_MENTION_MODES,
+    INPUT_KINDS,
     LOGIC_SOLVER_BACKENDS,
     LOGIC_SOLVER_MODES,
     LOGIC_SOLVER_OPTIONAL_BACKENDS,
@@ -77,6 +81,7 @@ from context_lib import (
     promote_flow_to_domain_payloads,
     build_debt_payload,
     build_guideline_payload,
+    build_input_payload,
     build_logic_payload,
     build_manual_code_index_entry,
     build_model_payload,
@@ -1253,6 +1258,12 @@ ANALYSIS_SETTING_SPECS = {
     "topic_prefilter.max_records": ("int", (1, 1000000)),
 }
 
+INPUT_CAPTURE_SETTING_SPECS = {
+    "user_prompts": ("choice", INPUT_CAPTURE_MODES),
+    "file_mentions": ("choice", INPUT_FILE_MENTION_MODES),
+    "session_linking": ("bool", None),
+}
+
 
 def parse_bool_setting(value: str) -> bool | None:
     normalized = value.strip().lower()
@@ -1261,6 +1272,31 @@ def parse_bool_setting(value: str) -> bool | None:
     if normalized in {"0", "false", "no", "off"}:
         return False
     return None
+
+
+def apply_input_capture_setting_items(input_capture: dict, items: list[str]) -> tuple[bool, str | None]:
+    changed = False
+    for item in items:
+        if "=" not in item:
+            return changed, f"input capture setting must be key=value: {item}"
+        key, raw_value = [part.strip() for part in item.split("=", 1)]
+        spec = INPUT_CAPTURE_SETTING_SPECS.get(key)
+        if not spec:
+            return changed, f"unknown input_capture setting: {key}"
+        kind, allowed = spec
+        if kind == "bool":
+            parsed_bool = parse_bool_setting(raw_value)
+            if parsed_bool is None:
+                return changed, f"invalid boolean for input_capture.{key}: {raw_value}"
+            input_capture[key] = parsed_bool
+        elif kind == "choice":
+            if raw_value not in allowed:
+                return changed, f"invalid value for input_capture.{key}: {raw_value}"
+            input_capture[key] = raw_value
+        else:
+            return changed, f"unsupported input_capture setting type for {key}"
+        changed = True
+    return changed, None
 
 
 def parse_analysis_setting(key: str, value: str) -> tuple[object | None, str | None]:
@@ -1322,12 +1358,14 @@ def cmd_configure_runtime(
     root: Path,
     hook_verbosity: str | None,
     budget_items: list[str],
+    input_capture_items: list[str],
     analysis_items: list[str],
     show: bool,
 ) -> int:
     settings = load_settings(root)
     hooks = dict(settings.get("hooks", {}))
     context_budget = dict(settings.get("context_budget", {}))
+    input_capture = dict(settings.get("input_capture", {}))
     analysis = dict(settings.get("analysis", {}))
     changed = False
     if hook_verbosity:
@@ -1346,13 +1384,18 @@ def cmd_configure_runtime(
             return 1
         context_budget[key] = value
         changed = True
+    input_capture_changed, input_capture_error = apply_input_capture_setting_items(input_capture, input_capture_items)
+    if input_capture_error:
+        print(input_capture_error)
+        return 1
+    changed = changed or input_capture_changed
     analysis_changed, analysis_error = apply_analysis_setting_items(analysis, analysis_items)
     if analysis_error:
         print(analysis_error)
         return 1
     changed = changed or analysis_changed
     if changed:
-        write_settings(root, hooks=hooks, context_budget=context_budget, analysis=analysis)
+        write_settings(root, hooks=hooks, context_budget=context_budget, input_capture=input_capture, analysis=analysis)
         invalidate_hydration_state(root, "updated runtime configuration")
     settings = load_settings(root)
     if show or changed:
@@ -1360,6 +1403,10 @@ def cmd_configure_runtime(
         print(f"hooks.verbosity={settings.get('hooks', {}).get('verbosity', 'normal')}")
         for key, value in sorted(settings.get("context_budget", {}).items()):
             print(f"context_budget.{key}={value}")
+        for key, value in sorted(settings.get("input_capture", {}).items()):
+            if isinstance(value, bool):
+                value = str(value).lower()
+            print(f"input_capture.{key}={value}")
         for section, values in sorted(settings.get("analysis", {}).items()):
             if not isinstance(values, dict):
                 continue
@@ -1397,12 +1444,14 @@ def cmd_help(topic: str) -> int:
             "pause-task | resume-task --task TASK-* | switch-task --task TASK-*",
             "review-precedents --task-type investigation --query ...",
             "task-drift-check --intent ... [--type investigation]",
+            "record-input --input-kind user_prompt --origin-kind user --origin-ref ... --text ...",
             "working-context create|fork|show|close",
             "topic-index build --method lexical | topic-search --query ...",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
-            "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --analysis logic_solver.backend=z3",
+            "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3",
         ],
         "records": [
+            "INP-* preserves prompt/input provenance; it is not proof until classified into source-backed records",
             "CLM-* is the only truth record; fact/evidence/hypothesis are claim roles",
             "SRC-* carries raw information or artifacts that support claims",
             "PRM-*/RST-*/GLD-* authorize, constrain, or guide action but do not prove truth",
@@ -3352,6 +3401,46 @@ def cmd_record_source(
     return persist_candidate(root, records, payload, "source")
 
 
+def cmd_record_input(
+    root: Path,
+    scope: str,
+    input_kind: str,
+    origin_kind: str,
+    origin_ref: str,
+    text: str,
+    artifact_refs: list[str],
+    session_ref: str | None,
+    derived_record_refs: list[str],
+    captured_at: str | None,
+    project_refs: list[str],
+    task_refs: list[str],
+    tags: list[str],
+    note: str,
+) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+
+    payload = build_input_payload(
+        record_id=next_record_id(records, "INP-"),
+        scope=scope,
+        input_kind=input_kind,
+        origin_kind=origin_kind,
+        origin_ref=origin_ref,
+        text=text,
+        artifact_refs=artifact_refs,
+        session_ref=session_ref,
+        derived_record_refs=derived_record_refs,
+        captured_at=captured_at,
+        captured_timestamp=now_timestamp(),
+        project_refs=project_refs_for_write(root, project_refs),
+        task_refs=task_refs_for_write(root, task_refs),
+        tags=tags,
+        note=note,
+    )
+    return persist_candidate(root, records, payload, "input")
+
+
 def cmd_record_claim(
     root: Path,
     scope: str,
@@ -4074,7 +4163,7 @@ def parse_args() -> argparse.Namespace:
 
     configure_runtime = subparsers.add_parser(
         "configure-runtime",
-        help="Show or update runtime verbosity and context budget settings.",
+        help="Show or update runtime verbosity, context budget, input capture, and analysis settings.",
     )
     configure_runtime.add_argument("--hook-verbosity", choices=["quiet", "normal", "debug"])
     configure_runtime.add_argument(
@@ -4090,6 +4179,13 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help="Set analysis section.key=value, e.g. logic_solver.backend=z3 or topic_prefilter.backend=nmf.",
+    )
+    configure_runtime.add_argument(
+        "--input-capture",
+        dest="input_capture_items",
+        action="append",
+        default=[],
+        help="Set input_capture key=value, e.g. user_prompts=metadata-only or session_linking=false.",
     )
     configure_runtime.add_argument("--show", action="store_true")
 
@@ -4310,6 +4406,25 @@ def parse_args() -> argparse.Namespace:
     record_action.add_argument("--task", dest="task_refs", action="append", default=[])
     record_action.add_argument("--tag", dest="tags", action="append", default=[])
     record_action.add_argument("--note", required=True)
+
+    record_input = subparsers.add_parser(
+        "record-input",
+        help="Create a canonical INP-* provenance record and refresh generated views.",
+    )
+    record_input.add_argument("--scope", required=True)
+    record_input.add_argument("--input-kind", required=True, choices=sorted(INPUT_KINDS))
+    record_input.add_argument("--origin-kind", required=True)
+    record_input.add_argument("--origin-ref", required=True)
+    record_input.add_argument("--text", default="")
+    record_input.add_argument("--text-stdin", action="store_true")
+    record_input.add_argument("--artifact-ref", dest="artifact_refs", action="append", default=[])
+    record_input.add_argument("--session-ref")
+    record_input.add_argument("--derived-record", dest="derived_record_refs", action="append", default=[])
+    record_input.add_argument("--captured-at")
+    record_input.add_argument("--project", dest="project_refs", action="append", default=[])
+    record_input.add_argument("--task", dest="task_refs", action="append", default=[])
+    record_input.add_argument("--tag", dest="tags", action="append", default=[])
+    record_input.add_argument("--note", required=True)
 
     record_source = subparsers.add_parser(
         "record-source",
@@ -4981,6 +5096,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 root,
                 hook_verbosity=args.hook_verbosity,
                 budget_items=args.context_budget,
+                input_capture_items=args.input_capture_items,
                 analysis_items=args.analysis_items,
                 show=args.show,
             )
@@ -5139,6 +5255,26 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 project_refs=args.project_refs,
                 task_refs=args.task_refs,
                 evidence_chain=args.evidence_chain.expanduser().resolve() if args.evidence_chain else None,
+                tags=args.tags,
+                note=args.note,
+            )
+        )
+    if args.command == "record-input":
+        text = sys.stdin.read() if args.text_stdin else args.text
+        raise SystemExit(
+            cmd_record_input(
+                root,
+                scope=args.scope,
+                input_kind=args.input_kind,
+                origin_kind=args.origin_kind,
+                origin_ref=args.origin_ref,
+                text=text,
+                artifact_refs=args.artifact_refs,
+                session_ref=args.session_ref,
+                derived_record_refs=args.derived_record_refs,
+                captured_at=args.captured_at,
+                project_refs=args.project_refs,
+                task_refs=args.task_refs,
                 tags=args.tags,
                 note=args.note,
             )

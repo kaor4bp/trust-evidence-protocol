@@ -191,6 +191,53 @@ def test_new_record_ids_use_random_suffix_and_legacy_ids_remain_valid(tmp_path: 
     assert result.returncode == 0
 
 
+def test_record_input_creates_prompt_provenance_and_runtime_configures_capture(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    config = run_cli(
+        context,
+        "configure-runtime",
+        "--input-capture",
+        "user_prompts=metadata-only",
+        "--input-capture",
+        "session_linking=false",
+    )
+    assert "input_capture.user_prompts=metadata-only" in config.stdout
+    assert "input_capture.session_linking=false" in config.stdout
+
+    prompt = "Use pytest fixtures for deterministic runtime tests."
+    result = run_cli(
+        context,
+        "record-input",
+        "--scope",
+        "demo.input",
+        "--input-kind",
+        "user_prompt",
+        "--origin-kind",
+        "user",
+        "--origin-ref",
+        "chat-turn-1",
+        "--text",
+        prompt,
+        "--session-ref",
+        "session-1",
+        "--tag",
+        "guideline-candidate",
+        "--note",
+        "captured prompt fixture",
+    )
+    input_id = recorded_id(result, "input")
+    record = load_record(context, "input", input_id)
+
+    assert input_id.startswith("INP-")
+    assert record["text"] == prompt
+    assert record["input_kind"] == "user_prompt"
+    assert record["origin"] == {"kind": "user", "ref": "chat-turn-1"}
+    assert record["session_ref"] == "session-1"
+    assert record["tags"] == ["guideline-candidate"]
+    assert run_cli(context, "review-context").returncode == 0
+
+
 def test_claim_lifecycle_pushes_resolved_claims_to_fallback_retrieval(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 

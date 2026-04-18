@@ -91,12 +91,14 @@ Use `validate-evidence-chain` before asking permission, recording a mutating `AC
 ```bash
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --show
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --hook-verbosity quiet --context-budget hydration=compact
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --input-capture user_prompts=metadata-only --input-capture session_linking=false
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis logic_solver.backend=z3 --analysis logic_solver.install_policy=ask
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis topic_prefilter.backend=nmf --analysis topic_prefilter.missing_dependency=warn
 ```
 
 Use `hooks.verbosity=quiet` to reduce routine hook chatter while preserving stale/conflict/blocking messages.
 Use `context_budget` as policy for compact/normal/debug output; do not treat compact output as permission to omit decisive ids.
+Use `input_capture` as policy for prompt provenance; `INP-*` records are not proof until classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
 Use `analysis` as policy for optional helpers such as Z3 and NMF; it is not proof and not permission to silently install dependencies.
 
 ## Code Index
@@ -213,6 +215,7 @@ Lowering strictness back to `proof-only` can be done directly.
 ## Records
 
 ```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-input --scope "..." --input-kind user_prompt --origin-kind user --origin-ref "chat-turn" --text "..." --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-source --scope "..." --source-kind runtime --critique-status accepted --origin-kind command --origin-ref "..." --quote "..." --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-claim --scope "..." --statement "..." --plane runtime --status tentative --source SRC-* --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-claim --scope "..." --statement "Alice studies algebra." --plane runtime --status supported --source SRC-* --logic-symbol "person:alice|entity" --logic-symbol "subject:algebra|concept" --logic-atom "Studies|person:alice,subject:algebra|affirmed" --note "..."
