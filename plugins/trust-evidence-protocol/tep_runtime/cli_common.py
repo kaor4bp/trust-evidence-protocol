@@ -74,10 +74,13 @@ MUTATING_COMMANDS = {
     "annotate-code",
     "link-code",
     "assign-code-index",
+    "tap-record",
+    "attention-index",
 }
 
 MUTATING_HYPOTHESIS_COMMANDS = {"add", "close", "reopen", "remove", "sync"}
 MUTATING_TOPIC_INDEX_COMMANDS = {"build"}
+MUTATING_ATTENTION_INDEX_COMMANDS = {"build"}
 MUTATING_LOGIC_INDEX_COMMANDS = {"build"}
 MUTATING_WORKING_CONTEXT_COMMANDS = {"create", "fork", "close"}
 

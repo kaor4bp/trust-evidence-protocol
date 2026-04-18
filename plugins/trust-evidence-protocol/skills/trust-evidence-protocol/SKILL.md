@@ -57,6 +57,9 @@ Persistence write boundary:
 - `<context>/topic_index/` is generated lexical prefilter data, not proof.
 - Use topic search to find candidate records, topic neighborhoods, and possible contradiction-review pairs, then inspect canonical records.
 - Do not use topic overlap as a contradiction, claim support, source support, action justification, or evidence-chain proof.
+- `<context>/attention_index/` is generated attention/curiosity map data, not proof.
+- Use attention maps and curiosity probes to choose what to inspect next, especially cold-but-relevant clusters and unestablished links.
+- Do not use tap frequency, cold-zone status, bridge candidates, or curiosity probes as claim support, source support, action justification, or evidence-chain proof.
 - `CLM.logic` is an optional typed predicate projection inside a source-backed `CLM-*`.
 - `<context>/logic_index/` is generated predicate checking/navigation data, not proof.
 - Use logic search/check to find typed atoms, symbols, rules, and conflict candidates, then inspect canonical claims and sources.

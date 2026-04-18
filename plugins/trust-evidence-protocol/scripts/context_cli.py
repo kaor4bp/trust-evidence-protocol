@@ -62,6 +62,7 @@ from context_lib import (
     RESTRICTION_SEVERITIES,
     RESTRICTION_STATUSES,
     SOURCE_KINDS,
+    TAP_KINDS,
     TASK_STATUSES,
     TASK_TYPES,
     TOPIC_PREFILTER_BACKENDS,
@@ -71,6 +72,9 @@ from context_lib import (
     WORKING_CONTEXT_STATUSES,
     WORKSPACE_STATUSES,
     add_remove_values,
+    append_tap_event,
+    attention_map_text_lines,
+    build_attention_index,
     build_action_payload,
     build_claim_payload,
     build_comparison_payload,
@@ -135,6 +139,7 @@ from context_lib import (
     augmented_evidence_chain_text_lines,
     current_project_ref,
     current_task_ref,
+    curiosity_probe_text_lines,
     current_workspace_ref,
     dependency_refs_for_record,
     evidence_chain_report_lines,
@@ -145,7 +150,9 @@ from context_lib import (
     is_strictness_escalation,
     join_quote_items,
     linked_records_payload,
+    load_attention_payload,
     load_strictness_requests,
+    load_tap_events,
     mark_knowledge_records_stale_payloads,
     next_record_id,
     next_artifact_id,
@@ -221,6 +228,7 @@ from context_lib import (
     write_flows_report,
     write_hypotheses_report,
     write_attention_report,
+    write_attention_index_reports,
     write_models_report,
     write_resolved_report,
     write_settings,
@@ -295,6 +303,7 @@ from tep_runtime.topic_index import (
     load_topic_records,
     task_terms,
     topic_conflict_candidates,
+    topic_index_paths,
     topic_search_matches,
     topic_tokenize,
     write_topic_index_reports,
@@ -1786,6 +1795,7 @@ def cmd_help(topic: str) -> int:
             "evidence chain: validate agent-supplied proof chains and keep context/proof separate",
             "working context: pin WCTX-* focus/context snapshots for retrospective and handoff",
             "topic index: generated lexical prefilter for navigation and candidate review",
+            "attention index: generated tap-aware map, cold zones, and curiosity probes",
             "logic index: generated predicate atom/rule projection over CLM.logic blocks",
             "code index: index files/symbols/areas and attach navigation-only CIX annotations",
             "strictness: inspect or change allowed_freedom through user-backed requests",
@@ -1803,6 +1813,7 @@ def cmd_help(topic: str) -> int:
             "record-input --input-kind user_prompt --origin-kind user --origin-ref ... --text ...",
             "working-context create|fork|show|close",
             "topic-index build --method lexical | topic-search --query ...",
+            "tap-record --record CLM-* --kind cited --intent support | attention-index build | attention-map | curiosity-probes --budget 5",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3",
         ],
@@ -1816,6 +1827,7 @@ def cmd_help(topic: str) -> int:
             "CLM.logic captures typed predicate atoms/rules as a machine-checkable claim projection",
             "PRP-*/PLN-*/DEBT-* preserve critique, intended work, and unresolved obligations",
             "topic_index/*.json is generated navigation/prefilter data only",
+            "attention_index/*.json and activity/taps.jsonl are generated navigation/curiosity data only",
             "logic_index/*.json is generated checking/navigation data only",
             "CIX-* is navigation/code-map metadata only, never proof",
         ],
@@ -2559,6 +2571,109 @@ def cmd_topic_conflict_candidates(root: Path, limit: int, output_format: str) ->
         )
         print(f"  left: {item['left']['summary']}")
         print(f"  right: {item['right']['summary']}")
+    return 0
+
+
+def load_or_build_topic_payload(root: Path, records: dict[str, dict]) -> dict:
+    paths = topic_index_paths(root)
+    try:
+        if paths["records"].exists() and paths["topics"].exists() and paths["by_topic"].exists() and paths["by_record"].exists():
+            payload = {
+                "records": json.loads(paths["records"].read_text(encoding="utf-8")),
+                "topics": json.loads(paths["topics"].read_text(encoding="utf-8")),
+                "by_topic": json.loads(paths["by_topic"].read_text(encoding="utf-8")),
+                "by_record": json.loads(paths["by_record"].read_text(encoding="utf-8")),
+            }
+            if payload["records"] and payload["topics"]:
+                return payload
+    except (OSError, json.JSONDecodeError):
+        pass
+    payload = build_lexical_topic_index(records, terms_per_record=8, topic_limit=80)
+    candidates = topic_conflict_candidates(records, payload["records"], limit=50)
+    write_topic_index_reports(root, payload, candidates)
+    return payload
+
+
+def cmd_tap_record(root: Path, record_ref: str, kind: str, intent: str, note: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    if record_ref not in records:
+        print(f"missing record {record_ref}")
+        return 1
+    if kind not in TAP_KINDS:
+        print(f"invalid tap kind: {kind}")
+        return 1
+    event = {
+        "tapped_at": now_timestamp(),
+        "record_ref": record_ref,
+        "kind": kind,
+        "intent": intent,
+        "workspace_ref": current_workspace_ref(root),
+        "project_ref": current_project_ref(root),
+        "task_ref": current_task_ref(root),
+        "note": note,
+        "tap_is_proof": False,
+    }
+    append_tap_event(root, event)
+    invalidate_hydration_state(root, "record tap")
+    print(f"Recorded tap for {record_ref}: kind={kind} intent={intent}")
+    print("Tap activity is navigation data only; it is not proof.")
+    return 0
+
+
+def cmd_attention_index_build(root: Path, probe_limit: int) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    taps, errors = load_tap_events(root)
+    if errors:
+        print_errors(errors)
+        return 1
+    topic_payload = load_or_build_topic_payload(root, records)
+    payload = build_attention_index(records, topic_payload, taps, probe_limit=probe_limit)
+    write_attention_index_reports(root, payload)
+    invalidate_hydration_state(root, "rebuilt attention index")
+    print(
+        f"Built attention index: records={payload['record_count']} clusters={payload['cluster_count']} "
+        f"taps={payload['tap_count']} probes={len(payload['probes'])}"
+    )
+    print("Attention index is navigation/curiosity data only; it is not proof.")
+    return 0
+
+
+def cmd_attention_map(root: Path, limit: int, output_format: str) -> int:
+    payload = load_attention_payload(root)
+    if not payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(attention_map_text_lines(payload, limit=limit)))
+    return 0
+
+
+def cmd_curiosity_probes(root: Path, budget: int, output_format: str) -> int:
+    payload = load_attention_payload(root)
+    if not payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    limited_payload = {**payload, "probes": payload.get("probes", [])[: max(1, budget)]}
+    if output_format == "json":
+        print(
+            json.dumps(
+                {
+                    "attention_index_is_proof": False,
+                    "budget": budget,
+                    "probes": limited_payload["probes"],
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    print("\n".join(curiosity_probe_text_lines(limited_payload, limit=budget)))
     return 0
 
 
@@ -4315,6 +4430,33 @@ def parse_args() -> argparse.Namespace:
     )
     topic_conflicts.add_argument("--limit", type=int, default=20)
     topic_conflicts.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    tap_record = subparsers.add_parser(
+        "tap-record",
+        help="Record a non-proof activity tap for attention-map scoring.",
+    )
+    tap_record.add_argument("--record", dest="record_ref", required=True)
+    tap_record.add_argument("--kind", choices=sorted(TAP_KINDS), required=True)
+    tap_record.add_argument("--intent", required=True)
+    tap_record.add_argument("--note", default="")
+    attention_index = subparsers.add_parser(
+        "attention-index",
+        help="Build generated attention/curiosity indexes from topics, links, and taps.",
+    )
+    attention_index_subparsers = attention_index.add_subparsers(dest="attention_index_command", required=True)
+    attention_index_build = attention_index_subparsers.add_parser("build", help="Rebuild generated attention_index/*.json and reports.")
+    attention_index_build.add_argument("--probe-limit", type=int, default=20)
+    attention_map = subparsers.add_parser(
+        "attention-map",
+        help="Show generated attention-map clusters and cold zones. Not proof.",
+    )
+    attention_map.add_argument("--limit", type=int, default=12)
+    attention_map.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    curiosity_probes = subparsers.add_parser(
+        "curiosity-probes",
+        help="Show generated bounded curiosity probes. Not proof.",
+    )
+    curiosity_probes.add_argument("--budget", type=int, default=8)
+    curiosity_probes.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     logic_index = subparsers.add_parser(
         "logic-index",
         help="Build generated predicate logic indexes over CLM.logic blocks.",
@@ -5333,6 +5475,23 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(cmd_topic_info(root, record_ref=args.record_ref, limit=args.limit, output_format=args.output_format))
     if args.command == "topic-conflict-candidates":
         raise SystemExit(cmd_topic_conflict_candidates(root, limit=args.limit, output_format=args.output_format))
+    if args.command == "tap-record":
+        raise SystemExit(
+            cmd_tap_record(
+                root,
+                record_ref=args.record_ref,
+                kind=args.kind,
+                intent=args.intent,
+                note=args.note,
+            )
+        )
+    if args.command == "attention-index":
+        if args.attention_index_command == "build":
+            raise SystemExit(cmd_attention_index_build(root, probe_limit=args.probe_limit))
+    if args.command == "attention-map":
+        raise SystemExit(cmd_attention_map(root, limit=args.limit, output_format=args.output_format))
+    if args.command == "curiosity-probes":
+        raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format))
     if args.command == "logic-index":
         if args.logic_index_command == "build":
             raise SystemExit(cmd_logic_index_build(root, candidate_limit=args.candidate_limit))

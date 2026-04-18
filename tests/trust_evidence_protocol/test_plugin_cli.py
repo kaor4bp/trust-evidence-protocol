@@ -1030,6 +1030,112 @@ def test_topic_index_builds_searchable_prefilter_and_candidate_report(tmp_path: 
     assert "Candidates require normal claim comparison" in candidates
 
 
+def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "attention.demo",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest attention index",
+            "--quote",
+            "Attention map inputs are test records.",
+            "--note",
+            "attention source",
+        ),
+        "source",
+    )
+    tapped_claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "attention.demo",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Gateway retry is inspected by the agent.",
+            "--source",
+            source_id,
+            "--note",
+            "tapped claim",
+        ),
+        "claim",
+    )
+    facility_claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "attention.demo",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Facility inventory reaches Program marketplace listings.",
+            "--source",
+            source_id,
+            "--note",
+            "facility claim",
+        ),
+        "claim",
+    )
+    program_claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "attention.demo",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Program marketplace listings imply Facility inventory dependency.",
+            "--source",
+            source_id,
+            "--note",
+            "program claim",
+        ),
+        "claim",
+    )
+
+    tap = run_cli(context, "tap-record", "--record", tapped_claim_id, "--kind", "cited", "--intent", "support")
+    assert "not proof" in tap.stdout
+
+    built = run_cli(context, "attention-index", "build", "--probe-limit", "10").stdout
+    assert "Built attention index" in built
+    assert "not proof" in built
+    assert (context / "activity" / "taps.jsonl").exists()
+    assert (context / "attention_index" / "records.json").exists()
+    assert (context / "attention_index" / "probes.json").exists()
+
+    records_payload = json.loads((context / "attention_index" / "records.json").read_text(encoding="utf-8"))
+    assert records_payload[tapped_claim_id]["tap_count"] == 1
+    assert records_payload[tapped_claim_id]["attention_index_is_proof"] is False
+
+    map_text = run_cli(context, "attention-map").stdout
+    assert "Not proof" in map_text
+    probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
+    assert probes_payload["attention_index_is_proof"] is False
+    assert any(
+        {facility_claim_id, program_claim_id}.issubset(set(probe["record_refs"]))
+        for probe in probes_payload["probes"]
+    )
+
+
 def test_claim_logic_index_validates_symbols_rules_and_conflict_candidates(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 

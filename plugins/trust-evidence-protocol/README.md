@@ -100,6 +100,14 @@ Generated navigation layer:
   - helps mechanical conflict-candidate detection without asking an agent to reason over prose
   - may be rebuilt at any time
   - not a source of truth and not proof
+- `.codex_context/attention_index/*.json`
+  - generated attention map over topic clusters, record taps, cold zones, bridges, and curiosity probes
+  - helps an agent choose what to inspect next without reading the whole context
+  - may be rebuilt at any time
+  - not a source of truth and not proof
+- `.codex_context/activity/taps.jsonl`
+  - append-only activity signals such as retrieved, opened, cited, decisive, updated, challenged, or contradicted
+  - not evidence, not proof, and not claim support
 
 Additional transient index:
 
@@ -277,6 +285,8 @@ Exposed tools:
 - `topic_search`: generated lexical topic search
 - `topic_info`: generated topic terms and similar records for one record
 - `topic_conflict_candidates`: generated lexical overlap candidates for review
+- `attention_map`: generated attention-map clusters and cold zones
+- `curiosity_probes`: generated bounded curiosity questions
 - `working_contexts`: read-only `WCTX-*` working-context lookup
 - `logic_search`: generated predicate atom/rule search
 - `logic_check`: read-only predicate consistency summary

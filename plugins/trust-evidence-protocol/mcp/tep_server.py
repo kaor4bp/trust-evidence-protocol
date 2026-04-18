@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.30"
+SERVER_VERSION = "0.1.31"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -284,6 +284,28 @@ TOOLS: list[JsonObject] = [
             {
                 "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "attention_map",
+        "description": "Read generated attention-map clusters and cold zones. Attention data is navigation only, not proof.",
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 12},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "curiosity_probes",
+        "description": "Read generated bounded curiosity probes over attention clusters. Probes are questions, not proof.",
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "budget": {"type": "integer", "minimum": 1, "maximum": 100, "default": 8},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
@@ -658,6 +680,32 @@ def tool_topic_conflict_candidates(args: JsonObject) -> tuple[bool, str]:
     )
 
 
+def tool_attention_map(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "attention-map",
+            "--limit",
+            str(as_int(args.get("limit"), 12, 1, 100)),
+            "--format",
+            as_format(args.get("format")),
+        ],
+    )
+
+
+def tool_curiosity_probes(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "curiosity-probes",
+            "--budget",
+            str(as_int(args.get("budget"), 8, 1, 100)),
+            "--format",
+            as_format(args.get("format")),
+        ],
+    )
+
+
 def tool_working_contexts(args: JsonObject) -> tuple[bool, str]:
     cli_args = ["working-context", "show", "--format", as_format(args.get("format"))]
     if args.get("record"):
@@ -738,6 +786,8 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "topic_search": tool_topic_search,
     "topic_info": tool_topic_info,
     "topic_conflict_candidates": tool_topic_conflict_candidates,
+    "attention_map": tool_attention_map,
+    "curiosity_probes": tool_curiosity_probes,
     "working_contexts": tool_working_contexts,
     "logic_search": tool_logic_search,
     "logic_check": tool_logic_check,

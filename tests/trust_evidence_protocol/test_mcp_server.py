@@ -129,6 +129,8 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     )
     run_cli(context, "topic-index", "build", "--method", "lexical")
     run_cli(context, "logic-index", "build")
+    run_cli(context, "tap-record", "--record", claim_id, "--kind", "cited", "--intent", "mcp test")
+    run_cli(context, "attention-index", "build")
     wctx_id = recorded_id(
         run_cli(
             context,
@@ -269,6 +271,24 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "file": str(chain_file), "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "tools/call",
+                "params": {
+                    "name": "attention_map",
+                    "arguments": {"context": str(context), "format": "json"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 13,
+                "method": "tools/call",
+                "params": {
+                    "name": "curiosity_probes",
+                    "arguments": {"context": str(context), "budget": 3, "format": "json"},
+                },
+            },
         ]
     )
 
@@ -287,6 +307,8 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "topic_search",
         "topic_info",
         "topic_conflict_candidates",
+        "attention_map",
+        "curiosity_probes",
         "working_contexts",
         "logic_search",
         "logic_check",
@@ -330,6 +352,14 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert augmented_chain["isError"] is False
     assert claim_id in augmented_chain["content"][0]["text"]
     assert '"ok": true' in augmented_chain["content"][0]["text"]
+
+    attention_map = by_id[12]["result"]
+    assert attention_map["isError"] is False
+    assert '"attention_index_is_proof": false' in attention_map["content"][0]["text"]
+
+    curiosity = by_id[13]["result"]
+    assert curiosity["isError"] is False
+    assert '"attention_index_is_proof": false' in curiosity["content"][0]["text"]
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
