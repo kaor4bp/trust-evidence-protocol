@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from context_lib import (
@@ -30,6 +31,39 @@ from context_lib import (
     write_stale_report,
     write_validation_report,
 )
+
+
+FULL_CLI_COMMANDS = {
+    "help",
+    "tep-help",
+    "review-context",
+    "reindex-context",
+    "brief-context",
+    "next-step",
+    "search-records",
+    "record-detail",
+    "scan-conflicts",
+    "guidelines-for",
+    "linked-records",
+}
+
+
+def raw_runtime_command(argv: list[str]) -> str | None:
+    """Return the positional runtime command before argparse emits a long error."""
+    index = 1
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--context":
+            index += 2
+            continue
+        if arg.startswith("--context="):
+            index += 1
+            continue
+        if arg.startswith("-"):
+            index += 1
+            continue
+        return arg
+    return None
 
 
 VALID_HYDRATION_STATUSES = {"hydrated", "hydrated-with-conflicts"}
@@ -392,6 +426,15 @@ def cmd_invalidate_hydration(root: Path, reason: str) -> int:
 
 
 def parse_args() -> argparse.Namespace:
+    command = raw_runtime_command(sys.argv)
+    if command in FULL_CLI_COMMANDS:
+        print(
+            "runtime_gate.py only handles hook gates: "
+            "hydrate-context, show-hydration, preflight-task, invalidate-hydration.\n"
+            f"For `{command}`, use scripts/context_cli.py --context <context> {command}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     parser = argparse.ArgumentParser(description="Hydration and runtime preflight gates.")
     parser.add_argument(
         "--context",

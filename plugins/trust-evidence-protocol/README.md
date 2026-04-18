@@ -1051,6 +1051,8 @@ The plugin now includes a hook-ready runtime gate in:
 - `hooks/hydrate_context.sh`
 - `hooks/preflight_task.sh`
 
+`runtime_gate.py` is intentionally limited to hook-safe gates. Use `scripts/context_cli.py` for full context operations such as `help`, `tep-help`, `next-step`, `review-context`, `search-records`, and record writes.
+
 Available runtime commands:
 
 - `hydrate-context`

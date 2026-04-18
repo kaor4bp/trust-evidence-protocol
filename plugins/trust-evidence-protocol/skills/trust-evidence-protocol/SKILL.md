@@ -42,6 +42,7 @@ When MCP tools are available, prefer them for read-only lookup:
 - use `code_search` and `code_info` to find relevant files or code areas, then read code or cite `SRC-*`/`CLM-*` before making truth claims
 
 If MCP is unavailable, use the equivalent `context_cli.py` commands from `workflows/plugin-commands.md`.
+Do not use `runtime_gate.py` for full context operations; it is only the hook-safe gate for hydration and preflight.
 
 Persistence write boundary:
 

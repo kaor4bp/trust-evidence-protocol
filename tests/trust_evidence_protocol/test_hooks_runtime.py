@@ -179,6 +179,20 @@ def test_runtime_gate_hydration_and_invalidation_cycle(tmp_path: Path) -> None:
     assert "hydration_status=stale" in stale.stdout
 
 
+def test_runtime_gate_points_full_cli_commands_to_context_cli(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    result = run_runtime(context, "next-step", check=False)
+
+    assert result.returncode == 2
+    assert "runtime_gate.py only handles hook gates" in result.stderr
+    assert "scripts/context_cli.py --context <context> next-step" in result.stderr
+
+    reason_value = run_runtime(context, "invalidate-hydration", "--reason", "next-step")
+    assert reason_value.returncode == 0
+    assert "marked stale" in reason_value.stdout
+
+
 def test_shell_wrappers_default_to_resolved_global_context(tmp_path: Path) -> None:
     home = tmp_path / "home"
     global_context = bootstrap_named_context(home / ".tep_context")

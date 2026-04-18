@@ -728,6 +728,9 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert "precedent review" in help_text
     assert "task control" in help_text
 
+    alias_text = run_cli(context, "tep-help", "modes").stdout
+    assert alias_text == help_text
+
     configured = run_cli(
         context,
         "configure-runtime",

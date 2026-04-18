@@ -4957,8 +4957,10 @@ def parse_args() -> argparse.Namespace:
 
     tep_help = subparsers.add_parser(
         "help",
+        aliases=["tep-help"],
         help="Show compact human-facing TEP Runtime modes, commands, records, and workflows.",
     )
+    tep_help.set_defaults(command="help")
     tep_help.add_argument("topic", nargs="?", default="modes", choices=["all", "modes", "commands", "records", "workflows"])
 
     subparsers.add_parser("review-context", help="Check structural and epistemic correctness.")
