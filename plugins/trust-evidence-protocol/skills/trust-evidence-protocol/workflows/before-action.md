@@ -4,7 +4,7 @@ Use this workflow before planning, editing, running mutating commands, persistin
 
 ## Preflight
 
-1. Hydrate `.codex_context` if it exists and is stale or missing.
+1. Hydrate the resolved TEP context root if it exists and is stale or missing; prefer `~/.tep_context` over legacy repo-local `.codex_context`.
 2. Notice the current `PRJ-*`, current `TASK-*`, active `PRM-*`, active `RST-*`, active `GLD-*`, active `PRP-*`, plans, debt, and conflicts.
 3. Notice active `WCTX-*` working contexts and whether their pinned refs/focus paths match the intended work.
 4. If substantial work has no current task, start a task or state why no task is needed.

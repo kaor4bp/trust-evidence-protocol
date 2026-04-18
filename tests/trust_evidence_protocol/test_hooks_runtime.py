@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -11,10 +12,19 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "bootstrap_codex_context.py"
 CLI = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "context_cli.py"
 RUNTIME_GATE = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "runtime_gate.py"
+HYDRATE_WRAPPER = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / "hydrate_context.sh"
+PREFLIGHT_WRAPPER = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / "preflight_task.sh"
 HOOK_DIR = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / "codex"
 
 
 def run_script(script: Path, payload: dict | None = None, *, check: bool = True) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ)
+    if payload:
+        cwd = payload.get("cwd")
+        if isinstance(cwd, str):
+            fixture_context = Path(cwd) / ".codex_context"
+            if fixture_context.is_dir():
+                env["TEP_CONTEXT_ROOT"] = str(fixture_context)
     result = subprocess.run(
         [sys.executable, str(script)],
         input=json.dumps(payload or {}),
@@ -22,6 +32,7 @@ def run_script(script: Path, payload: dict | None = None, *, check: bool = True)
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     if check and result.returncode != 0:
         raise AssertionError(f"script failed: {script}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
@@ -70,6 +81,19 @@ def bootstrap_context(tmp_path: Path) -> Path:
     if result.returncode != 0:
         raise AssertionError(f"bootstrap failed\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
     return context
+
+
+def bootstrap_named_context(path: Path) -> Path:
+    result = subprocess.run(
+        [sys.executable, str(BOOTSTRAP), str(path)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(f"bootstrap failed\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+    return path
 
 
 def record_ids(context: Path, record_type: str) -> list[str]:
@@ -153,6 +177,53 @@ def test_runtime_gate_hydration_and_invalidation_cycle(tmp_path: Path) -> None:
     stale = run_runtime(context, "show-hydration", check=False)
     assert stale.returncode == 1
     assert "hydration_status=stale" in stale.stdout
+
+
+def test_shell_wrappers_default_to_resolved_global_context(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    global_context = bootstrap_named_context(home / ".tep_context")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    env = {**os.environ, "HOME": str(home)}
+
+    hydrate = subprocess.run(
+        [str(HYDRATE_WRAPPER)],
+        cwd=workspace,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert hydrate.returncode == 0, hydrate.stderr
+    assert f"Hydrated context: {global_context}" in hydrate.stdout
+
+    preflight = subprocess.run(
+        [str(PREFLIGHT_WRAPPER), "--mode", "reasoning"],
+        cwd=workspace,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert preflight.returncode == 0, preflight.stdout + preflight.stderr
+
+
+def test_shell_wrappers_keep_explicit_legacy_context_override(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    bootstrap_named_context(home / ".tep_context")
+    legacy_context = bootstrap_context(tmp_path / "workspace")
+    env = {**os.environ, "HOME": str(home)}
+
+    hydrate = subprocess.run(
+        [str(HYDRATE_WRAPPER), str(legacy_context)],
+        cwd=legacy_context.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert hydrate.returncode == 0, hydrate.stderr
+    assert f"Hydrated context: {legacy_context}" in hydrate.stdout
 
 
 def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:

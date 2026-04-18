@@ -1,11 +1,11 @@
 # Codex Hook Adapters
 
-This folder contains repo-local Codex hook adapters wired through
-`.codex/hooks.json` in the repository where the plugin is being tested.
+This folder contains Codex hook adapters wired through `.codex/hooks.json` in
+the repository where the plugin is being tested.
 
 Runtime modes are read from project policy in:
 
-- `.codex_context/settings.json`
+- `<context>/settings.json`
 
 Supported hook settings:
 
@@ -22,7 +22,7 @@ Current adapters:
 
 - `session_start_hydrate.py`
   - runs `plugins/trust-evidence-protocol/scripts/runtime_gate.py hydrate-context`
-  - only activates when a repo-local `.codex_context/` exists
+  - activates for the resolved TEP context root, preferring `~/.tep_context`
 - `user_prompt_hydration_notice.py`
   - runs `plugins/trust-evidence-protocol/scripts/runtime_gate.py show-hydration`
   - injects developer context when hydration is stale or missing

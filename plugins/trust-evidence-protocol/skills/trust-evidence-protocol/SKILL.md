@@ -1,7 +1,7 @@
 ---
 modification_policy: Do not modify this file directly or indirectly without explicit user authorization.
 name: trust-evidence-protocol
-description: Evidence-first reasoning protocol for work that mixes code claims, user statements, documentation, runtime observations, hypotheses, scoped rules, agent proposals, and persistent `.codex_context` records.
+description: Evidence-first reasoning protocol for work that mixes code claims, user statements, documentation, runtime observations, hypotheses, scoped rules, agent proposals, and persistent TEP context records.
 ---
 
 # Trust Evidence Protocol
@@ -12,8 +12,9 @@ In Codex UI the plugin runtime may appear as `TEP Runtime`; this skill remains t
 When available, the plugin also exposes read-only MCP tools for faster context lookup.
 Codex hooks are not a complete boundary for every tool, so the agent must still apply this skill explicitly.
 
-Treat `.codex_context` as the durable project memory when it exists.
-If no `.codex_context` exists, follow the same reasoning rules manually and state that mechanical validation/persistence was unavailable.
+Treat the resolved TEP context root as durable agent memory.
+The preferred live root is global `~/.tep_context`; legacy repo-local `.codex_context` remains valid as a migration source, fallback, or test fixture.
+If no TEP context root is available, follow the same reasoning rules manually and state that mechanical validation/persistence was unavailable.
 
 ## Core Rule
 
@@ -21,7 +22,7 @@ Before using information for a conclusion, action, edit, permission request, or 
 
 1. classify the input as a `Source`
 2. extract or update supported `CLM-*` claims only when support exists
-3. search existing `.codex_context` records before deriving from scratch
+3. search existing TEP context records before deriving from scratch
 4. separate truth from authorization, restrictions, guidelines, task scope, and agent proposals
 5. show public `Reasoning Checkpoint`, `Evidence Chain`, and `Guidelines` panels when thresholds require them
 6. persist reusable findings, rules, actions, plans, debt, questions, models, flows, and proposals into records when they will matter later
@@ -41,25 +42,25 @@ If MCP is unavailable, use the equivalent `context_cli.py` commands from `workfl
 
 Persistence write boundary:
 
-- `.codex_context/records/` is canonical structured memory and must be written through plugin commands when commands are available.
+- `<context>/records/` is canonical structured memory and must be written through plugin commands when commands are available.
 - Do not create or edit canonical records with shell redirection, `tee`, ad hoc scripts, or manual JSON edits.
-- `.codex_context/artifacts/` may receive raw diagnostic payloads directly, such as screenshots, logs, and copied command output.
+- `<context>/artifacts/` may receive raw diagnostic payloads directly, such as screenshots, logs, and copied command output.
 - A raw artifact is not proof by itself; create or update a `SRC-*` record that cites the artifact before using it as durable support.
 - The artifact exception must not be used to write source files, arbitrary workspace paths, `/tmp`, settings, indexes, generated views, or records.
-- `.codex_context/code_index/entries/CIX-*.json` is generated/navigation code map storage, not proof.
+- `<context>/code_index/entries/CIX-*.json` is generated/navigation code map storage, not proof.
 - Use CIX entries to find files, areas, applicable guidelines, plans, debt, and review scope.
 - Do not use `CIX-*` as claim support, source support, action justification, or evidence-chain proof.
-- `.codex_context/topic_index/` is generated lexical prefilter data, not proof.
+- `<context>/topic_index/` is generated lexical prefilter data, not proof.
 - Use topic search to find candidate records, topic neighborhoods, and possible contradiction-review pairs, then inspect canonical records.
 - Do not use topic overlap as a contradiction, claim support, source support, action justification, or evidence-chain proof.
 - `CLM.logic` is an optional typed predicate projection inside a source-backed `CLM-*`.
-- `.codex_context/logic_index/` is generated predicate checking/navigation data, not proof.
+- `<context>/logic_index/` is generated predicate checking/navigation data, not proof.
 - Use logic search/check to find typed atoms, symbols, rules, and conflict candidates, then inspect canonical claims and sources.
 - Do not use logic-index output as claim support, source support, action justification, or evidence-chain proof.
 - Use `logic-graph` or MCP `logic_graph` before adding new `CLM.logic` symbols/predicates; reuse existing vocabulary unless a new symbol has a clear semantic need.
 - New logic symbols created through plugin commands must carry `meaning`: a short explanation of what semantic object the symbol represents and why the agent needs it.
 - Vocabulary graph smells such as orphan symbols, duplicate-like symbols, single-use predicates, and generic rule variables are pressure signals, not proof.
-- `.codex_context/settings.json.analysis` controls optional mechanical helpers such as Z3 solver policy and NMF topic prefilter policy.
+- `<context>/settings.json.analysis` controls optional mechanical helpers such as Z3 solver policy and NMF topic prefilter policy.
 - Analysis helper settings are not proof and are not permission to silently install dependencies; respect `missing_dependency` and `install_policy`.
 - Z3 `unsat` results identify claims participating in an inconsistent formal snapshot; they do not prove each listed claim is false.
 - Before resolving a Z3 candidate, inspect the reported `CLM-*` refs, logic refs, derived atoms, scopes, lifecycle state, and underlying `SRC-*` quotes.
@@ -250,7 +251,7 @@ When the agent sees a weak user plan, risky implementation direction, repeated f
 
 ## Action And Freedom
 
-An `Action` is a durable intended or executed operation: edit, write, delete, create, guarded probe, command run, or persistence into `.codex_context`.
+An `Action` is a durable intended or executed operation: edit, write, delete, create, guarded probe, command run, or persistence into the TEP context.
 
 `allowed_freedom` controls how far the agent may go beyond direct proof in one bounded block.
 
@@ -347,7 +348,7 @@ Reasoning Checkpoint:
 - Concern: one sentence or `none`
 ```
 
-Build an `Evidence Chain` before any non-trivial action, permission request, user-facing recommendation, or persistence into `.codex_context`:
+Build an `Evidence Chain` before any non-trivial action, permission request, user-facing recommendation, or persistence into the TEP context:
 
 ```text
 Evidence Chain:
@@ -392,7 +393,7 @@ Load the relevant workflow only when the trigger matches:
 - [`workflows/information-lookup.md`](workflows/information-lookup.md): when searching, answering, investigating, or reconciling information
 - [`workflows/before-action.md`](workflows/before-action.md): before planning, editing, running mutating commands, persisting records, or asking permission
 - [`workflows/after-action.md`](workflows/after-action.md): after edits, tests, commands, discoveries, failed attempts, or completed work
-- [`workflows/persistence-and-records.md`](workflows/persistence-and-records.md): when deciding whether and how to write `.codex_context` records
+- [`workflows/persistence-and-records.md`](workflows/persistence-and-records.md): when deciding whether and how to write TEP context records
 - [`workflows/plugin-commands.md`](workflows/plugin-commands.md): when command names, strictness, hydration, or validation details are needed
 
 Always prefer plugin commands over manual edits to canonical records when commands are available.
@@ -402,12 +403,12 @@ If commands are unavailable, follow the same semantics manually and state the li
 
 For project-claim work:
 
-1. Hydrate context before relying on `.codex_context`.
+1. Hydrate the resolved TEP context before relying on persistent records.
 2. Notice current project, current task, active permissions, active restrictions, active guidelines, active proposals, plans, debt, and conflicts.
 3. If substantial work has no current task, start a task or state why no task is needed.
 4. If intended work no longer matches the current `TASK-*`, pause/switch/start the correct task instead of silently drifting.
 5. If beginning or switching to a substantial repeated `task_type`, review past precedents when available.
-6. Search existing `.codex_context` records before deriving from scratch.
+6. Search existing TEP context records before deriving from scratch.
 7. Treat hook-captured `INP-*` records as prompt provenance, then classify incoming user messages, files, diffs, docs, outputs, logs, and memory records into appropriate `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, `PRP-*`, or other records when they matter.
 8. Reconcile new observations against existing supported/corroborated `CLM-*` records.
 9. Publish a `Reasoning Checkpoint` before long or plan-changing analysis.

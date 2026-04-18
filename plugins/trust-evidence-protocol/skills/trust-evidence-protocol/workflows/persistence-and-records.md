@@ -1,6 +1,6 @@
 # Persistence And Records Workflow
 
-Use this workflow when deciding whether incoming information, discoveries, rules, actions, plans, debt, models, flows, or critiques should become `.codex_context` records.
+Use this workflow when deciding whether incoming information, discoveries, rules, actions, plans, debt, models, flows, or critiques should become TEP context records.
 
 ## Persistence Pressure
 
@@ -27,16 +27,16 @@ Persist reconstructable evidence, durable decisions, and useful continuity.
 Use plugin commands for canonical structured memory:
 
 - write `SRC-*`, `CLM-*`, `PRM-*`, `RST-*`, `GLD-*`, `PRP-*`, `ACT-*`, `TASK-*`, `PRJ-*`, `MODEL-*`, `FLOW-*`, `PLN-*`, `DEBT-*`, and `OPEN-*` through `context_cli.py record-*` or the dedicated lifecycle/task/project commands
-- do not write `.codex_context/records/*.json` directly with shell redirection, `tee`, ad hoc scripts, or manual JSON edits when a command exists
-- do not edit `.codex_context/settings.json`, generated views, indexes, or review files by hand unless there is no plugin command and the user explicitly accepts the risk
+- do not write `<context>/records/*.json` directly with shell redirection, `tee`, ad hoc scripts, or manual JSON edits when a command exists
+- do not edit `<context>/settings.json`, generated views, indexes, or review files by hand unless there is no plugin command and the user explicitly accepts the risk
 
-Direct file output is acceptable only for raw payloads under `.codex_context/artifacts/`.
+Direct file output is acceptable only for raw payloads under `<context>/artifacts/`.
 Use this for screenshots, copied logs, JSON snapshots, command output, and other large or binary evidence carriers.
 After capturing the payload, create or update a `SRC-*` record that references the artifact before treating it as durable evidence.
 
 Do not use the artifact exception for source code, `/tmp`, arbitrary workspace paths, or canonical records.
 
-Use `.codex_context/code_index/entries/CIX-*.json` for generated/navigation code map entries.
+Use `<context>/code_index/entries/CIX-*.json` for generated/navigation code map entries.
 CIX entries may describe files, directories, globs, symbols, or logical areas, and may carry AST metadata, manual features, annotations, and navigation links.
 CIX entries are not truth records and must not be used as proof, source support, claim support, action justification, or evidence-chain nodes.
 When a CIX note or link matters for truth, inspect the referenced code and persist an accepted `SRC-*` / `CLM-*` chain.
@@ -48,7 +48,7 @@ Use `WCTX-*` working-context records for operational focus, handoff, pinned refs
 WCTX records are not truth records and must not be used as proof, claim support, source support, action justification, or decisive evidence-chain nodes.
 Fork WCTX records copy-on-write when the working context changes materially, instead of overwriting what a past plan/action depended on.
 
-Use `.codex_context/topic_index/` only as generated lexical prefilter data.
+Use `<context>/topic_index/` only as generated lexical prefilter data.
 Topic overlap may suggest which records to compare, but it does not prove contradiction and must not replace structured `comparison` on claims or `scan-conflicts`.
 
 Use `CLM.logic` for optional typed predicate projections of claims.

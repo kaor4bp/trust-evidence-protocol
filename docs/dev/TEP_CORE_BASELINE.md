@@ -41,7 +41,7 @@ Source: `plugins/trust-evidence-protocol/.codex-plugin/plugin.json`
 Current public identity:
 
 - plugin name: `trust-evidence-protocol`
-- version: `0.1.28`
+- version: `0.1.29`
 - Codex UI display name: `TEP Runtime`
 - skills path: `./skills/`
 - MCP declaration: `./.mcp.json`

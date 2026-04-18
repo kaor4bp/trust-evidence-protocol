@@ -1,7 +1,13 @@
 # Plugin Commands Workflow
 
 Use plugin commands when available instead of manually editing canonical records.
-Write raw payload files directly only under `.codex_context/artifacts/`; write canonical records through `context_cli.py` commands.
+Write raw payload files directly only under `<context>/artifacts/`; write canonical records through `context_cli.py` commands.
+
+When operating in normal live mode, omit `--context` and let the runtime resolve
+`TEP_CONTEXT_ROOT`, `~/.tep_context`, or legacy `.codex_context`.
+The examples below keep explicit `--context .codex_context` for fixture,
+migration, and debugging clarity; do not treat that as a requirement to prefer
+repo-local memory over the unified global context.
 
 ## MCP Read-Only Lookup
 

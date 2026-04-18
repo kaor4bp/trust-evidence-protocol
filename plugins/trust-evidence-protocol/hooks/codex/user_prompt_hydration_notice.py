@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repo-local Codex hook that reminds Codex when .codex_context hydration is stale."""
+"""Codex hook that reminds Codex when TEP context hydration is stale."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from hook_common import (
 
 
 PROTOCOL_REMINDER = (
-    "Use the Trust Evidence Protocol skill. Search `.codex_context` first via MCP/brief-context, then show "
+    "Use the Trust Evidence Protocol skill. Search the resolved TEP context first via MCP/brief-context, then show "
     "compact public Evidence Chain or Reasoning Checkpoint panels when planning, asking permission, persisting, "
     "or editing. For green/red/ask decisions, target assertions and user pressure are not proof; unanchored "
     "targets require `ask` when available or `red` when not. For substantial code edits, cite applicable "
@@ -128,8 +128,8 @@ def main() -> int:
     emit(
         additional_context=(
             "Project context is stale or unhydrated. Before relying on persistent "
-            "project facts, planning, or edits, refresh .codex_context with "
-            "trust-evidence-protocol runtime_gate.py --context .codex_context hydrate-context."
+            "project facts, planning, or edits, refresh the resolved TEP context with "
+            "trust-evidence-protocol runtime_gate.py hydrate-context."
         ),
         system_message="Context hydration is stale.",
     )

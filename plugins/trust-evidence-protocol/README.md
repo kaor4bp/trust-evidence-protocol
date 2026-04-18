@@ -978,7 +978,7 @@ Official Codex hook integration now exists in this repo via:
 
 Current behavior is intentionally conservative:
 
-- `SessionStart` hydrates a repo-local `.codex_context` when it exists and injects the active context summary plus protocol obligations
+- `SessionStart` hydrates the resolved TEP context root, preferring `~/.tep_context`, and injects the active context summary plus protocol obligations
 - `UserPromptSubmit` injects a warning when hydration is stale or missing; in `remind` mode it also injects a compact evidence-chain/guideline-disclosure reminder while hydration is fresh
 - `PreToolUse` inspects `Bash` commands for obvious mutating intent and denies them when runtime preflight fails
 - `PostToolUse` marks hydration stale after obvious mutating `Bash` commands complete and injects a re-hydration warning
@@ -986,7 +986,7 @@ Current behavior is intentionally conservative:
 
 Write safety:
 
-- Mutating plugin commands take an inter-process lock at `.codex_context/runtime/write.lock`.
+- Mutating plugin commands take an inter-process lock at `<context>/runtime/write.lock`.
 - Generated markdown, JSON records, JSONL indexes, settings, and hydration state are written through same-directory temporary files followed by atomic replace.
 - Read-only commands do not take the write lock.
 - The lock protects plugin-mediated writes only; manual edits outside plugin commands can still race with agents.

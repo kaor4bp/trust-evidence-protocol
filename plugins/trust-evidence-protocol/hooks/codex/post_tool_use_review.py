@@ -23,7 +23,7 @@ def emit_warning(reason: str, *, hydration_marked_stale: bool) -> None:
     )
     if hydration_marked_stale:
         additional_context = (
-            "A mutating Bash command completed and .codex_context hydration was marked stale. "
+            "A mutating Bash command completed and TEP context hydration was marked stale. "
             "Re-run runtime_gate.py hydrate-context before relying on persistent project facts, "
             "planning, or further mutation decisions."
         )

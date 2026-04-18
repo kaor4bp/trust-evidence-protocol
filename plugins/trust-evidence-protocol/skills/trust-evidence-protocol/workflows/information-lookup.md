@@ -40,7 +40,7 @@ new investigation should update context when the result matters later
 
 ## Search Behavior
 
-- Start from `.codex_context` when it exists; only fall back to fresh investigation for gaps, contradictions, staleness, or missing support.
+- Start from the resolved TEP context root, preferring `~/.tep_context` when available; only fall back to fresh investigation for gaps, contradictions, staleness, or missing support.
 - Use `topic-search` to narrow broad lookup, but follow up with `record-detail`, `linked-records`, or direct code/source inspection before citing.
 - Use `logic-search` / `logic-check` for typed predicate claims, but follow up with canonical `CLM-*` and `SRC-*` before citing.
 - Prefer confirming, falsifying, narrowing, or superseding existing claims over rediscovering the same fact.

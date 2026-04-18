@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repo-local Codex hook that hydrates .codex_context on session start."""
+"""Codex hook that hydrates the resolved TEP context on session start."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from hook_common import TEP_ICON, hook_mode, hook_verbosity, hooks_enabled, load
 
 
 PROTOCOL_REMINDER = (
-    "Use the Trust Evidence Protocol skill: search `.codex_context` first, cite `CLM-*`/`GLD-*` ids with "
+    "Use the Trust Evidence Protocol skill: search the resolved TEP context first, cite `CLM-*`/`GLD-*` ids with "
     "short quotes for planning, permission, persistence, and substantial edits, keep detailed lookup in MCP/brief-context, "
     "and never make green/red/ask decisions by deriving unknown values from target assertions or user pressure."
 )
@@ -92,7 +92,7 @@ def main() -> int:
             additional_parts.append(
                 (
                     "Project context hydrated with unresolved conflicts. Review "
-                    ".codex_context/review/conflicts.md before planning or edits."
+                    "<context>/review/conflicts.md before planning or edits."
                 )
             )
         if additional_parts:
@@ -109,7 +109,7 @@ def main() -> int:
     detail = stderr or stdout or "Hydration blocked."
     emit(
         additional_context=(
-            "Project context hydration failed. Review .codex_context/review/broken.md "
+            "Project context hydration failed. Review <context>/review/broken.md "
             "before relying on persistent project facts."
         ),
         system_message=detail.splitlines()[0],
