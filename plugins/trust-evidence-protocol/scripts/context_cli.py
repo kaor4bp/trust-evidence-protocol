@@ -136,6 +136,9 @@ from context_lib import (
     code_index_entries_root,
     code_index_entry_path,
     active_restrictions_for,
+    attention_diagram_mermaid_lines,
+    attention_diagram_payload,
+    attention_diagram_text_lines,
     augment_evidence_chain_payload,
     augmented_evidence_chain_text_lines,
     current_project_ref,
@@ -2670,6 +2673,24 @@ def cmd_attention_map(root: Path, limit: int, output_format: str, scope: str) ->
     return 0
 
 
+def cmd_attention_diagram(root: Path, limit: int, output_format: str, scope: str) -> int:
+    _, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload = load_attention_payload(root)
+    if not payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    payload = scoped_attention_payload(root, payload, scope)
+    if output_format == "json":
+        diagram = attention_diagram_payload(payload, limit=limit)
+        diagram["mermaid"] = "\n".join(attention_diagram_mermaid_lines(payload, limit=limit))
+        print(json.dumps(diagram, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(attention_diagram_text_lines(payload, limit=limit)))
+    return 0
+
+
 def cmd_curiosity_probes(root: Path, budget: int, output_format: str, scope: str) -> int:
     payload = load_attention_payload(root)
     if not payload:
@@ -4879,6 +4900,13 @@ def parse_args() -> argparse.Namespace:
     attention_map.add_argument("--limit", type=int, default=12)
     attention_map.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     attention_map.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    attention_diagram = subparsers.add_parser(
+        "attention-diagram",
+        help="Show generated Mermaid attention graph over clusters, records, bridges, and probes. Not proof.",
+    )
+    attention_diagram.add_argument("--limit", type=int, default=8)
+    attention_diagram.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    attention_diagram.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     curiosity_probes = subparsers.add_parser(
         "curiosity-probes",
         help="Show generated bounded curiosity probes. Not proof.",
@@ -5948,6 +5976,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             raise SystemExit(cmd_attention_index_build(root, probe_limit=args.probe_limit))
     if args.command == "attention-map":
         raise SystemExit(cmd_attention_map(root, limit=args.limit, output_format=args.output_format, scope=args.scope))
+    if args.command == "attention-diagram":
+        raise SystemExit(cmd_attention_diagram(root, limit=args.limit, output_format=args.output_format, scope=args.scope))
     if args.command == "curiosity-probes":
         raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format, scope=args.scope))
     if args.command == "probe-inspect":

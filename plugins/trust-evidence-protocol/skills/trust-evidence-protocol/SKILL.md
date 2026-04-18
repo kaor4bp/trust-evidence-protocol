@@ -59,6 +59,7 @@ Persistence write boundary:
 - Do not use topic overlap as a contradiction, claim support, source support, action justification, or evidence-chain proof.
 - `<context>/attention_index/` is generated attention/curiosity map data, not proof.
 - Use attention maps and curiosity probes to choose what to inspect next, especially cold-but-relevant clusters and unestablished links.
+- Use `attention-diagram` / MCP `attention_diagram` when a Mermaid cluster/link map is a cheaper way to orient than reading multiple textual reports.
 - Attention lookup defaults to current `.tep` workspace/project/task focus; only use `scope=all` when deliberately doing cross-scope triage.
 - Curiosity probe scores/explanations rank inspection priority only; they are not confidence, support, or contradiction strength.
 - After choosing a curiosity probe, prefer `probe-inspect` / MCP `probe_inspect` to mechanically fetch summaries, source quotes, direct link status, and follow-up commands before spending tokens on manual exploration.

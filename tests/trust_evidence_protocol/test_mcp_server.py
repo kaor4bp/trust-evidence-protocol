@@ -363,6 +363,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "budget": 1, "scope": "all", "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 18,
+                "method": "tools/call",
+                "params": {
+                    "name": "attention_diagram",
+                    "arguments": {"context": str(context), "limit": 3, "scope": "all", "format": "json"},
+                },
+            },
         ]
     )
 
@@ -382,6 +391,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "topic_info",
         "topic_conflict_candidates",
         "attention_map",
+        "attention_diagram",
         "curiosity_probes",
         "probe_inspect",
         "probe_chain_draft",
@@ -462,6 +472,11 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert '"comparison_is_proof": false' in probe_pack_compare["content"][0]["text"]
     assert '"payload_char_count"' in probe_pack_compare["content"][0]["text"]
     assert '"omitted_fields_compact"' in probe_pack_compare["content"][0]["text"]
+
+    attention_diagram = by_id[18]["result"]
+    assert attention_diagram["isError"] is False
+    assert '"diagram_is_proof": false' in attention_diagram["content"][0]["text"]
+    assert "graph TD" in attention_diagram["content"][0]["text"]
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:

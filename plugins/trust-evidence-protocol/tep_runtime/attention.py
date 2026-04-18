@@ -505,6 +505,116 @@ def attention_map_text_lines(payload: dict, *, limit: int) -> list[str]:
     return lines
 
 
+def mermaid_node_id(prefix: str, value: str) -> str:
+    safe = "".join(character if character.isalnum() else "_" for character in str(value))
+    return f"{prefix}_{safe}".strip("_") or f"{prefix}_unknown"
+
+
+def mermaid_label(value: str, *, limit: int = 72) -> str:
+    text = " ".join(str(value).replace('"', "'").split())
+    return text[: limit - 1] + "…" if len(text) > limit else text
+
+
+def record_diagram_summary(record: dict) -> str:
+    summary = record.get("summary", "")
+    if isinstance(summary, dict):
+        return str(summary.get("summary") or summary.get("statement") or summary.get("title") or summary.get("id") or "")
+    return str(summary)
+
+
+def attention_diagram_payload(payload: dict, *, limit: int) -> dict:
+    clusters = sorted(
+        payload.get("clusters", {}).values(),
+        key=lambda item: (-item.get("activity_score", 0), -item.get("record_count", 0), item.get("term", "")),
+    )[: max(1, limit)]
+    cluster_ids = {str(cluster.get("id", "")) for cluster in clusters}
+    records = payload.get("records", {}) if isinstance(payload.get("records"), dict) else {}
+    record_ids: set[str] = set()
+    for cluster in clusters:
+        record_ids.update(str(record_id) for record_id in cluster.get("top_records", [])[:3] if str(record_id) in records)
+    bridges = [
+        bridge
+        for bridge in payload.get("bridges", [])
+        if isinstance(bridge, dict)
+        and str(bridge.get("from_topic", "")) in cluster_ids
+        and str(bridge.get("to_topic", "")) in cluster_ids
+    ][: max(1, limit)]
+    probes = [
+        probe
+        for probe in payload.get("probes", [])
+        if isinstance(probe, dict) and any(str(cluster_ref) in cluster_ids for cluster_ref in probe.get("cluster_refs", []))
+    ][: max(1, limit)]
+    for probe in probes:
+        record_ids.update(str(record_id) for record_id in probe.get("record_refs", []) if str(record_id) in records)
+    return {
+        "diagram_is_proof": False,
+        "attention_index_is_proof": False,
+        "scope": payload.get("scope", "all"),
+        "workspace_ref": payload.get("workspace_ref", ""),
+        "project_ref": payload.get("project_ref", ""),
+        "task_ref": payload.get("task_ref", ""),
+        "clusters": clusters,
+        "records": {record_id: records[record_id] for record_id in sorted(record_ids)},
+        "bridges": bridges,
+        "probes": probes,
+        "note": "Generated Mermaid attention diagram data. Navigation only; not proof.",
+    }
+
+
+def attention_diagram_mermaid_lines(payload: dict, *, limit: int) -> list[str]:
+    diagram = attention_diagram_payload(payload, limit=limit)
+    records = diagram["records"]
+    lines = [
+        "%% TEP attention diagram. Generated navigation only; not proof.",
+        "graph TD",
+        '  meta["Not proof: inspect canonical records before citing"]',
+    ]
+    declared_records: set[str] = set()
+    for cluster in diagram["clusters"]:
+        cluster_id = str(cluster.get("id", ""))
+        node_id = mermaid_node_id("cluster", cluster_id)
+        label = mermaid_label(
+            f"{cluster.get('term', '')}\\nrecords={cluster.get('record_count', 0)} activity={cluster.get('activity_score', 0)}"
+        )
+        lines.append(f'  {node_id}["{label}"]')
+        for record_ref in cluster.get("top_records", [])[:3]:
+            record_ref = str(record_ref)
+            if record_ref not in records:
+                continue
+            record_node = mermaid_node_id("record", record_ref)
+            if record_ref not in declared_records:
+                record_label = mermaid_label(f"{record_ref}\\n{record_diagram_summary(records[record_ref])}", limit=90)
+                lines.append(f'  {record_node}["{record_label}"]')
+                declared_records.add(record_ref)
+            lines.append(f"  {node_id} --> {record_node}")
+    for bridge in diagram["bridges"]:
+        from_node = mermaid_node_id("cluster", str(bridge.get("from_topic", "")))
+        to_node = mermaid_node_id("cluster", str(bridge.get("to_topic", "")))
+        lines.append(f"  {from_node} == established bridge ==> {to_node}")
+    for probe in diagram["probes"]:
+        refs = [str(record_ref) for record_ref in probe.get("record_refs", []) if str(record_ref) in records]
+        if len(refs) != 2:
+            continue
+        left = mermaid_node_id("record", refs[0])
+        right = mermaid_node_id("record", refs[1])
+        lines.append(f"  {left} -. candidate probe score={probe.get('score', 0)} .- {right}")
+    return lines
+
+
+def attention_diagram_text_lines(payload: dict, *, limit: int) -> list[str]:
+    lines = [
+        "# Attention Diagram",
+        "",
+        "Mode: generated Mermaid attention/navigation diagram. Not proof.",
+        f"scope: `{payload.get('scope', 'all')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        "",
+        "```mermaid",
+    ]
+    lines.extend(attention_diagram_mermaid_lines(payload, limit=limit))
+    lines.extend(["```", "", "Inspect canonical records before citing any diagram relationship."])
+    return lines
+
+
 def curiosity_probe_text_lines(payload: dict, *, limit: int) -> list[str]:
     probes = payload.get("probes", [])
     lines = [

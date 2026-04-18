@@ -26,6 +26,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `topic_info`: equivalent to `topic-info`
 - `topic_conflict_candidates`: equivalent to `topic-conflict-candidates`
 - `attention_map`: equivalent to `attention-map`; defaults to current `.tep` focus
+- `attention_diagram`: equivalent to `attention-diagram`; renders a Mermaid cluster/link map
 - `curiosity_probes`: equivalent to `curiosity-probes`; defaults to current `.tep` focus
 - `probe_inspect`: equivalent to `probe-inspect`; expands one generated probe into canonical inspection context
 - `probe_chain_draft`: equivalent to `probe-chain-draft`; generates a non-proof evidence-chain draft from one probe
@@ -79,6 +80,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context tap-record --record CLM-* --kind cited --intent support
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-index build
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-map --scope current
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-diagram --scope current --limit 8
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context curiosity-probes --budget 5 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-inspect --index 1 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-chain-draft --index 1 --scope current --format json
@@ -104,6 +106,7 @@ Use `topic-search` only as a lexical prefilter, then inspect canonical records b
 Use `topic-conflict-candidates` only to find records worth structured comparison; it does not replace `scan-conflicts`.
 Use `tap-record` to record non-proof activity when a record was retrieved, opened, cited, decisive, updated, challenged, or contradicted.
 Use `attention-map` and `curiosity-probes` to reduce token-heavy context exploration by asking the runtime for cold zones and bounded inspection questions.
+Use `attention-diagram` when a Mermaid cluster/link map is a cheaper orientation aid than reading several textual reports.
 They default to `--scope current`, using the current workspace/project/task from settings or `.tep`; use `--scope all` only for deliberate cross-scope triage.
 Probe `score` and `explanation` fields are mechanical ranking hints for what to inspect first, not evidence confidence.
 Use `probe-inspect` to mechanically fetch record summaries, source quotes, direct link status, and suggested follow-up commands for a selected probe.

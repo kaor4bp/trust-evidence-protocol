@@ -1129,6 +1129,11 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     map_text = run_cli(context, "attention-map").stdout
     assert "Not proof" in map_text
     assert "taps: `1`" in map_text
+    diagram_text = run_cli(context, "attention-diagram", "--limit", "3").stdout
+    assert "# Attention Diagram" in diagram_text
+    assert "```mermaid" in diagram_text
+    assert "Not proof" in diagram_text
+    assert "graph TD" in diagram_text
     probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
     assert probes_payload["attention_index_is_proof"] is False
     assert all(ref.startswith("CLM-") for probe in probes_payload["probes"] for ref in probe["record_refs"])
@@ -1374,6 +1379,10 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     assert "# Probe Pack Detail Comparison" in compare_text
     assert "comparison_is_proof=`False`" in compare_text
     assert "Recommendation:" in compare_text
+    diagram_payload = json.loads(run_cli(context, "attention-diagram", "--limit", "2", "--format", "json").stdout)
+    assert diagram_payload["diagram_is_proof"] is False
+    assert diagram_payload["scope"] == "current"
+    assert "graph TD" in diagram_payload["mermaid"]
 
     all_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "20", "--scope", "all", "--format", "json").stdout)
     all_refs = {ref for probe in all_payload["probes"] for ref in probe["record_refs"]}

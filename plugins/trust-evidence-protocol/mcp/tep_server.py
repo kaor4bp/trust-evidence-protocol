@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.40"
+SERVER_VERSION = "0.1.41"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -295,6 +295,18 @@ TOOLS: list[JsonObject] = [
             {
                 "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 12},
+                "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "attention_diagram",
+        "description": "Read a generated Mermaid attention graph over clusters, top records, established bridges, and curiosity probes. Diagram data is navigation only, not proof.",
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 8},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -746,6 +758,21 @@ def tool_attention_map(args: JsonObject) -> tuple[bool, str]:
     )
 
 
+def tool_attention_diagram(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "attention-diagram",
+            "--limit",
+            str(as_int(args.get("limit"), 8, 1, 100)),
+            "--scope",
+            str(args.get("scope") or "current"),
+            "--format",
+            as_format(args.get("format")),
+        ],
+    )
+
+
 def tool_curiosity_probes(args: JsonObject) -> tuple[bool, str]:
     return run_cli(
         args,
@@ -904,6 +931,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "topic_info": tool_topic_info,
     "topic_conflict_candidates": tool_topic_conflict_candidates,
     "attention_map": tool_attention_map,
+    "attention_diagram": tool_attention_diagram,
     "curiosity_probes": tool_curiosity_probes,
     "probe_inspect": tool_probe_inspect,
     "probe_chain_draft": tool_probe_chain_draft,
