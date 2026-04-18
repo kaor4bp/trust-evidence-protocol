@@ -29,6 +29,16 @@ TAP_WEIGHTS = {
 }
 DEFAULT_HALF_LIFE_DAYS = 7.0
 ATTENTION_SCOPES = {"current", "all"}
+PROBE_RECORD_TYPE_WEIGHTS = {
+    "claim": 5,
+    "model": 4,
+    "flow": 4,
+    "open_question": 3,
+    "proposal": 3,
+    "plan": 2,
+    "debt": 2,
+}
+PROBE_RECORD_TYPES = set(PROBE_RECORD_TYPE_WEIGHTS)
 
 
 def activity_root(root: Path) -> Path:
@@ -128,6 +138,10 @@ def link_pairs(records: dict[str, dict]) -> set[tuple[str, str]]:
     return pairs
 
 
+def sorted_pair(left: str, right: str) -> tuple[str, str]:
+    return tuple(sorted([left, right]))
+
+
 def list_refs(data: dict, key: str) -> list[str]:
     return [str(ref).strip() for ref in data.get(key, []) if str(ref).strip()]
 
@@ -155,6 +169,76 @@ def record_matches_focus(data: dict, *, workspace_ref: str = "", project_ref: st
     return True
 
 
+def probe_record_weight(record: dict) -> int:
+    return PROBE_RECORD_TYPE_WEIGHTS.get(str(record.get("record_type", "")).strip(), 1)
+
+
+def probe_candidate(record: dict) -> bool:
+    return str(record.get("record_type", "")).strip() in PROBE_RECORD_TYPES
+
+
+def probe_score(left: dict, right: dict, cluster: dict) -> float:
+    type_score = probe_record_weight(left) + probe_record_weight(right)
+    focus_score = int(left.get("focus_score", 0)) + int(right.get("focus_score", 0))
+    activity_score = float(left.get("activity_score", 0.0)) + float(right.get("activity_score", 0.0))
+    cold_bonus = 2.0 if float(cluster.get("activity_score", 0.0)) < 1.0 else 0.0
+    return round(type_score + focus_score + cold_bonus + min(activity_score, 3.0), 4)
+
+
+def build_probe(left_id: str, right_id: str, topic_id: str, cluster: dict, record_items: dict[str, dict]) -> dict:
+    left = record_items[left_id]
+    right = record_items[right_id]
+    score = probe_score(left, right, cluster)
+    is_cold = float(cluster.get("activity_score", 0.0)) < 1.0
+    reason = (
+        "records share a cold semantic cluster but no established direct link"
+        if is_cold
+        else "records share a focused semantic cluster but no established direct link"
+    )
+    return {
+        "record_refs": [left_id, right_id],
+        "cluster_refs": [topic_id],
+        "sampling_method": "deterministic-cold-zone-pair",
+        "score": score,
+        "score_is_proof": False,
+        "reason": reason,
+        "explanation": (
+            f"Inspect whether `{left_id}` and `{right_id}` should be linked: "
+            f"topic=`{cluster.get('term', '')}`, pair_score={score}, navigation_only=true."
+        ),
+        "link_state": "candidate",
+        "attention_index_is_proof": False,
+    }
+
+
+def generate_cluster_probes(
+    clusters: dict[str, dict],
+    record_items: dict[str, dict],
+    established_pairs: set[tuple[str, str]],
+    *,
+    probe_limit: int,
+) -> list[dict]:
+    candidates = []
+    ordered_clusters = sorted(
+        clusters.values(),
+        key=lambda item: (float(item.get("activity_score", 0.0)), -int(item.get("record_count", 0)), str(item.get("term", ""))),
+    )
+    for cluster in ordered_clusters:
+        topic_id = str(cluster.get("id", ""))
+        member_ids = [
+            record_id
+            for record_id in cluster.get("top_records", [])
+            if record_id in record_items and probe_candidate(record_items[record_id])
+        ]
+        for index, left in enumerate(member_ids):
+            for right in member_ids[index + 1 :]:
+                if sorted_pair(left, right) in established_pairs:
+                    continue
+                candidates.append(build_probe(left, right, topic_id, cluster, record_items))
+    candidates.sort(key=lambda item: (-float(item.get("score", 0.0)), item.get("record_refs", [])))
+    return candidates[: max(1, probe_limit)]
+
+
 def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: list[dict], *, probe_limit: int = 20) -> dict:
     generated_at = now_timestamp()
     topic_records = topic_payload.get("records", {}) if isinstance(topic_payload.get("records"), dict) else {}
@@ -176,6 +260,7 @@ def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: l
         topic_item = topic_records.get(record_id, {}) if isinstance(topic_records.get(record_id, {}), dict) else {}
         record_items[record_id] = {
             "id": record_id,
+            "record_type": str(data.get("record_type", "")).strip(),
             "summary": public_record_summary(data),
             "activity_score": round(tap_scores.get(record_id, 0.0), 4),
             "tap_count": tap_counts.get(record_id, 0),
@@ -239,29 +324,8 @@ def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: l
         )
 
     established_pairs = link_pairs(records)
-    probes = []
-    for zone in cold_zones:
-        topic_id = zone["topic_id"]
-        member_ids = [record_id for record_id in clusters.get(topic_id, {}).get("top_records", []) if record_id in records]
-        for index, left in enumerate(member_ids):
-            for right in member_ids[index + 1 :]:
-                pair = tuple(sorted([left, right]))
-                if pair in established_pairs:
-                    continue
-                probes.append(
-                    {
-                        "record_refs": [left, right],
-                        "cluster_refs": [topic_id],
-                        "sampling_method": "deterministic-cold-zone-pair",
-                        "reason": "records share a cold semantic cluster but no established direct link",
-                        "link_state": "candidate",
-                        "attention_index_is_proof": False,
-                    }
-                )
-            if len(probes) >= probe_limit:
-                break
-        if len(probes) >= probe_limit:
-            break
+    cold_clusters = {zone["topic_id"]: clusters[zone["topic_id"]] for zone in cold_zones if zone["topic_id"] in clusters}
+    probes = generate_cluster_probes(cold_clusters, record_items, established_pairs, probe_limit=probe_limit)
 
     return {
         "attention_index_is_proof": False,
@@ -272,6 +336,7 @@ def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: l
         "records": record_items,
         "clusters": clusters,
         "bridges": bridges[: max(1, probe_limit)],
+        "established_pairs": [list(pair) for pair in sorted(established_pairs)],
         "cold_zones": cold_zones[: max(1, probe_limit)],
         "probes": probes[: max(1, probe_limit)],
         "note": "Generated attention/curiosity navigation data. Not proof.",
@@ -326,6 +391,18 @@ def filter_attention_payload(
         for probe in payload.get("probes", [])
         if isinstance(probe, dict) and all(str(record_ref) in kept_ids for record_ref in probe.get("record_refs", []))
     ]
+    if not probes:
+        established_pairs = {
+            tuple(pair)
+            for pair in payload.get("established_pairs", [])
+            if isinstance(pair, list) and len(pair) == 2
+        }
+        fallback_clusters = {
+            topic_id: cluster
+            for topic_id, cluster in clusters.items()
+            if isinstance(cluster, dict) and int(cluster.get("record_count", 0)) >= 2
+        }
+        probes = generate_cluster_probes(fallback_clusters, kept_records, established_pairs, probe_limit=20)
     bridges = [
         bridge
         for bridge in payload.get("bridges", [])
@@ -344,6 +421,7 @@ def filter_attention_payload(
         "cluster_count": len(clusters),
         "tap_count": sum(int(record.get("tap_count", 0)) for record in kept_records.values()),
         "bridges": bridges,
+        "established_pairs": payload.get("established_pairs", []),
         "cold_zones": cold_zones,
         "probes": probes,
     }
@@ -353,7 +431,14 @@ def write_attention_index_reports(root: Path, payload: dict) -> None:
     paths = attention_index_paths(root)
     write_json_file(paths["records"], payload["records"])
     write_json_file(paths["clusters"], payload["clusters"])
-    write_json_file(paths["bridges"], {"attention_index_is_proof": False, "bridges": payload["bridges"]})
+    write_json_file(
+        paths["bridges"],
+        {
+            "attention_index_is_proof": False,
+            "bridges": payload["bridges"],
+            "established_pairs": payload.get("established_pairs", []),
+        },
+    )
     write_json_file(paths["cold_zones"], {"attention_index_is_proof": False, "cold_zones": payload["cold_zones"]})
     write_json_file(paths["probes"], {"attention_index_is_proof": False, "probes": payload["probes"]})
     write_text_file(paths["summary"], "\n".join(attention_map_text_lines(payload, limit=12)) + "\n")
@@ -366,7 +451,9 @@ def load_attention_payload(root: Path) -> dict:
     try:
         records = json.loads(paths["records"].read_text(encoding="utf-8"))
         clusters = json.loads(paths["clusters"].read_text(encoding="utf-8"))
-        bridges = json.loads(paths["bridges"].read_text(encoding="utf-8")).get("bridges", [])
+        bridge_payload = json.loads(paths["bridges"].read_text(encoding="utf-8"))
+        bridges = bridge_payload.get("bridges", [])
+        established_pairs = bridge_payload.get("established_pairs", [])
         cold_zones = json.loads(paths["cold_zones"].read_text(encoding="utf-8")).get("cold_zones", [])
         probes = json.loads(paths["probes"].read_text(encoding="utf-8")).get("probes", [])
     except (OSError, json.JSONDecodeError):
@@ -381,6 +468,7 @@ def load_attention_payload(root: Path) -> dict:
         if isinstance(records, dict)
         else 0,
         "bridges": bridges if isinstance(bridges, list) else [],
+        "established_pairs": established_pairs if isinstance(established_pairs, list) else [],
         "cold_zones": cold_zones if isinstance(cold_zones, list) else [],
         "probes": probes if isinstance(probes, list) else [],
     }
@@ -425,7 +513,11 @@ def curiosity_probe_text_lines(payload: dict, *, limit: int) -> list[str]:
     ]
     for probe in probes[: max(1, limit)]:
         refs = ", ".join(f"`{ref}`" for ref in probe.get("record_refs", []))
-        lines.append(f"- {refs}: {probe.get('reason')} link_state=`{probe.get('link_state')}`")
+        lines.append(
+            f"- score=`{probe.get('score', 0)}` {refs}: {probe.get('reason')} link_state=`{probe.get('link_state')}`"
+        )
+        if probe.get("explanation"):
+            lines.append(f"  explanation: {probe.get('explanation')}")
     if not probes:
         lines.append("- none")
     return lines

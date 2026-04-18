@@ -60,6 +60,7 @@ Persistence write boundary:
 - `<context>/attention_index/` is generated attention/curiosity map data, not proof.
 - Use attention maps and curiosity probes to choose what to inspect next, especially cold-but-relevant clusters and unestablished links.
 - Attention lookup defaults to current `.tep` workspace/project/task focus; only use `scope=all` when deliberately doing cross-scope triage.
+- Curiosity probe scores/explanations rank inspection priority only; they are not confidence, support, or contradiction strength.
 - Do not use tap frequency, cold-zone status, bridge candidates, or curiosity probes as claim support, source support, action justification, or evidence-chain proof.
 - `CLM.logic` is an optional typed predicate projection inside a source-backed `CLM-*`.
 - `<context>/logic_index/` is generated predicate checking/navigation data, not proof.

@@ -1131,6 +1131,10 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert "taps: `1`" in map_text
     probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
     assert probes_payload["attention_index_is_proof"] is False
+    assert all(ref.startswith("CLM-") for probe in probes_payload["probes"] for ref in probe["record_refs"])
+    assert all(probe["score_is_proof"] is False for probe in probes_payload["probes"])
+    assert all(probe["score"] > 0 for probe in probes_payload["probes"])
+    assert all("navigation_only=true" in probe["explanation"] for probe in probes_payload["probes"])
     assert any(
         {facility_claim_id, program_claim_id}.issubset(set(probe["record_refs"]))
         for probe in probes_payload["probes"]
@@ -1297,6 +1301,8 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     current_refs = {ref for probe in current_payload["probes"] for ref in probe["record_refs"]}
     assert current_payload["attention_index_is_proof"] is False
     assert current_payload["scope"] == "current"
+    assert current_payload["probes"]
+    assert all(ref.startswith("CLM-") for probe in current_payload["probes"] for ref in probe["record_refs"])
     assert current_claim_id in current_refs
     assert current_pair_id in current_refs
     assert other_claim_id not in current_refs
