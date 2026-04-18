@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -13,6 +14,7 @@ PLUGIN_ROOT = REPO_ROOT / "plugins" / "trust-evidence-protocol"
 SKILL_ROOT = PLUGIN_ROOT / "skills" / "trust-evidence-protocol"
 BOOTSTRAP = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "bootstrap_codex_context.py"
 CLI = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "context_cli.py"
+INSTALL_LOCAL_PLUGIN = REPO_ROOT / "scripts" / "install-local-plugin.sh"
 
 
 def run_cli(context: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -58,6 +60,36 @@ def recorded_id(result: subprocess.CompletedProcess[str], record_type: str) -> s
 
 def load_record(context: Path, record_type: str, record_id: str) -> dict:
     return json.loads((context / "records" / record_type / f"{record_id}.json").read_text(encoding="utf-8"))
+
+
+def test_install_local_plugin_script_creates_single_active_cache_version(tmp_path: Path) -> None:
+    local_source = tmp_path / "plugins" / "trust-evidence-protocol"
+    cache = tmp_path / "cache" / "trust-evidence-protocol"
+    old_version = cache / "0.1.1"
+    old_version.mkdir(parents=True)
+    (old_version / "old.txt").write_text("old", encoding="utf-8")
+
+    result = subprocess.run(
+        [str(INSTALL_LOCAL_PLUGIN)],
+        cwd=REPO_ROOT,
+        env={
+            **os.environ,
+            "HOME": str(tmp_path / "home"),
+            "TEP_LOCAL_PLUGIN_SOURCE": str(local_source),
+            "TEP_CODEX_PLUGIN_CACHE": str(cache),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    version = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
+    assert (local_source / ".codex-plugin" / "plugin.json").is_file()
+    assert (cache / version / ".codex-plugin" / "plugin.json").is_file()
+    assert (cache / "_archived-pre-active" / "0.1.1" / "old.txt").read_text(encoding="utf-8") == "old"
+    active_dirs = sorted(path.name for path in cache.iterdir() if path.is_dir())
+    assert active_dirs == [version, "_archived-pre-active"]
 
 
 def strictness_approval(context: Path, value: str, permission_id: str | None = None) -> tuple[str, str]:

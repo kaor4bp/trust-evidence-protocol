@@ -195,6 +195,34 @@ def test_runtime_gate_hydration_and_invalidation_cycle(tmp_path: Path) -> None:
     assert "hydration_status=stale" in stale.stdout
 
 
+def test_runtime_gate_refuses_ambiguous_unanchored_hydration(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    for key in ("first-workspace", "second-workspace"):
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            key,
+            "--title",
+            key,
+            "--root-ref",
+            str(tmp_path / key),
+            "--note",
+            key,
+        )
+
+    blocked = run_runtime(context, "hydrate-context", check=False)
+    assert blocked.returncode == 1
+    assert "Explicit TEP anchor required" in blocked.stdout
+    assert "first-workspace" in blocked.stdout
+    assert "second-workspace" in blocked.stdout
+
+    allowed = run_runtime(context, "hydrate-context", "--allow-unanchored")
+    assert allowed.returncode == 0
+    assert "Hydrated context" in allowed.stdout
+
+
 def test_runtime_gate_points_full_cli_commands_to_context_cli(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
@@ -564,7 +592,7 @@ def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_
         "anchor project",
     )
     anchor_project_id = [record_id for record_id in record_ids(context, "project") if record_id != global_project_id][0]
-    run_runtime(context, "hydrate-context")
+    run_runtime(context, "hydrate-context", "--allow-unanchored")
     (workdir / ".tep").write_text(
         json.dumps(
             {

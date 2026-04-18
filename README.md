@@ -76,6 +76,18 @@ uv run pytest -q \
   tests/trust_evidence_protocol/test_mcp_server.py
 ```
 
+Install the local Codex plugin build deterministically:
+
+```bash
+./scripts/install-local-plugin.sh
+```
+
+The installer copies `plugins/trust-evidence-protocol/` to
+`~/plugins/trust-evidence-protocol`, installs the active version into Codex's
+local plugin cache, archives older cached versions, and verifies that the
+installed hook guard is present. Use this instead of manual `rsync` when
+publishing a local test build.
+
 Live-agent tests use Docker and real `codex exec`; run them deliberately, not
 as part of every local edit loop. They are excluded from the default pytest run.
 

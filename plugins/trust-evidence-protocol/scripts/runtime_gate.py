@@ -70,6 +70,29 @@ VALID_HYDRATION_STATUSES = {"hydrated", "hydrated-with-conflicts"}
 TEP_ICON = "🛡️"
 
 
+def active_workspace_summaries_for_guard(records: dict[str, dict]) -> list[dict]:
+    return sorted(
+        [
+            record
+            for record in records.values()
+            if record.get("record_type") == "workspace" and str(record.get("status", "")).strip() == "active"
+        ],
+        key=lambda item: str(item.get("id", "")),
+    )
+
+
+def print_unanchored_hydration_block(workspaces: list[dict]) -> None:
+    print(
+        "Explicit TEP anchor required: refusing to hydrate from an unanchored cwd "
+        "while multiple active workspaces exist."
+    )
+    print("Run hydrate-context from the intended workdir with a .tep anchor, or pass --allow-unanchored explicitly.")
+    if workspaces:
+        print("Active workspaces:")
+        for workspace in workspaces[:8]:
+            print(f"- {workspace.get('id')} | {workspace.get('workspace_key', '')}")
+
+
 def print_errors(errors) -> None:
     for error in errors:
         print(f"{error.path}: {error.message}")
@@ -228,13 +251,18 @@ def render_current_workspace(workspace: dict) -> str:
     )
 
 
-def cmd_hydrate_context(root: Path) -> int:
+def cmd_hydrate_context(root: Path, *, allow_unanchored: bool = False) -> int:
     records, errors = collect_validation_errors(root)
+    settings = load_effective_settings(root)
+    active_workspaces = active_workspace_summaries_for_guard(records)
+    if not allow_unanchored and not str(settings.get("anchor_path") or "").strip() and len(active_workspaces) > 1:
+        print_unanchored_hydration_block(active_workspaces)
+        return 1
+
     write_validation_report(root, errors)
     conflict_lines = refresh_generated_outputs(root, records)
 
     fingerprint = compute_context_fingerprint(root)
-    settings = load_effective_settings(root)
     current_task = current_task_summary(root, records)
     current_workspace = current_workspace_summary(root, records)
     current_project = current_project_summary(root, records)
@@ -444,7 +472,12 @@ def parse_args() -> argparse.Namespace:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("hydrate-context", help="Validate and mark the context as hydrated.")
+    hydrate = subparsers.add_parser("hydrate-context", help="Validate and mark the context as hydrated.")
+    hydrate.add_argument(
+        "--allow-unanchored",
+        action="store_true",
+        help="Allow hydration from a cwd without .tep even when multiple active workspaces exist.",
+    )
     subparsers.add_parser("show-hydration", help="Show hydration status and currentness.")
 
     preflight = subparsers.add_parser(
@@ -472,7 +505,7 @@ def main() -> None:
     if args.command == "hydrate-context":
         try:
             with context_write_lock(root):
-                raise SystemExit(cmd_hydrate_context(root))
+                raise SystemExit(cmd_hydrate_context(root, allow_unanchored=args.allow_unanchored))
         except TimeoutError as exc:
             print(exc)
             raise SystemExit(1)

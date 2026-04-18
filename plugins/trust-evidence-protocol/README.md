@@ -1060,6 +1060,7 @@ Available runtime commands:
   - refreshes generated reports/views
   - writes `runtime/hydration.json`
   - marks the store as `hydrated`, `hydrated-with-conflicts`, or `blocked`
+  - refuses unanchored hydration when multiple active workspaces exist unless `--allow-unanchored` is passed explicitly
 
 - `show-hydration`
   - shows the current hydration state and whether it still matches the current fingerprint

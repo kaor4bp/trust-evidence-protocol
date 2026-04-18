@@ -157,11 +157,11 @@ Before switching an agent to the next plugin version:
 3. Record unresolved plugin friction with `record-feedback`.
 4. Dry-run context merge into `~/.tep_context`.
 5. Apply merge only when the report is understandable and reversible.
-6. Install or publish the next plugin version.
+6. Install the next local plugin version with `./scripts/install-local-plugin.sh`
+   or publish it through the intended release channel.
 7. Start a new task under the next version and hydrate from `~/.tep_context`.
 8. Ask the new agent to inspect active feedback/debt before planning the next
    implementation slice.
 
 The switch is intentionally explicit. Silent migration is risky because context
 records carry permissions, restrictions, tasks, plans, debt, and agent feedback.
-
