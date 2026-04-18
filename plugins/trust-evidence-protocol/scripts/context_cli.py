@@ -2899,12 +2899,14 @@ def cmd_probe_inspect(root: Path, probe_index: int, output_format: str, scope: s
 
 
 def probe_pack_text_lines(payload: dict) -> list[str]:
+    metrics = payload.get("metrics", {})
     lines = [
         "# Curiosity Reasoning Pack",
         "",
         "Mode: compact mechanical pack. Not proof.",
         f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         f"budget: `{payload.get('budget')}` detail: `{payload.get('detail', 'compact')}` pack_is_proof=`{payload.get('pack_is_proof')}`",
+        f"metrics: returned=`{metrics.get('returned_items', 0)}` available=`{metrics.get('available_probes', 0)}` records=`{metrics.get('record_summary_count', 0)}` omitted=`{', '.join(metrics.get('omitted_fields', [])) or 'none'}` payload_chars=`{metrics.get('payload_char_count', 0)}`",
         "",
     ]
     for item in payload.get("items", []):
@@ -2927,6 +2929,36 @@ def probe_pack_text_lines(payload: dict) -> list[str]:
         lines.append("- none")
     lines.extend(["", "Do not cite this pack as proof; cite canonical source-backed records after inspection."])
     return lines
+
+
+def probe_pack_metrics(payload: dict, available_probes: int, detail: str) -> dict:
+    items = payload.get("items", [])
+    source_quote_count = 0
+    chain_node_count = 0
+    for item in items:
+        for quotes in item.get("source_quotes", {}).values():
+            if isinstance(quotes, list):
+                source_quote_count += len(quotes)
+        chain = item.get("chain", {})
+        if isinstance(chain, dict):
+            nodes = chain.get("nodes", [])
+            if isinstance(nodes, list):
+                chain_node_count += len(nodes)
+    omitted_fields = [] if detail == "full" else ["source_quotes", "chain"]
+    metrics = {
+        "detail": detail,
+        "available_probes": available_probes,
+        "returned_items": len(items),
+        "record_summary_count": sum(len(item.get("records", [])) for item in items),
+        "direct_edge_count": sum(len(item.get("direct_edges", [])) for item in items),
+        "source_quote_count": source_quote_count,
+        "chain_node_count": chain_node_count,
+        "omitted_fields": omitted_fields,
+        "metrics_are_proof": False,
+    }
+    payload_without_metrics = {key: value for key, value in payload.items() if key != "metrics"}
+    metrics["payload_char_count"] = len(json.dumps(payload_without_metrics, ensure_ascii=False, sort_keys=True))
+    return metrics
 
 
 def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, detail: str) -> int:
@@ -2970,6 +3002,7 @@ def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, deta
         "detail": detail,
         "items": items,
     }
+    payload["metrics"] = probe_pack_metrics(payload, len(probes), detail)
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0

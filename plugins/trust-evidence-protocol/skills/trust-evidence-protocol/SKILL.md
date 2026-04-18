@@ -65,6 +65,7 @@ Persistence write boundary:
 - Use `probe-chain-draft` / MCP `probe_chain_draft` only as a mechanically assembled draft; validate, augment, and revise it before showing any proof chain to the user.
 - Use `probe-pack` / MCP `probe_pack` for a compact mechanical bundle of top probes, inspection summaries, and draft validation before deciding where to spend reasoning effort.
 - Prefer `probe-pack detail=compact` first; request `detail=full` only when you need source quotes and full chain payload.
+- Treat `probe-pack.metrics` as mechanical context-budget telemetry only; it is not confidence, support, or proof.
 - Do not use tap frequency, cold-zone status, bridge candidates, or curiosity probes as claim support, source support, action justification, or evidence-chain proof.
 - `CLM.logic` is an optional typed predicate projection inside a source-backed `CLM-*`.
 - `<context>/logic_index/` is generated predicate checking/navigation data, not proof.

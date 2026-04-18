@@ -1155,6 +1155,13 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     pack = json.loads(run_cli(context, "probe-pack", "--budget", "2", "--scope", "all", "--format", "json").stdout)
     assert pack["pack_is_proof"] is False
     assert pack["detail"] == "compact"
+    assert pack["metrics"]["metrics_are_proof"] is False
+    assert pack["metrics"]["detail"] == "compact"
+    assert pack["metrics"]["returned_items"] == len(pack["items"])
+    assert pack["metrics"]["source_quote_count"] == 0
+    assert pack["metrics"]["chain_node_count"] == 0
+    assert pack["metrics"]["omitted_fields"] == ["source_quotes", "chain"]
+    assert pack["metrics"]["payload_char_count"] > 0
     assert pack["items"]
     assert pack["items"][0]["chain_validation"]["ok"] is True
     assert "source_quotes" not in pack["items"][0]
@@ -1166,6 +1173,10 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
         run_cli(context, "probe-pack", "--budget", "1", "--scope", "all", "--detail", "full", "--format", "json").stdout
     )
     assert full_pack["detail"] == "full"
+    assert full_pack["metrics"]["detail"] == "full"
+    assert full_pack["metrics"]["source_quote_count"] > 0
+    assert full_pack["metrics"]["chain_node_count"] > 0
+    assert full_pack["metrics"]["omitted_fields"] == []
     assert "source_quotes" in full_pack["items"][0]
     assert "chain" in full_pack["items"][0]
 
@@ -1346,6 +1357,7 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     pack_text = run_cli(context, "probe-pack", "--budget", "1").stdout
     assert "Curiosity Reasoning Pack" in pack_text
     assert "detail: `compact`" in pack_text
+    assert "metrics: returned=`" in pack_text
     assert "pack_is_proof=`False`" in pack_text
 
     all_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "20", "--scope", "all", "--format", "json").stdout)
