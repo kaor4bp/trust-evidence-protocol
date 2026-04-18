@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 plugin_root="$repo_root/plugins/trust-evidence-protocol"
@@ -30,6 +31,7 @@ mkdir -p "$local_source" "$cache_target" "$archive_dir"
 rsync_args=(
   -a
   --delete
+  --delete-excluded
   --exclude '__pycache__/'
   --exclude '*.pyc'
   --exclude '.pytest_cache/'

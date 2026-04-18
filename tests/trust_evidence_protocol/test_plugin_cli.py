@@ -68,6 +68,12 @@ def test_install_local_plugin_script_creates_single_active_cache_version(tmp_pat
     old_version = cache / "0.1.1"
     old_version.mkdir(parents=True)
     (old_version / "old.txt").write_text("old", encoding="utf-8")
+    stale_local_bytecode = local_source / "tep_runtime" / "__pycache__"
+    stale_cache_bytecode = cache / "0.1.53" / "tep_runtime" / "__pycache__"
+    stale_local_bytecode.mkdir(parents=True)
+    stale_cache_bytecode.mkdir(parents=True)
+    (stale_local_bytecode / "stale.pyc").write_bytes(b"stale")
+    (stale_cache_bytecode / "stale.pyc").write_bytes(b"stale")
 
     result = subprocess.run(
         [str(INSTALL_LOCAL_PLUGIN)],
