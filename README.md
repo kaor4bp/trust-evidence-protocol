@@ -61,7 +61,13 @@ Run deterministic path-map reasoning tests:
 uv run pytest tests/trust_evidence_protocol/test_path_map_curiosity.py -q
 ```
 
-Run the deterministic plugin runtime subset:
+Run the deterministic test suite:
+
+```bash
+uv run pytest -q
+```
+
+Run a smaller deterministic plugin runtime subset:
 
 ```bash
 uv run pytest -q \
@@ -71,7 +77,11 @@ uv run pytest -q \
 ```
 
 Live-agent tests use Docker and real `codex exec`; run them deliberately, not
-as part of every local edit loop.
+as part of every local edit loop. They are excluded from the default pytest run.
+
+```bash
+uv run pytest -m live_agent -q
+```
 
 ## Documentation
 

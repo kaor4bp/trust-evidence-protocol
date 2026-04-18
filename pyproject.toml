@@ -12,6 +12,10 @@ test = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+addopts = "-m 'not live_agent'"
+markers = [
+    "live_agent: tests that run real Codex agents through Docker and require OPENAI_API_KEY",
+]
 
 [tool.coverage.run]
 parallel = true

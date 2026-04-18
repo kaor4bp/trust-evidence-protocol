@@ -1,59 +1,87 @@
-# Codex live-agent tests
+# Test Layers
 
-Этот каталог содержит тесты, которые запускают `codex exec` внутри Docker с отдельным временным `CODEX_HOME`.
+This repository has two test layers.
 
-Docker нужен как isolation boundary для реальных тестов на реальных агентах.
-Для live-agent проверок нужен `OPENAI_API_KEY` в корневом `.env` файле репозитория.
-Harness не читает пользовательский `~/.codex/auth.json`: он выполняет `codex login --with-api-key` внутри изолированного `CODEX_HOME` и создаёт временный auth cache только для тестового запуска.
+## Deterministic Tests
 
-## Настройка `.env`
+Deterministic tests validate Python runtime, CLI, hooks, MCP adapters, fixtures,
+and pure helper behavior. They do not call live agents and do not require
+`OPENAI_API_KEY`.
 
-Из корня репозитория создай файл:
+The default pytest command runs only deterministic tests:
+
+```bash
+uv run pytest -q
+```
+
+This default is enforced by `pyproject.toml` with:
+
+```text
+addopts = "-m 'not live_agent'"
+```
+
+## Live-Agent Tests
+
+Live-agent tests run real `codex exec` inside Docker with a separate temporary
+`CODEX_HOME`.
+
+Docker is the isolation boundary for real tests against real agents. Live-agent
+tests require `OPENAI_API_KEY` in an untracked repository-root `.env` file or in
+the environment.
+
+The harness never reads the user-level `~/.codex/auth.json`. It runs
+`codex login --with-api-key` inside the isolated `CODEX_HOME` and creates a
+temporary auth cache only for the test run.
+
+Run live-agent tests explicitly:
+
+```bash
+uv run pytest -m live_agent -q
+```
+
+Run one live-agent file explicitly:
+
+```bash
+uv run pytest -m live_agent tests/trust_evidence_protocol/test_logic.py -q
+```
+
+## `.env` Setup
+
+Create a repository-root `.env` only when running live-agent tests:
 
 ```bash
 OPENAI_API_KEY=sk-...
 ```
 
-Файл `.env` добавлен в `.gitignore` и не должен коммититься.
+`.env` is ignored by git and must never be committed.
 
-## Как работает harness
+## Harness Behavior
 
-- читает `OPENAI_API_KEY` из `.env` или окружения
-- создаёт временный workspace
-- создаёт временный `CODEX_HOME`
-- копирует skill из `plugins/trust-evidence-protocol/skills/trust-evidence-protocol`
-- собирает Docker image `tim-codex-skill-runner`, если его ещё нет
-- логинит Codex CLI в изолированный `CODEX_HOME` через `codex login --with-api-key`
-- запускает `codex exec` внутри Docker
-- пишет результат в JSON по `tests/case_output.schema.json`
+The live-agent harness:
 
-## Запуск live-agent тестов
+- reads `OPENAI_API_KEY` from `.env` or the process environment
+- creates a temporary workspace
+- creates a temporary `CODEX_HOME`
+- copies the skill from `plugins/trust-evidence-protocol/skills/trust-evidence-protocol`
+- builds the Docker image `tim-codex-skill-runner` if needed
+- logs Codex CLI into the isolated `CODEX_HOME` with `codex login --with-api-key`
+- runs `codex exec` inside Docker
+- writes JSON output validated by `tests/case_output.schema.json`
 
-```bash
-uv run pytest tests/trust_evidence_protocol/test_logic.py -q
-```
+## Manual `codex exec`
 
-Полный live-agent subset медленный и может быть nondeterministic, потому что проверяет поведение модели, а не только Python-runtime.
-Для plugin-runtime regression checks сначала запускай deterministic subset:
-
-```bash
-uv run pytest -q \
-  tests/trust_evidence_protocol/test_plugin_cli.py \
-  tests/trust_evidence_protocol/test_hooks_runtime.py \
-  tests/trust_evidence_protocol/test_mcp_server.py
-```
-
-## Ручной запуск `codex exec`
+Run a one-off prompt through the same isolated harness:
 
 ```bash
 tests/run_codex_exec.sh /absolute/path/to/workspace \
   "Use the trust-evidence-protocol skill and make the minimal safe change."
 ```
 
-Или через stdin:
+Or via stdin:
 
 ```bash
 cat /absolute/path/to/prompt.txt | tests/run_codex_exec.sh /absolute/path/to/workspace
 ```
 
-`tests/run_codex_exec.sh` использует тот же `.env`, Docker image и isolated `CODEX_HOME`, что и Python harness.
+`tests/run_codex_exec.sh` uses the same `.env`, Docker image, and isolated
+`CODEX_HOME` as the Python live-agent harness.
