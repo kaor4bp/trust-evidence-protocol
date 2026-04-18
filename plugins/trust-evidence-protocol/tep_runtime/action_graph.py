@@ -47,6 +47,68 @@ def _intent_route(intent: str, task: str) -> tuple[str, list[str]]:
     return routes.get(intent, ("general", [f"brief-context{task_arg}", "choose answer|plan|edit|test|persist|permission|debug route"]))
 
 
+def _route_graph(intent: str) -> dict:
+    branch_sets = {
+        "auto": [
+            {"if": "need facts", "then": "answer"},
+            {"if": "need intended work", "then": "plan"},
+            {"if": "need mutation", "then": "edit|test"},
+            {"if": "need durable memory", "then": "persist"},
+            {"if": "blocked", "then": "permission|debug"},
+        ],
+        "answer": [
+            {"if": "record answers", "then": "record-detail|linked-records"},
+            {"if": "record missing", "then": "search_records|investigate"},
+            {"if": "answer reusable", "then": "persist"},
+        ],
+        "plan": [
+            {"if": "proof chain explicit", "then": "validate-evidence-chain"},
+            {"if": "scope/task drift", "then": "task-drift-check|switch-task"},
+            {"if": "permission needed", "then": "permission"},
+        ],
+        "edit": [
+            {"if": "guidelines missing", "then": "guidelines-for"},
+            {"if": "proof gap", "then": "build/validate evidence chain"},
+            {"if": "blocked by policy", "then": "permission|debug"},
+            {"if": "edited", "then": "after-mutation"},
+        ],
+        "test": [
+            {"if": "test output meaningful", "then": "record-source"},
+            {"if": "failure unexplained", "then": "debug"},
+            {"if": "state changed", "then": "after-mutation"},
+        ],
+        "persist": [
+            {"if": "raw input", "then": "record-input|record-source"},
+            {"if": "truth claim", "then": "record-claim"},
+            {"if": "work remains", "then": "record-plan|record-debt|record-open-question"},
+        ],
+        "permission": [
+            {"if": "proof sufficient", "then": "cite ids+quotes"},
+            {"if": "proof insufficient", "then": "ask|debug"},
+            {"if": "approval received", "then": "edit|test"},
+        ],
+        "debug": [
+            {"if": "hydration stale", "then": "hydrate-context"},
+            {"if": "records invalid", "then": "review-context|reindex-context"},
+            {"if": "runtime unknown", "then": "safe probe"},
+        ],
+        "after-mutation": [
+            {"if": "test/log supports fact", "then": "record-source|record-claim"},
+            {"if": "follow-up work remains", "then": "record-plan|record-debt"},
+            {"if": "context changed", "then": "hydrate-context"},
+        ],
+    }
+    return {
+        "graph_version": 1,
+        "branches": branch_sets.get(intent, branch_sets["auto"]),
+        "stop_conditions": [
+            "hydration stale/errors/conflicts before decisive action",
+            "missing source-backed proof for truth claim",
+            "restriction or permission gap blocks requested scope",
+        ],
+    }
+
+
 def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = "auto", task: str = "") -> dict:
     intent = intent if intent in NEXT_STEP_INTENTS else "auto"
     task = task.strip()
@@ -90,6 +152,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         "guideline_count": len(active_guidelines),
         "forced_first": forced,
         "route_steps": route_steps,
+        "route_graph": _route_graph(intent),
         "note": "Navigation only. This route is not proof; cite records with quotes before decisions.",
     }
 
@@ -119,12 +182,22 @@ def next_step_text_lines(payload: dict, icon: str, detail: str = "compact") -> l
     else:
         route_steps = [str(item) for item in payload.get("route_steps", [])]
         lines.append("- route: " + " -> ".join(route_steps))
+    graph = payload.get("route_graph") or {}
+    branches = graph.get("branches") or []
+    if branches:
+        compact_branches = [
+            f"{branch.get('if')}=>{branch.get('then')}"
+            for branch in branches[:5]
+            if isinstance(branch, dict)
+        ]
+        lines.append("- graph: " + " | ".join(compact_branches))
 
     if detail == "full":
         lines.extend(
             [
                 f"- controls: restrictions={payload.get('restriction_count')} guidelines={payload.get('guideline_count')}",
                 f"- task text: {concise(payload.get('task', ''), 180) or 'none'}",
+                "- stop: " + " | ".join(str(item) for item in graph.get("stop_conditions", [])),
                 f"- note: {payload.get('note')}",
             ]
         )

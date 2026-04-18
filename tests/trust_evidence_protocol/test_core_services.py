@@ -365,6 +365,7 @@ from tep_runtime.display import (  # noqa: E402
     restriction_summary_line,
     source_line,
 )
+from tep_runtime.action_graph import build_next_step_payload, next_step_inline, next_step_text_lines  # noqa: E402
 from tep_runtime.scopes import (  # noqa: E402
     active_restrictions_for,
     current_project_ref,
@@ -1197,6 +1198,68 @@ def test_context_brief_core_builds_payload_and_text(tmp_path: Path) -> None:
     empty_lines = context_brief_text_lines(empty_payload, "TEP", detail="full")
     assert "- none found; gather sources before making decisive claims" in empty_lines
     assert "- none; create `PRP-*` when the agent has a constructive alternative or critique" in empty_lines
+
+
+def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
+    root = tmp_path / ".tep_context"
+    workspace_id = "WSP-20260418-11111111"
+    project_id = "PRJ-20260418-22222222"
+    task_id = "TASK-20260418-33333333"
+    write_json_file(
+        root / "records" / "workspace" / f"{workspace_id}.json",
+        {
+            "id": workspace_id,
+            "record_type": "workspace",
+            "status": "active",
+            "workspace_key": "tep-workspace",
+            "title": "TEP Workspace",
+        },
+    )
+    write_json_file(
+        root / "records" / "project" / f"{project_id}.json",
+        {
+            "id": project_id,
+            "record_type": "project",
+            "status": "active",
+            "project_key": "tep",
+            "title": "TEP Project",
+            "workspace_refs": [workspace_id],
+        },
+    )
+    write_json_file(
+        root / "records" / "task" / f"{task_id}.json",
+        {
+            "id": task_id,
+            "record_type": "task",
+            "status": "active",
+            "scope": "tep-core",
+            "title": "Improve action graph",
+            "project_refs": [project_id],
+        },
+    )
+    write_settings(
+        root,
+        allowed_freedom="proof-only",
+        current_workspace_ref=workspace_id,
+        current_project_ref=project_id,
+        current_task_ref=task_id,
+    )
+    write_hydration_state(root, {"status": "hydrated", "fingerprint": compute_context_fingerprint(root)})
+    records, _ = load_records(root)
+
+    payload = build_next_step_payload(records, root, intent="edit", task="change action graph")
+
+    assert payload["hydration_fresh"] is True
+    assert payload["route_graph"]["graph_version"] == 1
+    assert {"if": "proof gap", "then": "build/validate evidence chain"} in payload["route_graph"]["branches"]
+    assert "missing source-backed proof for truth claim" in payload["route_graph"]["stop_conditions"]
+    compact_lines = next_step_text_lines(payload, "TEP", detail="compact")
+    assert any(line.startswith("- graph: ") for line in compact_lines)
+    assert any("proof gap=>build/validate evidence chain" in line for line in compact_lines)
+    assert "missing source-backed proof for truth claim" not in "\n".join(compact_lines)
+    full_lines = next_step_text_lines(payload, "TEP", detail="full")
+    assert any(line.startswith("- stop: ") for line in full_lines)
+    assert "next=guidelines-for" in next_step_inline(payload)
 
 
 def test_reasoning_case_core_builds_payload_and_text() -> None:
