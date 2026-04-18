@@ -273,7 +273,7 @@ MCP is intentionally read-only in this plugin version. It is a faster context lo
 Exposed tools:
 
 - `brief_context`: task-oriented context brief; compact by default, `detail=full` for the expanded sectioned brief
-- `next_step`: compact action route for the current intent, such as answer, plan, edit, test, persist, permission, or debug
+- `next_step`: compact action route for the current intent, such as answer, plan, edit, test, persist, permission, or debug; use `format=json` when another tool needs the structured `route_graph`
 - `search_records`: keyword search across canonical records
 - `record_detail`: one record with source quotes and direct links
 - `linked_records`: graph expansion around one record
@@ -400,6 +400,7 @@ Commands:
 - `next-step --intent answer|plan|edit|test|persist|permission|debug --task "..."`
   - prints the compact route branch the agent should follow next
   - includes a compact action graph (`condition=>route`) so the agent follows a route instead of re-reading the whole protocol
+  - accepts `--format json` for the structured payload, including `route_graph.branches` and current workspace/project/task metadata
   - uses hydration freshness, conflicts, strictness, current workspace/project/task, restrictions, and guidelines
   - is navigation only; it is not proof and does not replace record quotes
 
