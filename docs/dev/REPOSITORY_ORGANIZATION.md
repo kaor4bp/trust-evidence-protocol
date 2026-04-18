@@ -231,14 +231,14 @@ Current rebuild status:
 
 Use these documents as the rebuild contract:
 
-- `docs/TEP_DEVELOPER_REFERENCE.md` defines plugin responsibilities, system layers, functional contracts, rebuild invariants, and future development areas.
-- `docs/TEP_DATA_MODEL.md` defines canonical record semantics, lifecycle, links, generated indexes, cleanup, and migration rules.
-- `docs/TEP_RESEARCH_MAP.md` maps external algorithms/tools to safe TEP adoption paths.
-- `docs/TEP_ACADEMIC_RESEARCH_PLAN.md` defines deeper research tracks for heuristic reasoning, corroboration, formal slices, argumentation, and belief revision.
-- `docs/TEP_REASONING_RESEARCH.md` contains the detailed academic synthesis for explanatory chains, candidate narratives, and fact reconciliation.
-- `docs/TEP_PLANNING_CURIOSITY_RESEARCH.md` contains the detailed synthesis for bounded planning, legitimate deferral, curiosity, and hypothesis verification pressure.
-- `docs/TEP_CORE_REWRITE_CONTEXT.md` is the working contract for the first stable-core rebuild phase, including breaking-change, migration, module, and test gates.
-- `docs/TEP_CORE_BASELINE.md` characterizes the current CLI, runtime gates, record templates, generated outputs, and source concentration before the core rebuild moves implementation code.
+- `docs/dev/TEP_DEVELOPER_REFERENCE.md` defines plugin responsibilities, system layers, functional contracts, rebuild invariants, and future development areas.
+- `docs/reference/TEP_DATA_MODEL.md` defines canonical record semantics, lifecycle, links, generated indexes, cleanup, and migration rules.
+- `docs/research/TEP_RESEARCH_MAP.md` maps external algorithms/tools to safe TEP adoption paths.
+- `docs/research/TEP_ACADEMIC_RESEARCH_PLAN.md` defines deeper research tracks for heuristic reasoning, corroboration, formal slices, argumentation, and belief revision.
+- `docs/research/TEP_REASONING_RESEARCH.md` contains the detailed academic synthesis for explanatory chains, candidate narratives, and fact reconciliation.
+- `docs/research/TEP_PLANNING_CURIOSITY_RESEARCH.md` contains the detailed synthesis for bounded planning, legitimate deferral, curiosity, and hypothesis verification pressure.
+- `docs/dev/TEP_CORE_REWRITE_CONTEXT.md` is the working contract for the first stable-core rebuild phase, including breaking-change, migration, module, and test gates.
+- `docs/dev/TEP_CORE_BASELINE.md` characterizes the current CLI, runtime gates, record templates, generated outputs, and source concentration before the core rebuild moves implementation code.
 
 When implementation and documentation disagree, treat it as a design drift issue.
 Do not silently change record semantics, command contracts, hook policy, or MCP behavior without updating the normative docs and tests.

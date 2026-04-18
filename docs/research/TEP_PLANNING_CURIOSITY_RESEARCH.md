@@ -6,7 +6,7 @@ This document is the academic foundation for two TEP behaviors:
 - motivating agents to turn useful hypotheses into facts through questions,
   inspection, tests, or other safe observations
 
-It extends `docs/TEP_REASONING_RESEARCH.md`.
+It extends `docs/research/TEP_REASONING_RESEARCH.md`.
 
 ## Executive Summary
 

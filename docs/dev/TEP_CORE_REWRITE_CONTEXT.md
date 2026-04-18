@@ -11,7 +11,7 @@ Read "rebuild" literally. This is not a cosmetic refactor. The plugin may change
 shape substantially, but the core data and reasoning contracts must stay
 auditable or be migrated deliberately.
 
-For the current pre-rebuild surface, see `docs/TEP_CORE_BASELINE.md`.
+For the current pre-rebuild surface, see `docs/dev/TEP_CORE_BASELINE.md`.
 
 ## User Decisions
 
@@ -434,9 +434,9 @@ publication.
 When a rebuild slice changes behavior, update the relevant docs in the same
 slice:
 
-- `docs/TEP_DEVELOPER_REFERENCE.md` for normative behavior
-- `docs/TEP_DATA_MODEL.md` for record semantics and schema changes
-- `docs/REPOSITORY_ORGANIZATION.md` for module/test layout
+- `docs/dev/TEP_DEVELOPER_REFERENCE.md` for normative behavior
+- `docs/reference/TEP_DATA_MODEL.md` for record semantics and schema changes
+- `docs/dev/REPOSITORY_ORGANIZATION.md` for module/test layout
 - plugin `README.md` for operator-facing commands
 - skill docs only when agent-facing reasoning requirements change
 

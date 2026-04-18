@@ -76,8 +76,11 @@ as part of every local edit loop.
 ## Documentation
 
 - [Plugin README](plugins/trust-evidence-protocol/README.md)
-- [Repository organization](docs/REPOSITORY_ORGANIZATION.md)
-- [Developer reference](docs/TEP_DEVELOPER_REFERENCE.md)
-- [Data model](docs/TEP_DATA_MODEL.md)
-- [Reasoning research](docs/TEP_REASONING_RESEARCH.md)
-- [Planning and curiosity research](docs/TEP_PLANNING_CURIOSITY_RESEARCH.md)
+- Public overview: [English](docs/public/README.en.md),
+  [Русский](docs/public/README.ru.md),
+  [Español](docs/public/README.es.md),
+  [Română](docs/public/README.ro.md)
+- [Documentation map](docs/README.md)
+- [Developer docs](docs/dev/README.md)
+- [Reference docs](docs/reference/README.md)
+- [Research docs](docs/research/README.md)

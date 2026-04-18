@@ -6,7 +6,7 @@ The goal is pragmatic: reduce agent token pressure and improve mechanical checki
 
 For deeper academic tracks around heuristic reasoning, source corroboration,
 formal slices, argumentation, and belief revision, see
-`docs/TEP_ACADEMIC_RESEARCH_PLAN.md`.
+`docs/research/TEP_ACADEMIC_RESEARCH_PLAN.md`.
 
 ## Adoption Rule
 

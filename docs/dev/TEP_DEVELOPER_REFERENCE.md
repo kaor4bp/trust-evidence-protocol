@@ -4,18 +4,18 @@ This document is the normative development reference for the Trust Evidence Prot
 
 It describes what the plugin must do, which problems it solves, which contracts must survive refactoring, and how future components should fit into the system. It is not a line-by-line description of the current implementation.
 
-For record fields and relationships, see `docs/TEP_DATA_MODEL.md`.
-For pragmatic backend options, see `docs/TEP_RESEARCH_MAP.md`.
-For deeper reasoning research tracks, see `docs/TEP_ACADEMIC_RESEARCH_PLAN.md`.
+For record fields and relationships, see `docs/reference/TEP_DATA_MODEL.md`.
+For pragmatic backend options, see `docs/research/TEP_RESEARCH_MAP.md`.
+For deeper reasoning research tracks, see `docs/research/TEP_ACADEMIC_RESEARCH_PLAN.md`.
 For the detailed reasoning synthesis behind explanatory chains and reconciliation,
-see `docs/TEP_REASONING_RESEARCH.md`.
+see `docs/research/TEP_REASONING_RESEARCH.md`.
 For bounded planning, deferral, and curiosity-driven hypothesis verification, see
-`docs/TEP_PLANNING_CURIOSITY_RESEARCH.md`.
+`docs/research/TEP_PLANNING_CURIOSITY_RESEARCH.md`.
 For the first stable-core rewrite phase, breaking-change policy, migration
 expectations, and implementation gates, see
-`docs/TEP_CORE_REWRITE_CONTEXT.md`.
+`docs/dev/TEP_CORE_REWRITE_CONTEXT.md`.
 For the current pre-rebuild runtime surface, see
-`docs/TEP_CORE_BASELINE.md`.
+`docs/dev/TEP_CORE_BASELINE.md`.
 
 ## Purpose
 
@@ -585,8 +585,8 @@ TEP should not require heavyweight code-analysis dependencies for baseline use.
 When changing TEP semantics, update:
 
 - this developer reference
-- `docs/TEP_DATA_MODEL.md` if record semantics changed
-- `docs/TEP_RESEARCH_MAP.md` if backend direction changed
+- `docs/reference/TEP_DATA_MODEL.md` if record semantics changed
+- `docs/research/TEP_RESEARCH_MAP.md` if backend direction changed
 - plugin `README.md` if user-facing commands changed
 - skill workflow files if agent behavior changed
 - tests that prove the contract

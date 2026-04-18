@@ -512,4 +512,3 @@ The agent is allowed to imagine multiple worlds.
 
 TEP must ensure the agent tells the user which world is factual, which world is
 hypothetical, which world is contradicted, and which world is safe to act on.
-

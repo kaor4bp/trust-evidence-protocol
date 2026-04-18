@@ -15,9 +15,9 @@ Keep every mechanical backend as a candidate producer, not a proof authority.
 ```
 
 For the full academic reasoning synthesis behind this plan, see
-`docs/TEP_REASONING_RESEARCH.md`.
+`docs/research/TEP_REASONING_RESEARCH.md`.
 For bounded planning, deferral, and curiosity research, see
-`docs/TEP_PLANNING_CURIOSITY_RESEARCH.md`.
+`docs/research/TEP_PLANNING_CURIOSITY_RESEARCH.md`.
 
 ## Research Digest
 
