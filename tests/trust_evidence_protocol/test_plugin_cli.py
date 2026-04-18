@@ -1404,6 +1404,13 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     assert "route_is_proof=`False`" in route_text
     assert "diagram_delta_if_full" in route_text
     assert "Recommended Commands" in route_text
+    route_payload = json.loads(run_cli(context, "probe-route", "--index", "1", "--format", "json").stdout)
+    assert route_payload["scope"] == "current"
+    assert route_payload["route_is_proof"] is False
+    assert current_claim_id in route_payload["record_refs"]
+    assert current_pair_id in route_payload["record_refs"]
+    assert other_claim_id not in route_payload["record_refs"]
+    assert all("--scope current" in command for command in route_payload["recommended_commands"] if "--scope" in command)
     diagram_payload = json.loads(run_cli(context, "attention-diagram", "--limit", "2", "--format", "json").stdout)
     full_diagram_payload = json.loads(
         run_cli(context, "attention-diagram", "--limit", "2", "--detail", "full", "--format", "json").stdout
