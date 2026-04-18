@@ -81,7 +81,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context curiosity-probes --budget 5 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-inspect --index 1 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-chain-draft --index 1 --scope current --format json
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-pack --budget 3 --scope current
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-pack --budget 3 --scope current --detail compact
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-search --predicate PredicateName
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-check
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-conflict-candidates
@@ -107,6 +107,7 @@ Probe `score` and `explanation` fields are mechanical ranking hints for what to 
 Use `probe-inspect` to mechanically fetch record summaries, source quotes, direct link status, and suggested follow-up commands for a selected probe.
 Use `probe-chain-draft` to mechanically assemble a draft evidence chain from a selected probe, then run normal validation/augmentation before presenting proof.
 Use `probe-pack` when the agent needs a compact first pass over several top probes without manually composing multiple lookup commands.
+Use `probe-pack --detail full` only when the compact pack shows a probe worth expanding with source quotes and full chain draft payload.
 Do not use attention output as proof; follow up with `record-detail`, `linked-records`, sources, and normal claims.
 Use `logic-search` / `logic-check` only as predicate prefilters over `CLM.logic`; they do not replace `CLM-*` and `SRC-*`.
 Use `build-reasoning-case` before non-trivial actions or recommendations that span several facts, models, or flows.

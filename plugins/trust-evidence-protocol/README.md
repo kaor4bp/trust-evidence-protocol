@@ -305,6 +305,7 @@ Rules:
 - Use `probe_inspect` after choosing a curiosity probe so the runtime, not the agent, expands the pair into canonical inspection context.
 - Use `probe_chain_draft` when you need a mechanically assembled proof skeleton from a selected probe, then validate and revise before user-facing proof.
 - Use `probe_pack` when you need a compact first pass over top probes without manually chaining several lookup tools.
+- `probe_pack` defaults to `detail=compact`; request `detail=full` only when source quotes and full chain draft payload are needed.
 - Fall back to `context_cli.py` commands when MCP is unavailable or when mutation is needed.
 - Do not expose mutating commands through MCP until authorization, hook, and audit behavior is explicitly designed.
 - MCP results are navigation unless they include canonical `CLM-*`, `SRC-*`, `GLD-*`, or other record ids with enough detail to cite.

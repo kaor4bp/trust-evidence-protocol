@@ -443,6 +443,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     probe_pack = by_id[16]["result"]
     assert probe_pack["isError"] is False
     assert '"pack_is_proof": false' in probe_pack["content"][0]["text"]
+    assert '"detail": "compact"' in probe_pack["content"][0]["text"]
     assert '"chain_validation"' in probe_pack["content"][0]["text"]
 
 

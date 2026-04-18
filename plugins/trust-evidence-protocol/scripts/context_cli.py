@@ -2904,7 +2904,7 @@ def probe_pack_text_lines(payload: dict) -> list[str]:
         "",
         "Mode: compact mechanical pack. Not proof.",
         f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
-        f"budget: `{payload.get('budget')}` pack_is_proof=`{payload.get('pack_is_proof')}`",
+        f"budget: `{payload.get('budget')}` detail: `{payload.get('detail', 'compact')}` pack_is_proof=`{payload.get('pack_is_proof')}`",
         "",
     ]
     for item in payload.get("items", []):
@@ -2929,7 +2929,7 @@ def probe_pack_text_lines(payload: dict) -> list[str]:
     return lines
 
 
-def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str) -> int:
+def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, detail: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -2943,20 +2943,20 @@ def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str) -> i
     for probe_index in range(1, min(max(1, budget), len(probes)) + 1):
         inspection = build_probe_inspection_payload(records, scoped_payload, probe_index)
         draft = build_probe_chain_draft_payload(root, records, scoped_payload, probe_index)
-        items.append(
-            {
-                "probe_index": probe_index,
-                "probe": inspection["probe"],
-                "direct_edges": inspection["direct_edges"],
-                "records": [detail["summary"] for detail in inspection["record_details"]],
-                "source_quotes": {
-                    detail["summary"]["id"]: detail.get("source_quotes", [])[:2]
-                    for detail in inspection["record_details"]
-                },
-                "chain": draft["chain"],
-                "chain_validation": draft["augmented"]["validation"],
+        item = {
+            "probe_index": probe_index,
+            "probe": inspection["probe"],
+            "direct_edges": inspection["direct_edges"],
+            "records": [record_detail["summary"] for record_detail in inspection["record_details"]],
+            "chain_validation": draft["augmented"]["validation"],
+        }
+        if detail == "full":
+            item["source_quotes"] = {
+                record_detail["summary"]["id"]: record_detail.get("source_quotes", [])[:2]
+                for record_detail in inspection["record_details"]
             }
-        )
+            item["chain"] = draft["chain"]
+        items.append(item)
     payload = {
         "pack_is_proof": False,
         "attention_index_is_proof": False,
@@ -2967,6 +2967,7 @@ def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str) -> i
         "project_ref": scoped_payload.get("project_ref", ""),
         "task_ref": scoped_payload.get("task_ref", ""),
         "budget": budget,
+        "detail": detail,
         "items": items,
     }
     if output_format == "json":
@@ -4800,6 +4801,7 @@ def parse_args() -> argparse.Namespace:
     probe_pack.add_argument("--budget", type=int, default=3)
     probe_pack.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     probe_pack.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    probe_pack.add_argument("--detail", choices=("compact", "full"), default="compact")
     logic_index = subparsers.add_parser(
         "logic-index",
         help="Build generated predicate logic indexes over CLM.logic blocks.",
@@ -5840,7 +5842,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
     if args.command == "probe-chain-draft":
         raise SystemExit(cmd_probe_chain_draft(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
     if args.command == "probe-pack":
-        raise SystemExit(cmd_probe_pack(root, budget=args.budget, output_format=args.output_format, scope=args.scope))
+        raise SystemExit(cmd_probe_pack(root, budget=args.budget, output_format=args.output_format, scope=args.scope, detail=args.detail))
     if args.command == "logic-index":
         if args.logic_index_command == "build":
             raise SystemExit(cmd_logic_index_build(root, candidate_limit=args.candidate_limit))

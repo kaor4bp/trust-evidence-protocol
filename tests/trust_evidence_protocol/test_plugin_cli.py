@@ -1154,11 +1154,20 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert {facility_claim_id, program_claim_id} == {node["ref"] for node in draft["chain"]["nodes"]}
     pack = json.loads(run_cli(context, "probe-pack", "--budget", "2", "--scope", "all", "--format", "json").stdout)
     assert pack["pack_is_proof"] is False
+    assert pack["detail"] == "compact"
     assert pack["items"]
     assert pack["items"][0]["chain_validation"]["ok"] is True
+    assert "source_quotes" not in pack["items"][0]
+    assert "chain" not in pack["items"][0]
     assert {facility_claim_id, program_claim_id}.issubset(
         {record["id"] for item in pack["items"] for record in item["records"]}
     )
+    full_pack = json.loads(
+        run_cli(context, "probe-pack", "--budget", "1", "--scope", "all", "--detail", "full", "--format", "json").stdout
+    )
+    assert full_pack["detail"] == "full"
+    assert "source_quotes" in full_pack["items"][0]
+    assert "chain" in full_pack["items"][0]
 
 
 def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> None:
@@ -1336,6 +1345,7 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     assert "Draft is not proof" in draft_text
     pack_text = run_cli(context, "probe-pack", "--budget", "1").stdout
     assert "Curiosity Reasoning Pack" in pack_text
+    assert "detail: `compact`" in pack_text
     assert "pack_is_proof=`False`" in pack_text
 
     all_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "20", "--scope", "all", "--format", "json").stdout)
