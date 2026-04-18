@@ -138,7 +138,8 @@ Current rebuild status:
   facade.
 - Per-language AST/text metadata extraction now lives under
   `tep_runtime/code_ast/` and is re-exported by `tep_runtime/code_index.py` for
-  compatibility.
+  compatibility. The current package covers Python AST extraction, JS/TS-like
+  regex extraction, and Markdown heading/link/code-block outline extraction.
 - CLM.logic constants, CLI logic spec parsing, atom/rule/schema validation,
   symbol extraction, and state-level symbol introduction validation now live in
   `tep_runtime/logic.py` behind the compatibility facade.

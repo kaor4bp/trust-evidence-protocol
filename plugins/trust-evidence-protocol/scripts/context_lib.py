@@ -29,6 +29,7 @@ from tep_runtime.code_index import (
     DEFAULT_CODE_INDEX_PATTERNS,
     analyze_code_file,
     analyze_js_like,
+    analyze_markdown,
     analyze_python,
     annotation_snapshot,
     build_manual_code_index_entry,

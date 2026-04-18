@@ -9,7 +9,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from tep_runtime.code_ast import analyze_js_like, analyze_python, empty_analysis
+from tep_runtime.code_ast import analyze_js_like, analyze_markdown, analyze_python, empty_analysis
 from tep_runtime.errors import ValidationError
 from tep_runtime.hydration import invalidate_hydration_state
 from tep_runtime.ids import CODE_INDEX_ID_PATTERN
@@ -247,6 +247,14 @@ def detect_code_features(path: Path, language: str, code_kind: str, text: str, a
         features.add("page-object")
     if language in {"json", "yaml", "toml"}:
         features.add("config")
+    if language == "markdown":
+        features.add("markdown")
+        if analysis.get("headings"):
+            features.add("outline")
+        if analysis.get("links"):
+            features.add("links")
+        if analysis.get("code_blocks"):
+            features.add("code-blocks")
     return sorted(features)
 
 
@@ -259,6 +267,8 @@ def analyze_code_file(root_path: Path, path: Path, max_bytes: int) -> dict:
         analysis = analyze_python(text)
     elif language in {"javascript", "typescript"}:
         analysis = analyze_js_like(text)
+    elif language == "markdown":
+        analysis = analyze_markdown(text)
     else:
         analysis = empty_analysis()
     features = detect_code_features(path, language, code_kind, text, analysis)
@@ -277,6 +287,9 @@ def analyze_code_file(root_path: Path, path: Path, max_bytes: int) -> dict:
             "functions": analysis.get("functions", []),
             "tests": analysis.get("tests", []),
             "decorators": analysis.get("decorators", []),
+            "headings": analysis.get("headings", []),
+            "links": analysis.get("links", []),
+            "code_blocks": analysis.get("code_blocks", []),
             "parse_error": analysis.get("parse_error", ""),
             "truncated": truncated,
         },
@@ -531,7 +544,13 @@ def project_code_entry(entry: dict, fields: list[str], repo_root: Path) -> dict:
         elif field == "imports":
             result["imports"] = metadata.get("imports", [])
         elif field == "symbols":
-            result["symbols"] = {"classes": metadata.get("classes", []), "functions": metadata.get("functions", []), "tests": metadata.get("tests", [])}
+            result["symbols"] = {
+                "classes": metadata.get("classes", []),
+                "functions": metadata.get("functions", []),
+                "tests": metadata.get("tests", []),
+                "headings": metadata.get("headings", []),
+                "code_blocks": metadata.get("code_blocks", []),
+            }
         elif field == "features":
             result["features"] = {"detected": entry.get("detected_features", []), "manual": entry.get("manual_features", [])}
         elif field == "links":

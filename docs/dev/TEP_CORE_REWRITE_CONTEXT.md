@@ -308,7 +308,8 @@ Current first extraction:
   search/smell result rendering, smell report payloads, entry validation, and
   state-level code-index reference validation
 - `tep_runtime/code_ast/`: per-language AST/text metadata extraction used by
-  code-index generation, currently Python and JS/TS-like analyzers
+  code-index generation, currently Python, JS/TS-like, and Markdown outline
+  analyzers
 - `tep_runtime/logic.py`: CLM.logic constants, CLI logic spec parsing,
   atom/rule/schema validation, symbol extraction, and state-level symbol
   introduction validation

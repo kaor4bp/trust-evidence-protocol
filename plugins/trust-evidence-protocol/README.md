@@ -60,7 +60,7 @@ Generated navigation layer:
 
 - `.codex_context/code_index/entries/CIX-*.json`
   - code map entries for files, directories, globs, symbols, and logical areas
-  - stores AST/regex metadata, manual features, annotations, and navigation links
+  - stores AST/regex/outline metadata, manual features, annotations, and navigation links
   - may be rebuilt or refreshed at any time
   - not a source of truth and not proof
 - `.codex_context/topic_index/*.json`
@@ -440,7 +440,7 @@ Commands:
 
 - `init-code-index --root .`
   - initializes generated `CIX-*` code-index entries from `git ls-files`
-  - indexes Python with AST metadata and JS/TS with lightweight import/symbol regexes
+  - indexes Python with AST metadata, JS/TS with lightweight import/symbol regexes, and Markdown with heading/link/code-block outline metadata
   - writes `.codex_context/code_index/entries/`, `by_path.json`, `by_ref.json`, and `summary.md`
   - defaults to tracked files only; use `--include-untracked` deliberately
   - bounded by `--max-files` and `--max-bytes-per-file`

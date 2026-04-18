@@ -127,6 +127,7 @@ from context_lib import safe_list as compat_safe_list  # noqa: E402
 from context_lib import validate_optional_confidence as compat_validate_optional_confidence  # noqa: E402
 from context_lib import validate_optional_red_flags as compat_validate_optional_red_flags  # noqa: E402
 from context_lib import analyze_code_file as compat_analyze_code_file  # noqa: E402
+from context_lib import analyze_markdown as compat_analyze_markdown  # noqa: E402
 from context_lib import annotation_snapshot as compat_annotation_snapshot  # noqa: E402
 from context_lib import build_manual_code_index_entry as compat_build_manual_code_index_entry  # noqa: E402
 from context_lib import code_entries_text_lines as compat_code_entries_text_lines  # noqa: E402
@@ -269,6 +270,7 @@ from tep_runtime.code_index import (  # noqa: E402
     CODE_SMELL_CATEGORIES,
     analyze_code_file,
     analyze_js_like,
+    analyze_markdown,
     analyze_python,
     annotation_snapshot,
     build_manual_code_index_entry,
@@ -288,6 +290,7 @@ from tep_runtime.code_index import (  # noqa: E402
 )
 from tep_runtime.code_ast import (  # noqa: E402
     analyze_js_like as language_analyze_js_like,
+    analyze_markdown as language_analyze_markdown,
     analyze_python as language_analyze_python,
     empty_analysis,
 )
@@ -670,6 +673,7 @@ def test_paths_are_importable_core_services_and_context_lib_facade_reuses_them(t
     assert compat_CODE_INDEX_TARGET_KINDS is CODE_INDEX_TARGET_KINDS
     assert compat_CODE_SMELL_CATEGORIES is CODE_SMELL_CATEGORIES
     assert compat_analyze_code_file is analyze_code_file
+    assert compat_analyze_markdown is analyze_markdown
     assert compat_annotation_snapshot is annotation_snapshot
     assert compat_build_manual_code_index_entry is build_manual_code_index_entry
     assert compat_code_entries_text_lines is code_entries_text_lines
@@ -3347,9 +3351,29 @@ def test_code_ast_language_analyzers_are_split_and_reexported() -> None:
     assert js_analysis["classes"] == ["CheckoutPage"]
     assert js_analysis["functions"] == ["chooseProduct"]
     assert js_analysis["tests"] == ["chooses product"]
+    markdown_analysis = language_analyze_markdown(
+        "# TEP Runtime\n"
+        "\n"
+        "See [commands](workflows/plugin-commands.md).\n"
+        "\n"
+        "## Install\n"
+        "\n"
+        "```bash\n"
+        "uv run pytest -q\n"
+        "```\n"
+    )
+    assert markdown_analysis["headings"] == [
+        {"level": 1, "title": "TEP Runtime", "anchor": "tep-runtime", "line": 1},
+        {"level": 2, "title": "Install", "anchor": "install", "line": 5},
+    ]
+    assert markdown_analysis["links"] == [
+        {"text": "commands", "target": "workflows/plugin-commands.md", "line": 3}
+    ]
+    assert markdown_analysis["code_blocks"] == [{"language": "bash", "line_start": 7, "line_end": 9}]
     assert empty_analysis()["parse_error"] == ""
     assert analyze_python is language_analyze_python
     assert analyze_js_like is language_analyze_js_like
+    assert analyze_markdown is language_analyze_markdown
 
 
 def test_code_index_core_analyzes_projects_and_projects_entries(tmp_path: Path) -> None:
@@ -3378,6 +3402,32 @@ def test_code_index_core_analyzes_projects_and_projects_entries(tmp_path: Path) 
     assert analyzed["metadata"]["imports"] == ["pytest", "requests"]
     assert "AppPage" in analyzed["metadata"]["classes"]
     assert {"assertions", "fixtures", "network", "pytest"} <= set(analyzed["detected_features"])
+
+    docs_path = repo_root / "docs" / "guide.md"
+    docs_path.parent.mkdir()
+    docs_path.write_text(
+        "# Guide\n"
+        "\n"
+        "Read [README](../README.md).\n"
+        "\n"
+        "```python\n"
+        "print('example')\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    docs_analysis = analyze_code_file(repo_root, docs_path, max_bytes=4096)
+    assert docs_analysis["language"] == "markdown"
+    assert docs_analysis["code_kind"] == "docs"
+    assert docs_analysis["metadata"]["headings"] == [
+        {"level": 1, "title": "Guide", "anchor": "guide", "line": 1}
+    ]
+    assert docs_analysis["metadata"]["links"] == [
+        {"text": "README", "target": "../README.md", "line": 3}
+    ]
+    assert docs_analysis["metadata"]["code_blocks"] == [
+        {"language": "python", "line_start": 5, "line_end": 7}
+    ]
+    assert {"code-blocks", "links", "markdown", "outline"} <= set(docs_analysis["detected_features"])
 
     entry, created = code_index_entry_for_file(tmp_path / ".codex_context", {}, repo_root, source_path, max_bytes=4096)
     assert created is True
