@@ -399,6 +399,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "intent": "plan", "task": "MCP route"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 22,
+                "method": "tools/call",
+                "params": {
+                    "name": "next_step",
+                    "arguments": {"context": str(context), "intent": "edit", "task": "MCP route", "format": "json"},
+                },
+            },
         ]
     )
 
@@ -531,6 +540,12 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     graph_lines = [line for line in next_step["content"][0]["text"].splitlines() if line.startswith("- graph: ")]
     assert graph_lines
     assert "=>" in graph_lines[0]
+
+    next_step_json = by_id[22]["result"]
+    assert next_step_json["isError"] is False
+    next_step_payload = json.loads(next_step_json["content"][0]["text"])
+    assert next_step_payload["intent"] == "edit"
+    assert next_step_payload["route_graph"]["graph_version"] == 1
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:

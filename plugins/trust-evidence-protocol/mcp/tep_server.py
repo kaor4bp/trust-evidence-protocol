@@ -83,6 +83,7 @@ TOOLS: list[JsonObject] = [
                 },
                 "task": {"type": "string", "description": "Optional concrete task or prompt summary."},
                 "detail": {"type": "string", "enum": ["compact", "full"], "default": "compact"},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
     },
@@ -587,6 +588,8 @@ def tool_next_step(args: JsonObject) -> tuple[bool, str]:
             str(args.get("task") or ""),
             "--detail",
             str(args.get("detail") or "compact"),
+            "--format",
+            as_format(args.get("format")),
         ],
     )
 

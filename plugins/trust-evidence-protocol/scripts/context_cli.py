@@ -1612,11 +1612,14 @@ def cmd_brief_context(root: Path, task: str, limit: int, detail: str) -> int:
     return 0
 
 
-def cmd_next_step(root: Path, intent: str, task: str, detail: str) -> int:
+def cmd_next_step(root: Path, intent: str, task: str, detail: str, output_format: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
     payload = build_next_step_payload(records, root, intent=intent, task=task)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
     for line in next_step_text_lines(payload, TEP_ICON, detail=detail):
         print(line)
     return 0
@@ -4979,6 +4982,7 @@ def parse_args() -> argparse.Namespace:
     next_step.add_argument("--intent", choices=sorted(NEXT_STEP_INTENTS), default="auto")
     next_step.add_argument("--task", default="")
     next_step.add_argument("--detail", choices=("compact", "full"), default="compact")
+    next_step.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     search_records = subparsers.add_parser(
         "search-records",
         help="Search canonical records by keyword before expanding links.",
@@ -6080,7 +6084,9 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
     if args.command == "brief-context":
         raise SystemExit(cmd_brief_context(root, task=args.task, limit=args.limit, detail=args.detail))
     if args.command == "next-step":
-        raise SystemExit(cmd_next_step(root, intent=args.intent, task=args.task, detail=args.detail))
+        raise SystemExit(
+            cmd_next_step(root, intent=args.intent, task=args.task, detail=args.detail, output_format=args.output_format)
+        )
     if args.command == "search-records":
         raise SystemExit(
             cmd_search_records(

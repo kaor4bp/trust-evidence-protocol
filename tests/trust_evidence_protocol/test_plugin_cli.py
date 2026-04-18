@@ -3196,6 +3196,12 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     assert "TEP Next Step" in next_step
     assert "intent: edit" in next_step
     assert "hydrate-context" in next_step
+    next_step_payload = json.loads(
+        run_cli(context, "next-step", "--intent", "edit", "--task", "debug bridge check-r1 retry", "--format", "json").stdout
+    )
+    assert next_step_payload["intent"] == "edit"
+    assert next_step_payload["route_graph"]["graph_version"] == 1
+    assert {"if": "proof gap", "then": "build/validate evidence chain"} in next_step_payload["route_graph"]["branches"]
 
     reasoning = run_cli(
         context,
