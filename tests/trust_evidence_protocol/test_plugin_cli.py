@@ -65,11 +65,12 @@ def load_record(context: Path, record_type: str, record_id: str) -> dict:
 def test_install_local_plugin_script_creates_single_active_cache_version(tmp_path: Path) -> None:
     local_source = tmp_path / "plugins" / "trust-evidence-protocol"
     cache = tmp_path / "cache" / "trust-evidence-protocol"
+    version = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
     old_version = cache / "0.1.1"
     old_version.mkdir(parents=True)
     (old_version / "old.txt").write_text("old", encoding="utf-8")
     stale_local_bytecode = local_source / "tep_runtime" / "__pycache__"
-    stale_cache_bytecode = cache / "0.1.53" / "tep_runtime" / "__pycache__"
+    stale_cache_bytecode = cache / version / "tep_runtime" / "__pycache__"
     stale_local_bytecode.mkdir(parents=True)
     stale_cache_bytecode.mkdir(parents=True)
     (stale_local_bytecode / "stale.pyc").write_bytes(b"stale")
@@ -90,7 +91,6 @@ def test_install_local_plugin_script_creates_single_active_cache_version(tmp_pat
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
-    version = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
     assert (local_source / ".codex-plugin" / "plugin.json").is_file()
     assert (cache / version / ".codex-plugin" / "plugin.json").is_file()
     assert (cache / "_archived-pre-active" / "0.1.1" / "old.txt").read_text(encoding="utf-8") == "old"
