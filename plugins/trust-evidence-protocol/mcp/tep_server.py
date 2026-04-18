@@ -28,6 +28,14 @@ def schema(
     properties: JsonObject,
     required: list[str] | None = None,
 ) -> JsonObject:
+    properties = dict(properties)
+    properties.setdefault(
+        "cwd",
+        {
+            "type": "string",
+            "description": "Working directory used for .tep anchor resolution and relative paths. Defaults to the MCP server cwd.",
+        },
+    )
     return {
         "type": "object",
         "properties": properties,
@@ -379,15 +387,23 @@ def context_path(args: JsonObject) -> str | None:
     return str(value) if value else None
 
 
+def call_cwd(args: JsonObject) -> Path:
+    value = args.get("cwd")
+    return Path(str(value)).expanduser().resolve() if value else Path.cwd()
+
+
 def run_cli(args: JsonObject, cli_args: list[str]) -> tuple[bool, str]:
     command = [sys.executable, str(CLI)]
     context = context_path(args)
     if context:
         command.extend(["--context", context])
     command.extend(cli_args)
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return False, f"cwd is not a directory: {cwd}"
     result = subprocess.run(
         command,
-        cwd=Path.cwd(),
+        cwd=cwd,
         capture_output=True,
         text=True,
         check=False,

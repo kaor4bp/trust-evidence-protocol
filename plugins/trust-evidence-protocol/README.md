@@ -286,6 +286,7 @@ Exposed tools:
 Rules:
 
 - Prefer MCP read-only tools when available for lookup-heavy work.
+- Pass `cwd` when the caller knows the active workdir so MCP can resolve the nearest `.tep` anchor instead of the MCP server's own cwd.
 - Fall back to `context_cli.py` commands when MCP is unavailable or when mutation is needed.
 - Do not expose mutating commands through MCP until authorization, hook, and audit behavior is explicitly designed.
 - MCP results are navigation unless they include canonical `CLM-*`, `SRC-*`, `GLD-*`, or other record ids with enough detail to cite.

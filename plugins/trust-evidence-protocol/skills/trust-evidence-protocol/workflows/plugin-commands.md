@@ -31,6 +31,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `logic_conflict_candidates`: equivalent to `logic-conflict-candidates`
 
 MCP lookup is read-only and does not replace canonical records.
+When a tool supports `cwd`, pass the active workdir so MCP resolves the nearest `.tep` anchor and uses the same workspace/project focus as hooks and CLI.
 Before citing a fact or rule, use `record_detail`, `linked_records`, or the equivalent CLI command to obtain the record id and quote.
 Use CLI commands for all record creation, updates, strictness changes, task changes, code-index mutation, lifecycle changes, and review regeneration.
 

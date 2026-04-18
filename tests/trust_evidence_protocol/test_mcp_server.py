@@ -64,6 +64,12 @@ def run_mcp(messages: list[dict]) -> list[dict]:
     return [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
 
 
+def only_record_id(context: Path, record_type: str) -> str:
+    records = sorted((context / "records" / record_type).glob("*.json"))
+    assert len(records) == 1
+    return records[0].stem
+
+
 def test_mcp_manifest_declares_readonly_server() -> None:
     plugin_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_manifest["mcpServers"] == "./.mcp.json"
@@ -324,3 +330,74 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert augmented_chain["isError"] is False
     assert claim_id in augmented_chain["content"][0]["text"]
     assert '"ok": true' in augmented_chain["content"][0]["text"]
+
+
+def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    workdir = tmp_path / "anchored-workdir"
+    workdir.mkdir()
+    run_cli(
+        context,
+        "record-workspace",
+        "--workspace-key",
+        "mcp-anchored",
+        "--title",
+        "MCP Anchored Workspace",
+        "--root-ref",
+        str(workdir),
+        "--note",
+        "workspace boundary",
+    )
+    workspace_id = only_record_id(context, "workspace")
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    run_cli(
+        context,
+        "record-project",
+        "--project-key",
+        "mcp-project",
+        "--title",
+        "MCP Project",
+        "--root-ref",
+        str(workdir),
+        "--note",
+        "project inside current workspace",
+    )
+    project_id = only_record_id(context, "project")
+    run_cli(
+        context,
+        "init-anchor",
+        "--directory",
+        str(workdir),
+        "--workspace",
+        workspace_id,
+        "--project",
+        project_id,
+        "--note",
+        "local mcp anchor",
+    )
+
+    responses = run_mcp(
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "pytest"}},
+            },
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "brief_context",
+                    "arguments": {"cwd": str(workdir), "task": "mcp cwd anchor lookup"},
+                },
+            },
+        ]
+    )
+
+    result = {response["id"]: response for response in responses}[2]["result"]
+    assert result["isError"] is False
+    assert f"`{workspace_id}` status=`active` key=`mcp-anchored`" in result["content"][0]["text"]
+    assert f"`{project_id}` status=`active` key=`mcp-project`" in result["content"][0]["text"]
