@@ -80,6 +80,17 @@ to run plugin runtime commands such as `context_cli.py`. This test should fail
 if the environment only has a copied standalone skill or if the runtime image
 cannot execute the plugin.
 
+`tests/trust_evidence_protocol/test_hypothesis_reasoning_behavior.py` contains
+live-agent behavior cases for hypothesis diversity. These tests intentionally
+check classification/verdict invariants rather than exact prose, because
+agent wording is unstable.
+
+`tests/trust_evidence_protocol/test_path_map_curiosity.py` is deterministic.
+It checks mechanical map-curiosity behavior: hidden shortcut probing,
+historical shortcut revalidation, direct edge gaps, and traveler-time
+normalization. These tests should not depend on a live agent guessing the
+correct route.
+
 ## Manual `codex exec`
 
 Run a one-off prompt through the same isolated harness:
