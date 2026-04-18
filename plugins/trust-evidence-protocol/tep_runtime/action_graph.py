@@ -212,7 +212,14 @@ def next_step_inline(payload: dict) -> str:
         route = " -> ".join(str(item) for item in forced)
     else:
         route = " -> ".join(str(item) for item in payload.get("route_steps", [])[:2])
+    branches = (payload.get("route_graph") or {}).get("branches") or []
+    compact_graph = "; ".join(
+        f"{branch.get('if')}=>{branch.get('then')}"
+        for branch in branches[:3]
+        if isinstance(branch, dict)
+    )
+    graph_part = f" | graph={compact_graph}" if compact_graph else ""
     return (
         f"TEP route: intent={payload.get('intent')} | fresh={payload.get('hydration_fresh')} "
-        f"| freedom={payload.get('allowed_freedom')} | next={route}"
+        f"| freedom={payload.get('allowed_freedom')} | next={route}{graph_part}"
     )

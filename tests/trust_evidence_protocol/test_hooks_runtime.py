@@ -878,6 +878,7 @@ def test_user_prompt_hook_reminds_when_context_is_fresh(tmp_path: Path) -> None:
     assert payload["systemMessage"] == "🛡️ TEP reminder."
     additional_context = payload["hookSpecificOutput"]["additionalContext"]
     assert "TEP route:" in additional_context
+    assert "graph=" in additional_context
     assert "Use TEP skill" in additional_context
     assert "Evidence Chain" in additional_context
     assert "GLD-* + quote" in additional_context
@@ -898,6 +899,7 @@ def test_user_prompt_hook_captures_prompt_input_and_keeps_hydration_fresh(tmp_pa
     hook_output = hook_json(HOOK_DIR / "user_prompt_hydration_notice.py", payload)
     assert hook_output["systemMessage"] == "🛡️ TEP reminder."
     assert "TEP route:" in hook_output["hookSpecificOutput"]["additionalContext"]
+    assert "graph=" in hook_output["hookSpecificOutput"]["additionalContext"]
     assert "Use TEP skill" in hook_output["hookSpecificOutput"]["additionalContext"]
 
     input_ids = record_ids(context, "input")
@@ -941,6 +943,7 @@ def test_quiet_hook_verbosity_compacts_session_and_suppresses_fresh_prompt_remin
     prompt_payload = hook_json(HOOK_DIR / "user_prompt_hydration_notice.py", quiet_prompt)
     assert prompt_payload["systemMessage"] == "🛡️ TEP route."
     assert "TEP route: intent=edit" in prompt_payload["hookSpecificOutput"]["additionalContext"]
+    assert "graph=" in prompt_payload["hookSpecificOutput"]["additionalContext"]
     assert "Use TEP skill" not in prompt_payload["hookSpecificOutput"]["additionalContext"]
 
 

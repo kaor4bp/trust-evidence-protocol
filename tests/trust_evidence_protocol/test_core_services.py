@@ -1259,7 +1259,9 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     assert "missing source-backed proof for truth claim" not in "\n".join(compact_lines)
     full_lines = next_step_text_lines(payload, "TEP", detail="full")
     assert any(line.startswith("- stop: ") for line in full_lines)
-    assert "next=guidelines-for" in next_step_inline(payload)
+    inline = next_step_inline(payload)
+    assert "next=guidelines-for" in inline
+    assert "graph=guidelines missing=>guidelines-for" in inline
 
 
 def test_reasoning_case_core_builds_payload_and_text() -> None:
