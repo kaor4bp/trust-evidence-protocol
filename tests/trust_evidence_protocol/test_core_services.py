@@ -268,6 +268,8 @@ from tep_runtime.code_index import (  # noqa: E402
     CODE_INDEX_TARGET_KINDS,
     CODE_SMELL_CATEGORIES,
     analyze_code_file,
+    analyze_js_like,
+    analyze_python,
     annotation_snapshot,
     build_manual_code_index_entry,
     code_entries_text_lines,
@@ -283,6 +285,11 @@ from tep_runtime.code_index import (  # noqa: E402
     validate_code_index_entry,
     validate_code_index_state,
     write_code_index_views,
+)
+from tep_runtime.code_ast import (  # noqa: E402
+    analyze_js_like as language_analyze_js_like,
+    analyze_python as language_analyze_python,
+    empty_analysis,
 )
 from tep_runtime.cli_common import (  # noqa: E402
     append_note,
@@ -3311,6 +3318,38 @@ def test_conflict_core_validates_comparisons_and_reports_disagreements(tmp_path:
     report_lines = write_conflicts_report(root, records)
     assert report_lines == lines
     assert "Generated Conflict Review" in (root / "review" / "conflicts.md").read_text(encoding="utf-8")
+
+
+def test_code_ast_language_analyzers_are_split_and_reexported() -> None:
+    python_analysis = language_analyze_python(
+        "import pytest\n"
+        "from pathlib import Path\n"
+        "\n"
+        "class Page:\n"
+        "    pass\n"
+        "\n"
+        "@pytest.fixture\n"
+        "async def test_page():\n"
+        "    return Path('.')\n"
+    )
+    assert python_analysis["imports"] == ["pathlib", "pytest"]
+    assert python_analysis["classes"] == ["Page"]
+    assert python_analysis["tests"] == ["test_page"]
+    assert "pytest.fixture" in python_analysis["decorators"]
+
+    js_analysis = language_analyze_js_like(
+        "import { test } from '@playwright/test';\n"
+        "class CheckoutPage {}\n"
+        "const chooseProduct = async () => true;\n"
+        "test('chooses product', async () => {});\n"
+    )
+    assert js_analysis["imports"] == ["@playwright/test"]
+    assert js_analysis["classes"] == ["CheckoutPage"]
+    assert js_analysis["functions"] == ["chooseProduct"]
+    assert js_analysis["tests"] == ["chooses product"]
+    assert empty_analysis()["parse_error"] == ""
+    assert analyze_python is language_analyze_python
+    assert analyze_js_like is language_analyze_js_like
 
 
 def test_code_index_core_analyzes_projects_and_projects_entries(tmp_path: Path) -> None:

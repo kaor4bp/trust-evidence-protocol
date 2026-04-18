@@ -85,6 +85,7 @@ plugins/trust-evidence-protocol/
     logic_index.py          # predicate projection and structural checks
     logic_check.py          # logic-check solver settings and report rendering
     logic_z3.py             # optional Z3 backend
+    code_ast/               # per-language code metadata analyzers used by CIX
     cli_commands/           # small command handlers grouped by domain
   mcp/
     tep_server.py           # read-only MCP adapter over runtime APIs
@@ -129,12 +130,15 @@ Current rebuild status:
 - Working-context assumption parsing, payload construction, fork mutation,
   close mutation, summary/detail rendering, and show payload helpers now live
   in `tep_runtime/working_contexts.py` behind the compatibility facade.
-- Code-index constants, smell taxonomies, AST/text metadata extraction,
-  manual entry payload construction, generated code-index views, entry
+- Code-index constants, smell taxonomies, CIX entry construction, generated
+  code-index views, entry
   freshness/projection, search/smell result rendering, smell report payloads,
   entry persistence, CIX entry validation, and state-level code-index reference
   validation now live in `tep_runtime/code_index.py` behind the compatibility
   facade.
+- Per-language AST/text metadata extraction now lives under
+  `tep_runtime/code_ast/` and is re-exported by `tep_runtime/code_index.py` for
+  compatibility.
 - CLM.logic constants, CLI logic spec parsing, atom/rule/schema validation,
   symbol extraction, and state-level symbol introduction validation now live in
   `tep_runtime/logic.py` behind the compatibility facade.

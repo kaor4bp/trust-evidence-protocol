@@ -302,11 +302,13 @@ Current first extraction:
 - `tep_runtime/working_contexts.py`: working-context assumption parsing,
   payload construction, fork mutation, close mutation, summary/detail
   rendering, and show payload helpers
-- `tep_runtime/code_index.py`: CIX constants, smell taxonomies, AST/text
-  metadata extraction, manual entry payload construction, generated code-index
+- `tep_runtime/code_index.py`: CIX constants, smell taxonomies, manual entry
+  payload construction, generated code-index
   views, entry freshness/projection, smell row selection, entry persistence,
   search/smell result rendering, smell report payloads, entry validation, and
   state-level code-index reference validation
+- `tep_runtime/code_ast/`: per-language AST/text metadata extraction used by
+  code-index generation, currently Python and JS/TS-like analyzers
 - `tep_runtime/logic.py`: CLM.logic constants, CLI logic spec parsing,
   atom/rule/schema validation, symbol extraction, and state-level symbol
   introduction validation

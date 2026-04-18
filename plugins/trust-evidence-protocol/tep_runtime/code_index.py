@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import fnmatch
 import hashlib
 import json
@@ -10,6 +9,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from tep_runtime.code_ast import analyze_js_like, analyze_python, empty_analysis
 from tep_runtime.errors import ValidationError
 from tep_runtime.hydration import invalidate_hydration_state
 from tep_runtime.ids import CODE_INDEX_ID_PATTERN
@@ -215,71 +215,6 @@ def read_text_sample(path: Path, max_bytes: int) -> tuple[str, bool]:
         return data.decode("utf-8", errors="replace"), truncated
 
 
-def analyze_python(text: str) -> dict:
-    imports: set[str] = set()
-    classes: list[str] = []
-    functions: list[str] = []
-    decorators: set[str] = set()
-    parse_error = ""
-    try:
-        tree = ast.parse(text)
-    except SyntaxError as exc:
-        return {
-            "imports": [],
-            "classes": [],
-            "functions": [],
-            "tests": [],
-            "decorators": [],
-            "parse_error": str(exc),
-        }
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imports.add(alias.name.split(".", 1)[0])
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imports.add(node.module.split(".", 1)[0])
-        elif isinstance(node, ast.ClassDef):
-            classes.append(node.name)
-            for decorator in node.decorator_list:
-                decorators.add(ast.unparse(decorator) if hasattr(ast, "unparse") else type(decorator).__name__)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            functions.append(node.name)
-            for decorator in node.decorator_list:
-                decorators.add(ast.unparse(decorator) if hasattr(ast, "unparse") else type(decorator).__name__)
-    tests = [name for name in functions if name.startswith("test_")]
-    return {
-        "imports": sorted(imports),
-        "classes": classes,
-        "functions": functions,
-        "tests": tests,
-        "decorators": sorted(decorators),
-        "parse_error": parse_error,
-    }
-
-
-def analyze_js_like(text: str) -> dict:
-    imports = sorted(
-        {
-            match.group(1) or match.group(2)
-            for match in re.finditer(r"(?:from\s+['\"]([^'\"]+)['\"]|import\s+['\"]([^'\"]+)['\"])", text)
-            if match.group(1) or match.group(2)
-        }
-    )
-    classes = re.findall(r"\bclass\s+([A-Za-z_$][\w$]*)", text)
-    functions = re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)", text)
-    functions.extend(re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(", text))
-    tests = re.findall(r"\b(?:it|test|describe)\s*\(\s*['\"]([^'\"]+)['\"]", text)
-    return {
-        "imports": imports,
-        "classes": classes,
-        "functions": functions,
-        "tests": tests,
-        "decorators": [],
-        "parse_error": "",
-    }
-
-
 def detect_code_features(path: Path, language: str, code_kind: str, text: str, analysis: dict) -> list[str]:
     features: set[str] = set()
     lowered = text.lower()
@@ -325,7 +260,7 @@ def analyze_code_file(root_path: Path, path: Path, max_bytes: int) -> dict:
     elif language in {"javascript", "typescript"}:
         analysis = analyze_js_like(text)
     else:
-        analysis = {"imports": [], "classes": [], "functions": [], "tests": [], "decorators": [], "parse_error": ""}
+        analysis = empty_analysis()
     features = detect_code_features(path, language, code_kind, text, analysis)
     rel_path = code_index_rel_path(root_path, path)
     return {
