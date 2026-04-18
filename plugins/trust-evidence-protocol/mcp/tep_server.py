@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.36"
+SERVER_VERSION = "0.1.37"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -331,6 +331,18 @@ TOOLS: list[JsonObject] = [
             {
                 "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
                 "index": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1},
+                "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "probe_pack",
+        "description": "Read a compact mechanical bundle of top curiosity probes, inspection summaries, and chain-draft validation. Pack is not proof.",
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "budget": {"type": "integer", "minimum": 1, "maximum": 20, "default": 3},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -766,6 +778,21 @@ def tool_probe_chain_draft(args: JsonObject) -> tuple[bool, str]:
     )
 
 
+def tool_probe_pack(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "probe-pack",
+            "--budget",
+            str(as_int(args.get("budget"), 3, 1, 20)),
+            "--scope",
+            str(args.get("scope") or "current"),
+            "--format",
+            as_format(args.get("format")),
+        ],
+    )
+
+
 def tool_working_contexts(args: JsonObject) -> tuple[bool, str]:
     cli_args = ["working-context", "show", "--format", as_format(args.get("format"))]
     if args.get("record"):
@@ -850,6 +877,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "curiosity_probes": tool_curiosity_probes,
     "probe_inspect": tool_probe_inspect,
     "probe_chain_draft": tool_probe_chain_draft,
+    "probe_pack": tool_probe_pack,
     "working_contexts": tool_working_contexts,
     "logic_search": tool_logic_search,
     "logic_check": tool_logic_check,
