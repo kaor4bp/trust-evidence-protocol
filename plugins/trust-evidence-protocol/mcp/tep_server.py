@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.41"
+SERVER_VERSION = "0.1.42"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -339,6 +339,18 @@ TOOLS: list[JsonObject] = [
     {
         "name": "probe_chain_draft",
         "description": "Draft a mechanical evidence-chain skeleton from one curiosity probe. Draft is not proof.",
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "index": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1},
+                "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "probe_route",
+        "description": "Generate an ordered mechanical inspection route for one curiosity probe. Route is navigation only, not proof.",
         "inputSchema": schema(
             {
                 "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
@@ -818,6 +830,21 @@ def tool_probe_chain_draft(args: JsonObject) -> tuple[bool, str]:
     )
 
 
+def tool_probe_route(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "probe-route",
+            "--index",
+            str(as_int(args.get("index"), 1, 1, 100)),
+            "--scope",
+            str(args.get("scope") or "current"),
+            "--format",
+            as_format(args.get("format")),
+        ],
+    )
+
+
 def tool_probe_pack(args: JsonObject) -> tuple[bool, str]:
     return run_cli(
         args,
@@ -935,6 +962,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "curiosity_probes": tool_curiosity_probes,
     "probe_inspect": tool_probe_inspect,
     "probe_chain_draft": tool_probe_chain_draft,
+    "probe_route": tool_probe_route,
     "probe_pack": tool_probe_pack,
     "probe_pack_compare": tool_probe_pack_compare,
     "working_contexts": tool_working_contexts,

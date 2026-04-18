@@ -1157,6 +1157,14 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert draft["augmented"]["validation"]["ok"] is True
     assert draft["chain"]["nodes"][0]["role"] == "fact"
     assert {facility_claim_id, program_claim_id} == {node["ref"] for node in draft["chain"]["nodes"]}
+    route = json.loads(run_cli(context, "probe-route", "--index", "1", "--scope", "all", "--format", "json").stdout)
+    assert route["route_is_proof"] is False
+    assert route["chain_validation"]["ok"] is True
+    assert route["record_refs"]
+    assert any(command.startswith("probe-inspect --index 1") for command in route["recommended_commands"])
+    assert any(command.startswith("probe-chain-draft --index 1") for command in route["recommended_commands"])
+    assert any(command.startswith("probe-pack-compare") for command in route["recommended_commands"])
+    assert route["context_delta"]["payload_char_count"] > 0
     pack = json.loads(run_cli(context, "probe-pack", "--budget", "2", "--scope", "all", "--format", "json").stdout)
     assert pack["pack_is_proof"] is False
     assert pack["detail"] == "compact"
@@ -1379,6 +1387,10 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     assert "# Probe Pack Detail Comparison" in compare_text
     assert "comparison_is_proof=`False`" in compare_text
     assert "Recommendation:" in compare_text
+    route_text = run_cli(context, "probe-route", "--index", "1").stdout
+    assert "# Probe Inspection Route" in route_text
+    assert "route_is_proof=`False`" in route_text
+    assert "Recommended Commands" in route_text
     diagram_payload = json.loads(run_cli(context, "attention-diagram", "--limit", "2", "--format", "json").stdout)
     assert diagram_payload["diagram_is_proof"] is False
     assert diagram_payload["scope"] == "current"

@@ -3104,6 +3104,99 @@ def cmd_probe_pack_compare(root: Path, budget: int, output_format: str, scope: s
     return 0
 
 
+def build_probe_route_payload(root: Path, records: dict, scoped_payload: dict, probe_index: int) -> dict:
+    inspection = build_probe_inspection_payload(records, scoped_payload, probe_index)
+    draft = build_probe_chain_draft_payload(root, records, scoped_payload, probe_index)
+    compact_pack = build_probe_pack_payload(root, records, scoped_payload, max(1, probe_index), "compact")
+    full_pack = build_probe_pack_payload(root, records, scoped_payload, max(1, probe_index), "full")
+    comparison = probe_pack_compare_payload(compact_pack, full_pack)
+    scope = scoped_payload.get("scope", "current")
+    probe = inspection["probe"]
+    refs = [str(ref) for ref in probe.get("record_refs", [])]
+    commands = [
+        f"attention-diagram --scope {scope} --limit 8",
+        f"probe-inspect --index {probe_index} --scope {scope}",
+        f"probe-chain-draft --index {probe_index} --scope {scope} --format json",
+        f"probe-pack-compare --budget {max(1, probe_index)} --scope {scope}",
+        *(f"record-detail --record {record_ref}" for record_ref in refs),
+        *(f"linked-records --record {record_ref} --depth 1" for record_ref in refs),
+        'build-reasoning-case --task "inspect whether the probed records should be linked"',
+    ]
+    if comparison["delta"].get("source_quote_count", 0) > 0:
+        commands.append(f"probe-pack --budget {max(1, probe_index)} --scope {scope} --detail full")
+    return {
+        "route_is_proof": False,
+        "attention_index_is_proof": False,
+        "inspection_is_proof": False,
+        "draft_is_proof": False,
+        "comparison_is_proof": False,
+        "scope": scope,
+        "workspace_ref": scoped_payload.get("workspace_ref", ""),
+        "project_ref": scoped_payload.get("project_ref", ""),
+        "task_ref": scoped_payload.get("task_ref", ""),
+        "probe_index": probe_index,
+        "probe": probe,
+        "record_refs": refs,
+        "direct_link_count": len(inspection["direct_edges"]),
+        "chain_validation": draft["augmented"]["validation"],
+        "context_delta": comparison["delta"],
+        "recommended_commands": commands,
+        "next_steps": [
+            "Inspect canonical record details and direct links before making a claim.",
+            "Use the draft chain only as a mechanical skeleton; validate/augment before user-facing proof.",
+            "If support exists, update records, model, or flow; otherwise record an open question or leave the probe unresolved.",
+        ],
+        "note": "Generated inspection route. Navigation only; not proof.",
+    }
+
+
+def probe_route_text_lines(payload: dict) -> list[str]:
+    probe = payload.get("probe", {})
+    delta = payload.get("context_delta", {})
+    validation = payload.get("chain_validation", {})
+    lines = [
+        "# Probe Inspection Route",
+        "",
+        "Mode: generated route for bounded probe inspection. Not proof.",
+        f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"probe_index: `{payload.get('probe_index')}` route_is_proof=`{payload.get('route_is_proof')}` score=`{probe.get('score', 0)}` score_is_proof=`{probe.get('score_is_proof', False)}`",
+        f"record_refs: {', '.join(f'`{ref}`' for ref in payload.get('record_refs', []))}",
+        f"direct_links: `{payload.get('direct_link_count', 0)}` chain_validation_ok: `{validation.get('ok')}`",
+        f"context_delta_if_full: chars=`{delta.get('payload_char_count', 0)}` quotes=`{delta.get('source_quote_count', 0)}` chain_nodes=`{delta.get('chain_node_count', 0)}`",
+        "",
+        "## Recommended Commands",
+    ]
+    for command in payload.get("recommended_commands", []):
+        lines.append(f"- `{command}`")
+    lines.extend(["", "## Next Steps"])
+    for step in payload.get("next_steps", []):
+        lines.append(f"- {step}")
+    lines.append("")
+    lines.append("Do not cite this route as proof; cite canonical source-backed records after inspection.")
+    return lines
+
+
+def cmd_probe_route(root: Path, probe_index: int, output_format: str, scope: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    attention_payload = load_attention_payload(root)
+    if not attention_payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+    try:
+        payload = build_probe_route_payload(root, records, scoped_payload, probe_index)
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(probe_route_text_lines(payload)))
+    return 0
+
+
 def cmd_probe_chain_draft(root: Path, probe_index: int, output_format: str, scope: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
@@ -4928,6 +5021,13 @@ def parse_args() -> argparse.Namespace:
     probe_chain_draft.add_argument("--index", dest="probe_index", type=int, default=1)
     probe_chain_draft.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     probe_chain_draft.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    probe_route = subparsers.add_parser(
+        "probe-route",
+        help="Generate an ordered inspection route for one curiosity probe. Route is not proof.",
+    )
+    probe_route.add_argument("--index", dest="probe_index", type=int, default=1)
+    probe_route.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    probe_route.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     probe_pack = subparsers.add_parser(
         "probe-pack",
         help="Compactly bundle top curiosity probes with inspection summaries and chain drafts. Not proof.",
@@ -5984,6 +6084,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(cmd_probe_inspect(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
     if args.command == "probe-chain-draft":
         raise SystemExit(cmd_probe_chain_draft(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
+    if args.command == "probe-route":
+        raise SystemExit(cmd_probe_route(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
     if args.command == "probe-pack":
         raise SystemExit(cmd_probe_pack(root, budget=args.budget, output_format=args.output_format, scope=args.scope, detail=args.detail))
     if args.command == "probe-pack-compare":

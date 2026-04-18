@@ -372,6 +372,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "limit": 3, "scope": "all", "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 19,
+                "method": "tools/call",
+                "params": {
+                    "name": "probe_route",
+                    "arguments": {"context": str(context), "index": 1, "scope": "all", "format": "json"},
+                },
+            },
         ]
     )
 
@@ -395,6 +404,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "curiosity_probes",
         "probe_inspect",
         "probe_chain_draft",
+        "probe_route",
         "probe_pack",
         "probe_pack_compare",
         "working_contexts",
@@ -477,6 +487,12 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert attention_diagram["isError"] is False
     assert '"diagram_is_proof": false' in attention_diagram["content"][0]["text"]
     assert "graph TD" in attention_diagram["content"][0]["text"]
+
+    probe_route = by_id[19]["result"]
+    assert probe_route["isError"] is False
+    assert '"route_is_proof": false' in probe_route["content"][0]["text"]
+    assert '"recommended_commands"' in probe_route["content"][0]["text"]
+    assert "probe-pack-compare" in probe_route["content"][0]["text"]
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:

@@ -290,6 +290,7 @@ Exposed tools:
 - `curiosity_probes`: generated bounded curiosity questions; defaults to current `.tep` workspace/project/task focus
 - `probe_inspect`: generated probe context with canonical record summaries, source quotes, direct link status, and follow-up commands
 - `probe_chain_draft`: generated evidence-chain skeleton for one probe; validates/augments the draft but does not make it proof
+- `probe_route`: ordered generated inspection route for one curiosity probe, including next commands and expansion hints
 - `probe_pack`: compact generated bundle of top probes, inspection summaries, and chain-draft validation
 - `probe_pack_compare`: compact/full probe-pack metric comparison for deciding whether expanded context is worth requesting
 - `working_contexts`: read-only `WCTX-*` working-context lookup
@@ -307,6 +308,7 @@ Rules:
 - Curiosity probe `score` and `explanation` fields are mechanical navigation hints, not confidence or proof.
 - Use `probe_inspect` after choosing a curiosity probe so the runtime, not the agent, expands the pair into canonical inspection context.
 - Use `probe_chain_draft` when you need a mechanically assembled proof skeleton from a selected probe, then validate and revise before user-facing proof.
+- Use `probe_route` when you want the runtime to compose the next inspection commands for a selected probe; route output is navigation only, not proof.
 - Use `probe_pack` when you need a compact first pass over top probes without manually chaining several lookup tools.
 - `probe_pack` defaults to `detail=compact`; request `detail=full` only when source quotes and full chain draft payload are needed.
 - `probe_pack.metrics` reports mechanical payload size and omitted fields; metrics are budget hints, not proof.

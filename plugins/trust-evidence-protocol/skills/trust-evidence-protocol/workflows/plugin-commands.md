@@ -30,6 +30,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `curiosity_probes`: equivalent to `curiosity-probes`; defaults to current `.tep` focus
 - `probe_inspect`: equivalent to `probe-inspect`; expands one generated probe into canonical inspection context
 - `probe_chain_draft`: equivalent to `probe-chain-draft`; generates a non-proof evidence-chain draft from one probe
+- `probe_route`: equivalent to `probe-route`; generates ordered next inspection commands for one probe
 - `probe_pack`: equivalent to `probe-pack`; compactly bundles top probes with inspection summaries and draft validation
 - `probe_pack_compare`: equivalent to `probe-pack-compare`; compares compact/full metrics before requesting expanded context
 - `working_contexts`: equivalent to `working-context show`
@@ -84,6 +85,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context curiosity-probes --budget 5 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-inspect --index 1 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-chain-draft --index 1 --scope current --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-route --index 1 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-pack --budget 3 --scope current --detail compact
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-pack-compare --budget 3 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context logic-search --predicate PredicateName
@@ -111,6 +113,7 @@ They default to `--scope current`, using the current workspace/project/task from
 Probe `score` and `explanation` fields are mechanical ranking hints for what to inspect first, not evidence confidence.
 Use `probe-inspect` to mechanically fetch record summaries, source quotes, direct link status, and suggested follow-up commands for a selected probe.
 Use `probe-chain-draft` to mechanically assemble a draft evidence chain from a selected probe, then run normal validation/augmentation before presenting proof.
+Use `probe-route` after choosing a probe when you want the runtime to compose the next inspection commands and expansion hints.
 Use `probe-pack` when the agent needs a compact first pass over several top probes without manually composing multiple lookup commands.
 Use `probe-pack --detail full` only when the compact pack shows a probe worth expanding with source quotes and full chain draft payload.
 Use `probe-pack.metrics` to compare payload size and omitted fields mechanically; metrics are not proof.
