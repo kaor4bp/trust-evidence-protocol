@@ -1171,7 +1171,9 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert route["route_is_proof"] is False
     assert route["chain_validation"]["ok"] is True
     assert route["record_refs"]
+    assert route["diagram_delta"]["payload_char_count"] > 0
     assert any(command.startswith("probe-inspect --index 1") for command in route["recommended_commands"])
+    assert any(command.startswith("attention-diagram-compare") for command in route["recommended_commands"])
     assert any(command.startswith("probe-chain-draft --index 1") for command in route["recommended_commands"])
     assert any(command.startswith("probe-pack-compare") for command in route["recommended_commands"])
     assert route["context_delta"]["payload_char_count"] > 0
@@ -1400,6 +1402,7 @@ def test_attention_output_defaults_to_current_project_scope(tmp_path: Path) -> N
     route_text = run_cli(context, "probe-route", "--index", "1").stdout
     assert "# Probe Inspection Route" in route_text
     assert "route_is_proof=`False`" in route_text
+    assert "diagram_delta_if_full" in route_text
     assert "Recommended Commands" in route_text
     diagram_payload = json.loads(run_cli(context, "attention-diagram", "--limit", "2", "--format", "json").stdout)
     full_diagram_payload = json.loads(

@@ -3181,11 +3181,13 @@ def build_probe_route_payload(root: Path, records: dict, scoped_payload: dict, p
     compact_pack = build_probe_pack_payload(root, records, scoped_payload, max(1, probe_index), "compact")
     full_pack = build_probe_pack_payload(root, records, scoped_payload, max(1, probe_index), "full")
     comparison = probe_pack_compare_payload(compact_pack, full_pack)
+    diagram_comparison = attention_diagram_compare_payload(scoped_payload, limit=8)
     scope = scoped_payload.get("scope", "current")
     probe = inspection["probe"]
     refs = [str(ref) for ref in probe.get("record_refs", [])]
     commands = [
         f"attention-diagram --scope {scope} --limit 8 --detail compact",
+        f"attention-diagram-compare --scope {scope} --limit 8",
         f"probe-inspect --index {probe_index} --scope {scope}",
         f"probe-chain-draft --index {probe_index} --scope {scope} --format json",
         f"probe-pack-compare --budget {max(1, probe_index)} --scope {scope}",
@@ -3193,6 +3195,8 @@ def build_probe_route_payload(root: Path, records: dict, scoped_payload: dict, p
         *(f"linked-records --record {record_ref} --depth 1" for record_ref in refs),
         'build-reasoning-case --task "inspect whether the probed records should be linked"',
     ]
+    if diagram_comparison["delta"].get("payload_char_count", 0) > 0:
+        commands.append(f"attention-diagram --scope {scope} --limit 8 --detail full")
     if comparison["delta"].get("source_quote_count", 0) > 0:
         commands.append(f"probe-pack --budget {max(1, probe_index)} --scope {scope} --detail full")
     return {
@@ -3210,6 +3214,7 @@ def build_probe_route_payload(root: Path, records: dict, scoped_payload: dict, p
         "record_refs": refs,
         "direct_link_count": len(inspection["direct_edges"]),
         "chain_validation": draft["augmented"]["validation"],
+        "diagram_delta": diagram_comparison["delta"],
         "context_delta": comparison["delta"],
         "recommended_commands": commands,
         "next_steps": [
@@ -3223,6 +3228,7 @@ def build_probe_route_payload(root: Path, records: dict, scoped_payload: dict, p
 
 def probe_route_text_lines(payload: dict) -> list[str]:
     probe = payload.get("probe", {})
+    diagram_delta = payload.get("diagram_delta", {})
     delta = payload.get("context_delta", {})
     validation = payload.get("chain_validation", {})
     lines = [
@@ -3233,6 +3239,7 @@ def probe_route_text_lines(payload: dict) -> list[str]:
         f"probe_index: `{payload.get('probe_index')}` route_is_proof=`{payload.get('route_is_proof')}` score=`{probe.get('score', 0)}` score_is_proof=`{probe.get('score_is_proof', False)}`",
         f"record_refs: {', '.join(f'`{ref}`' for ref in payload.get('record_refs', []))}",
         f"direct_links: `{payload.get('direct_link_count', 0)}` chain_validation_ok: `{validation.get('ok')}`",
+        f"diagram_delta_if_full: chars=`{diagram_delta.get('payload_char_count', 0)}` mermaid_chars=`{diagram_delta.get('mermaid_char_count', 0)}`",
         f"context_delta_if_full: chars=`{delta.get('payload_char_count', 0)}` quotes=`{delta.get('source_quote_count', 0)}` chain_nodes=`{delta.get('chain_node_count', 0)}`",
         "",
         "## Recommended Commands",

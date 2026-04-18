@@ -504,6 +504,8 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert probe_route["isError"] is False
     assert '"route_is_proof": false' in probe_route["content"][0]["text"]
     assert '"recommended_commands"' in probe_route["content"][0]["text"]
+    assert '"diagram_delta"' in probe_route["content"][0]["text"]
+    assert "attention-diagram-compare" in probe_route["content"][0]["text"]
     assert "probe-pack-compare" in probe_route["content"][0]["text"]
 
     attention_diagram_compare = by_id[20]["result"]
