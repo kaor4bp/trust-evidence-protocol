@@ -1128,6 +1128,7 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
 
     map_text = run_cli(context, "attention-map").stdout
     assert "Not proof" in map_text
+    assert "taps: `1`" in map_text
     probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
     assert probes_payload["attention_index_is_proof"] is False
     assert any(

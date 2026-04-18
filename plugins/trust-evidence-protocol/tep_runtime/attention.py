@@ -272,6 +272,11 @@ def load_attention_payload(root: Path) -> dict:
         "attention_index_is_proof": False,
         "records": records if isinstance(records, dict) else {},
         "clusters": clusters if isinstance(clusters, dict) else {},
+        "record_count": len(records) if isinstance(records, dict) else 0,
+        "cluster_count": len(clusters) if isinstance(clusters, dict) else 0,
+        "tap_count": sum(int(item.get("tap_count", 0)) for item in records.values() if isinstance(item, dict))
+        if isinstance(records, dict)
+        else 0,
         "bridges": bridges if isinstance(bridges, list) else [],
         "cold_zones": cold_zones if isinstance(cold_zones, list) else [],
         "probes": probes if isinstance(probes, list) else [],
