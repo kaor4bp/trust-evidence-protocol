@@ -692,6 +692,42 @@ def test_hooks_preserve_anchored_hydration_from_unanchored_cwd(tmp_path: Path) -
     assert not record_ids(context, "input")
 
 
+def test_hooks_defer_unanchored_hydration_when_multiple_workspaces_are_active(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    for key in ("first-workspace", "second-workspace"):
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            key,
+            "--title",
+            key,
+            "--root-ref",
+            str(tmp_path / key),
+            "--note",
+            key,
+        )
+    unanchored = tmp_path / "unanchored-cwd"
+    unanchored.mkdir()
+    payload = {"cwd": str(unanchored), "prompt": "continue TEP work", "session_id": "session-unanchored"}
+    env = {"TEP_CONTEXT_ROOT": str(context)}
+
+    session_output = hook_json_with_env(HOOK_DIR / "session_start_hydrate.py", {"cwd": str(unanchored)}, env)
+    assert session_output["systemMessage"] == "🛡️ Explicit TEP anchor required."
+    assert "multiple active workspaces" in session_output["hookSpecificOutput"]["additionalContext"]
+
+    prompt_output = hook_json_with_env(HOOK_DIR / "user_prompt_hydration_notice.py", payload, env)
+    assert prompt_output["systemMessage"] == "🛡️ Explicit TEP anchor required."
+    assert "first-workspace" in prompt_output["hookSpecificOutput"]["additionalContext"]
+    assert "second-workspace" in prompt_output["hookSpecificOutput"]["additionalContext"]
+    assert not record_ids(context, "input")
+
+    show = run_runtime(context, "show-hydration", check=False)
+    assert show.returncode == 1
+    assert "hydration_status=stale" in show.stdout
+
+
 def test_session_start_hook_reports_conflicts(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 

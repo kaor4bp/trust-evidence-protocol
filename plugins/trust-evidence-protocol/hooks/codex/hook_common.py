@@ -193,6 +193,25 @@ def should_preserve_anchored_hydration(context_root: Path, cwd: str | Path | Non
     return bool(str(state.get("anchor_path") or "").strip())
 
 
+def active_workspace_records(context_root: Path) -> list[dict]:
+    records, errors = load_records(context_root)
+    if errors:
+        return []
+    return [
+        record
+        for record in records.values()
+        if record.get("record_type") == "workspace" and str(record.get("status", "")).strip() == "active"
+    ]
+
+
+def should_defer_unanchored_hydration(context_root: Path, cwd: str | Path | None) -> bool:
+    if has_context_anchor(context_root, cwd):
+        return False
+    if should_preserve_anchored_hydration(context_root, cwd):
+        return False
+    return len(active_workspace_records(context_root)) > 1
+
+
 def anchored_hydration_preserved_message(context_root: Path) -> str:
     state = load_hydration_state(context_root)
     workspace = state.get("current_workspace") if isinstance(state, dict) else None
@@ -208,6 +227,19 @@ def anchored_hydration_preserved_message(context_root: Path) -> str:
         lines.append(f"Preserved project: {project.get('id')} | {project.get('project_key', '')}")
     if isinstance(task, dict) and task.get("id"):
         lines.append(f"Preserved task: {task.get('id')} | {task.get('scope', '')}")
+    return "\n".join(lines)
+
+
+def unanchored_hydration_deferred_message(context_root: Path) -> str:
+    workspaces = active_workspace_records(context_root)
+    lines = [
+        "TEP did not hydrate automatically because the hook cwd has no `.tep` anchor and the context has multiple active workspaces.",
+        "Run `hydrate-context` from a workdir with the intended `.tep` anchor, or create/validate a local `.tep` anchor before relying on workspace/project facts.",
+    ]
+    if workspaces:
+        lines.append("Active workspaces:")
+        for workspace in sorted(workspaces, key=lambda item: str(item.get("id", "")))[:8]:
+            lines.append(f"- {workspace.get('id')} | {workspace.get('workspace_key', '')}")
     return "\n".join(lines)
 
 

@@ -17,7 +17,9 @@ from hook_common import (
     next_step_hint,
     run_context_cli,
     run_runtime_gate,
+    should_defer_unanchored_hydration,
     should_preserve_anchored_hydration,
+    unanchored_hydration_deferred_message,
 )
 
 
@@ -141,6 +143,12 @@ def main() -> int:
         emit(
             additional_context=anchored_hydration_preserved_message(context_root),
             system_message="Anchored context preserved.",
+        )
+        return 0
+    if should_defer_unanchored_hydration(context_root, cwd):
+        emit(
+            additional_context=unanchored_hydration_deferred_message(context_root),
+            system_message="Explicit TEP anchor required.",
         )
         return 0
     capture_user_prompt(context_root, payload)
