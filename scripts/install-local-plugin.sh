@@ -27,8 +27,17 @@ echo "local_source=$local_source"
 echo "cache_target=$cache_target"
 
 mkdir -p "$local_source" "$cache_target" "$archive_dir"
-rsync -a --delete "$plugin_root/" "$local_source/"
-rsync -a --delete "$plugin_root/" "$cache_target/"
+rsync_args=(
+  -a
+  --delete
+  --exclude '__pycache__/'
+  --exclude '*.pyc'
+  --exclude '.pytest_cache/'
+  --exclude '.mypy_cache/'
+  --exclude '.ruff_cache/'
+)
+rsync "${rsync_args[@]}" "$plugin_root/" "$local_source/"
+rsync "${rsync_args[@]}" "$plugin_root/" "$cache_target/"
 
 find "$cache_base" -mindepth 1 -maxdepth 1 -type d | while IFS= read -r dir; do
   name="$(basename "$dir")"

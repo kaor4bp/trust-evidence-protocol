@@ -90,6 +90,10 @@ def test_install_local_plugin_script_creates_single_active_cache_version(tmp_pat
     assert (cache / "_archived-pre-active" / "0.1.1" / "old.txt").read_text(encoding="utf-8") == "old"
     active_dirs = sorted(path.name for path in cache.iterdir() if path.is_dir())
     assert active_dirs == [version, "_archived-pre-active"]
+    installed_roots = [local_source, cache / version]
+    for root in installed_roots:
+        assert not list(root.rglob("__pycache__")), root
+        assert not list(root.rglob("*.pyc")), root
 
 
 def strictness_approval(context: Path, value: str, permission_id: str | None = None) -> tuple[str, str]:
