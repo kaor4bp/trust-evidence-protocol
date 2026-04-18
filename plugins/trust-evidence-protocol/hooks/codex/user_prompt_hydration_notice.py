@@ -24,11 +24,9 @@ from hook_common import (
 
 
 PROTOCOL_REMINDER = (
-    "Use the Trust Evidence Protocol skill. Search the resolved TEP context first via MCP/brief-context, then show "
-    "compact public Evidence Chain or Reasoning Checkpoint panels when planning, asking permission, persisting, "
-    "or editing. For green/red/ask decisions, target assertions and user pressure are not proof; unanchored "
-    "targets require `ask` when available or `red` when not. For substantial code edits, cite applicable "
-    "`GLD-* + quote` before edits and `Guidelines used:` after."
+    "Use TEP skill: search resolved context first via MCP/brief-context, then show compact Evidence Chain or "
+    "Reasoning Checkpoint before planning, permission, persistence, or edits. green/red/ask: target assertions "
+    "are not proof. Code edits cite `GLD-* + quote` before and after."
 )
 
 
@@ -160,7 +158,7 @@ def main() -> int:
         if mode == "remind" and hook_verbosity(context_root) != "quiet":
             emit(
                 additional_context=f"{route_hint}\n{PROTOCOL_REMINDER}",
-                system_message="Trust Evidence Protocol reminder.",
+                system_message="TEP reminder.",
             )
         elif mode == "remind":
             emit(additional_context=route_hint, system_message="TEP route.")
