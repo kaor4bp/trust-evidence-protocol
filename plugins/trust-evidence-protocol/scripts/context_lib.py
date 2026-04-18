@@ -196,6 +196,7 @@ from tep_runtime.hypotheses import (
 from tep_runtime.inputs import build_input_payload
 from tep_runtime.knowledge import mark_knowledge_records_stale_payloads, stale_knowledge_target_ids
 from tep_runtime.io import context_write_lock, parse_json_file, write_json_file, write_text_file
+from tep_runtime.local_anchor import ANCHOR_FILENAME, anchor_context_root, find_anchor, find_anchor_path, load_anchor
 from tep_runtime.links import (
     collect_link_edges,
     dependency_refs_for_record,
@@ -418,6 +419,7 @@ from tep_runtime.settings import (
     TOPIC_PREFILTER_OPTIONAL_BACKENDS,
     TOPIC_PREFILTER_REBUILD_MODES,
     is_strictness_escalation,
+    load_effective_settings,
     load_settings,
     load_strictness_requests,
     next_strictness_request_id,

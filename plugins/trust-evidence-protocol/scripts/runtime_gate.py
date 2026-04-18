@@ -15,8 +15,8 @@ from context_lib import (
     hydration_state_path,
     invalidate_hydration_state,
     is_mutating_action_kind,
+    load_effective_settings,
     load_hydration_state,
-    load_settings,
     now_timestamp,
     resolve_context_root,
     write_backlog,
@@ -64,7 +64,7 @@ def summarize_counts(records: dict[str, dict]) -> dict[str, int]:
 
 
 def current_task_summary(root: Path, records: dict[str, dict]) -> dict | None:
-    current_task_ref = str(load_settings(root).get("current_task_ref") or "").strip()
+    current_task_ref = str(load_effective_settings(root).get("current_task_ref") or "").strip()
     if not current_task_ref:
         return None
     task = records.get(current_task_ref)
@@ -80,7 +80,7 @@ def current_task_summary(root: Path, records: dict[str, dict]) -> dict | None:
 
 
 def current_project_summary(root: Path, records: dict[str, dict]) -> dict | None:
-    current_project_ref = str(load_settings(root).get("current_project_ref") or "").strip()
+    current_project_ref = str(load_effective_settings(root).get("current_project_ref") or "").strip()
     if not current_project_ref:
         return None
     project = records.get(current_project_ref)
@@ -95,7 +95,7 @@ def current_project_summary(root: Path, records: dict[str, dict]) -> dict | None
 
 
 def current_workspace_summary(root: Path, records: dict[str, dict]) -> dict | None:
-    current_workspace_ref = str(load_settings(root).get("current_workspace_ref") or "").strip()
+    current_workspace_ref = str(load_effective_settings(root).get("current_workspace_ref") or "").strip()
     if not current_workspace_ref:
         return None
     workspace = records.get(current_workspace_ref)
@@ -200,7 +200,7 @@ def cmd_hydrate_context(root: Path) -> int:
     conflict_lines = refresh_generated_outputs(root, records)
 
     fingerprint = compute_context_fingerprint(root)
-    settings = load_settings(root)
+    settings = load_effective_settings(root)
     current_task = current_task_summary(root, records)
     current_workspace = current_workspace_summary(root, records)
     current_project = current_project_summary(root, records)
@@ -259,7 +259,12 @@ def cmd_show_hydration(root: Path) -> int:
 
     print(f"hydration_status={state.get('status', 'unhydrated')}")
     print(f"hydrated_at={state.get('hydrated_at', '')}")
-    print(f"allowed_freedom={load_settings(root).get('allowed_freedom', 'proof-only')}")
+    settings = load_effective_settings(root)
+    print(f"allowed_freedom={settings.get('allowed_freedom', 'proof-only')}")
+    if settings.get("allowed_freedom_source"):
+        print(f"allowed_freedom_source={settings.get('allowed_freedom_source')}")
+    if settings.get("anchor_path"):
+        print(f"anchor_path={settings.get('anchor_path')}")
     current_workspace = state.get("current_workspace")
     if isinstance(current_workspace, dict) and current_workspace.get("id"):
         print(
@@ -310,7 +315,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
         )
         return 1
 
-    strictness = load_settings(root).get("allowed_freedom", "proof-only")
+    strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
     active_restrictions = state.get("active_restrictions", [])
 
     if status == "hydrated-with-conflicts" and mode == "planning":

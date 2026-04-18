@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.29"
+SERVER_VERSION = "0.1.30"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 

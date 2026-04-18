@@ -3310,6 +3310,46 @@ def test_workspace_commands_make_workspace_explicit_and_support_legacy_assignmen
     assert project["workspace_refs"] == [workspace_id]
     assert workspace["project_refs"] == [project_id]
 
+    workdir = tmp_path / "anchored-workdir"
+    workdir.mkdir()
+    run_cli(
+        context,
+        "init-anchor",
+        "--directory",
+        str(workdir),
+        "--workspace",
+        workspace_id,
+        "--project",
+        project_id,
+        "--allowed-freedom",
+        "proof-only",
+        "--note",
+        "local test anchor",
+    )
+    anchor = json.loads((workdir / ".tep").read_text(encoding="utf-8"))
+    assert anchor["context_root"] == str(context)
+    assert anchor["workspace_ref"] == workspace_id
+    assert anchor["project_ref"] == project_id
+
+    anchored_show = subprocess.run(
+        [sys.executable, str(CLI), "show-workspace"],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert anchored_show.returncode == 0, anchored_show.stderr
+    assert f"`{workspace_id}` status=`active` key=`qa-tim`" in anchored_show.stdout
+
+    validate_anchor = subprocess.run(
+        [sys.executable, str(CLI), "validate-anchor"],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert validate_anchor.returncode == 0, validate_anchor.stdout + validate_anchor.stderr
+
     run_cli(context, "assign-workspace", "--workspace", workspace_id, "--all-unassigned")
     assigned = load_record(context, "source", source_id)
     assert assigned["workspace_refs"] == [workspace_id]

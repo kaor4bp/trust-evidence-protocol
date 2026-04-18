@@ -8,6 +8,13 @@ from pathlib import Path
 from .errors import ValidationError
 from .ids import PROJECT_ID_PATTERN, TASK_ID_PATTERN, WORKSPACE_ID_PATTERN, now_timestamp
 from .io import write_json_file
+from .local_anchor import (
+    anchor_applies_to_context,
+    anchor_project_ref,
+    anchor_settings,
+    anchor_workspace_ref,
+    find_anchor,
+)
 from .paths import settings_path
 
 
@@ -508,6 +515,42 @@ def load_settings(root: Path) -> dict:
     except (OSError, json.JSONDecodeError):
         return normalize_settings_payload(None)
     return normalize_settings_payload(data)
+
+
+def load_effective_settings(root: Path, start: str | Path | None = None) -> dict:
+    payload = normalize_settings_payload(load_settings(root))
+    anchor = find_anchor(start or Path.cwd())
+    if not anchor or not anchor_applies_to_context(anchor, root):
+        return payload
+
+    workspace_ref = anchor_workspace_ref(anchor)
+    if workspace_ref:
+        payload["current_workspace_ref"] = workspace_ref
+    project_ref = anchor_project_ref(anchor)
+    if project_ref:
+        payload["current_project_ref"] = project_ref
+
+    local_settings = anchor_settings(anchor)
+    hooks = local_settings.get("hooks")
+    if isinstance(hooks, dict):
+        payload["hooks"] = normalize_hook_settings({**payload["hooks"], **hooks})
+    context_budget = local_settings.get("context_budget")
+    if isinstance(context_budget, dict):
+        payload["context_budget"] = normalize_context_budget({**payload["context_budget"], **context_budget})
+
+    local_freedom = local_settings.get("allowed_freedom")
+    current_freedom = str(payload.get("allowed_freedom") or "proof-only")
+    if (
+        isinstance(local_freedom, str)
+        and local_freedom in ALLOWED_FREEDOM
+        and STRICTNESS_ORDER[local_freedom] <= STRICTNESS_ORDER[current_freedom]
+    ):
+        payload["allowed_freedom"] = local_freedom
+        payload["allowed_freedom_source"] = "local-anchor"
+    else:
+        payload["allowed_freedom_source"] = "context-settings"
+    payload["anchor_path"] = str(anchor.get("_path", ""))
+    return payload
 
 
 def validate_settings_state(root: Path, records: dict[str, dict]) -> list[ValidationError]:

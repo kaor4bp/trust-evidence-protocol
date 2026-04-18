@@ -70,7 +70,8 @@ def compact_hydration_summary(stdout: str) -> str:
 
 def main() -> int:
     payload = load_payload()
-    context_root = locate_context(payload.get("cwd"))
+    cwd = payload.get("cwd")
+    context_root = locate_context(cwd)
     if context_root is None:
         return 0
     if not hooks_enabled(context_root):
@@ -78,7 +79,7 @@ def main() -> int:
     if hook_mode(context_root, "session_start_hydrate") == "off":
         return 0
 
-    result = run_runtime_gate("--context", str(context_root), "hydrate-context")
+    result = run_runtime_gate("--context", str(context_root), "hydrate-context", cwd=cwd)
     stdout = result.stdout.strip()
     stderr = result.stderr.strip()
 

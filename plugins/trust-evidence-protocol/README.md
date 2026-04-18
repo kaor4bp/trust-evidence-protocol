@@ -7,6 +7,7 @@ The skill defines reasoning discipline; the plugin provides commands, validation
 Responsibilities:
 
 - resolve a TEP context root, targeting global `~/.tep_context` with legacy `.codex_context` fallback
+- honor workdir-local `.tep` anchor files that select the global context root plus current workspace/project focus
 - bootstrap a strict context layout
 - provide canonical JSON record templates
 - validate persistent-memory records before hydration or review
@@ -49,6 +50,30 @@ Skill workflow files:
 - `workflows/after-action.md`: what to do after edits, tests, commands, discoveries, or completed work
 - `workflows/persistence-and-records.md`: when and how to persist information into canonical records
 - `workflows/plugin-commands.md`: command reference for hydration, review, strictness, records, projects, tasks, and hypotheses
+
+The preferred live context root is `~/.tep_context`.
+Legacy repo-local `.codex_context` roots remain supported for migration and tests.
+
+Local workdirs may contain a `.tep` JSON anchor.
+The anchor is local configuration, not canonical memory and not proof.
+It lets one global context hold multiple workspaces/projects while each checkout still resolves the right focus:
+
+- `context_root`: canonical context root, usually `~/.tep_context`
+- `workspace_ref`: active `WSP-*` memory boundary for this workdir
+- `project_ref`: optional active `PRJ-*` focus inside the workspace
+- `settings`: local hook/context-budget preferences and optional `allowed_freedom`
+
+Local `.tep.settings.allowed_freedom` can only keep or lower the effective freedom.
+It cannot raise a workspace from `proof-only` to `evidence-authorized` or `implementation-choice`; escalation still goes through canonical strictness requests and approvals.
+
+Context-root resolution order is:
+
+1. explicit `--context`
+2. `TEP_CONTEXT_ROOT`
+3. nearest `.tep.context_root`
+4. global `~/.tep_context`
+5. nearest legacy `.codex_context`
+6. global `~/.tep_context` fallback
 
 The only canonical storage layer is:
 
@@ -102,6 +127,9 @@ Additional transient index:
 - `artifact_policy` for when referenced files are copied or only linked
 - `cleanup` staging and retention thresholds
 - optional `analysis` backend policy for logic solving and topic prefiltering
+
+`.tep` is intentionally excluded from canonical storage.
+Do not use it to store records, claims, user facts, permissions, restrictions, or guidelines.
 
 Tick-tock development should target `~/.tep_context`: use the current plugin to
 develop the next plugin version, merge local context into the unified context,
@@ -593,9 +621,17 @@ Guideline disclosure for code edits:
   - workspace records do not prove claims
 
 - `set-current-workspace --workspace WSP-*`
-  - stores the active workspace boundary in `.codex_context/settings.json.current_workspace_ref`
+  - stores the default active workspace boundary in `<context>/settings.json.current_workspace_ref`
   - causes new canonical records to inherit `workspace_refs` automatically
   - hydration and session-start hooks show the current workspace explicitly
+
+- `init-anchor --directory . --workspace WSP-* [--project PRJ-*]`
+  - writes a local `.tep` anchor that selects context root plus workdir-specific workspace/project focus
+  - `.tep` is local configuration, not canonical memory and not proof
+  - local `allowed_freedom` can only keep or lower effective strictness
+
+- `show-anchor` / `validate-anchor`
+  - inspect and validate the nearest local `.tep` anchor
 
 - `set-current-workspace --clear`
   - clears the current workspace boundary
@@ -606,6 +642,9 @@ Guideline disclosure for code edits:
 - `assign-workspace --workspace WSP-* --record <ID>`
   - attaches an existing record to a workspace via `workspace_refs`
 
+- `assign-workspace --workspace WSP-* --records-file <path>`
+  - attaches a newline-separated set of existing record ids to a workspace for explicit migration
+
 - `assign-workspace --workspace WSP-* --all-unassigned`
   - migrates legacy records that have no `workspace_refs` without guessing their `project_refs`
 
@@ -615,7 +654,7 @@ Guideline disclosure for code edits:
   - project records do not prove claims
 
 - `set-current-project --project PRJ-*`
-  - stores the active project boundary in `.codex_context/settings.json.current_project_ref`
+  - stores the default active project boundary in `<context>/settings.json.current_project_ref`
   - causes `brief-context` and `build-reasoning-case` to filter relevance sections by `project_refs`
 
 - `set-current-project --clear`
@@ -869,16 +908,18 @@ Current prioritization behavior:
 
 - canonical workspace records live in `records/workspace/WSP-*.json`
 - records should link to workspaces through `workspace_refs`
-- `settings.json.current_workspace_ref` selects the current workspace boundary
+- `settings.json.current_workspace_ref` selects the default workspace boundary
+- local `.tep.workspace_ref` may select a workdir-specific workspace boundary over the same global context
 - hydration and session-start hook output must show the current workspace when one is set
 - new canonical records automatically inherit the current workspace
-- legacy records can be migrated safely with `assign-workspace --all-unassigned`; this does not guess project ownership
+- legacy records can be migrated safely with `assign-workspace --all-unassigned` or `assign-workspace --records-file`; this does not guess project ownership
 
 `project` is an optional narrower context boundary inside a workspace.
 
 - canonical project records live in `records/project/PRJ-*.json`
 - records can link to projects through `project_refs`
-- `settings.json.current_project_ref` selects the current project boundary
+- `settings.json.current_project_ref` selects the default project boundary
+- local `.tep.project_ref` may select a workdir-specific project inside the anchored workspace
 - current project filtering intentionally excludes unassigned records from relevance sections
 - new source/claim/model/flow/plan/debt/action/open-question records automatically inherit the current project
 - unassigned legacy records remain valid and can be migrated gradually with `assign-project`

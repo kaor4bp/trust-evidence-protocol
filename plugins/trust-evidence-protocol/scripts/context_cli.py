@@ -169,6 +169,8 @@ from context_lib import (
     active_hypotheses_for,
     active_hypothesis_entry_by_claim,
     active_permissions_for,
+    ANCHOR_FILENAME,
+    anchor_context_root,
     assign_project_payload,
     assign_workspace_payload,
     assign_task_payload,
@@ -232,7 +234,10 @@ from context_lib import (
     load_settings,
     load_records,
     load_code_index_entries,
+    find_anchor,
+    find_anchor_path,
     load_hypotheses_index,
+    load_anchor,
     write_hypotheses_index,
     task_drift_text_lines,
     task_identity_text,
@@ -531,6 +536,105 @@ def print_workspace_detail(workspace: dict) -> None:
         print(line)
 
 
+def anchor_path_for(directory: str | None) -> Path:
+    base = Path(directory).expanduser() if directory else Path.cwd()
+    return base.resolve() / ANCHOR_FILENAME
+
+
+def cmd_init_anchor(
+    root: Path,
+    directory: str | None,
+    workspace_ref: str,
+    project_ref: str | None,
+    allowed_freedom: str | None,
+    hook_verbosity: str | None,
+    force: bool,
+    note: str,
+) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    if workspace_ref not in records or records[workspace_ref].get("record_type") != "workspace":
+        print(f"{workspace_ref} must reference a workspace record")
+        return 1
+    if project_ref:
+        if project_ref not in records or records[project_ref].get("record_type") != "project":
+            print(f"{project_ref} must reference a project record")
+            return 1
+        workspace_projects = records[workspace_ref].get("project_refs", [])
+        if project_ref not in workspace_projects:
+            print(f"{project_ref} is not listed in {workspace_ref}.project_refs")
+            return 1
+
+    path = anchor_path_for(directory)
+    if path.exists() and not force:
+        print(f"{path} already exists; use --force to overwrite")
+        return 1
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "context_root": str(root),
+        "workspace_ref": workspace_ref,
+        "project_ref": project_ref,
+        "settings": {},
+        "note": note,
+    }
+    settings: dict[str, object] = {}
+    if allowed_freedom:
+        settings["allowed_freedom"] = allowed_freedom
+    if hook_verbosity:
+        settings["hooks"] = {"verbosity": hook_verbosity}
+    payload["settings"] = settings
+    write_json_file(path, payload)
+    print(f"Wrote local TEP anchor: {path}")
+    return 0
+
+
+def cmd_show_anchor(start: str | None) -> int:
+    anchor = find_anchor(start or Path.cwd())
+    if not anchor:
+        print("No .tep anchor found.")
+        return 0
+    path = anchor.get("_path", "")
+    print(f"Anchor: {path}")
+    print(f"context_root={anchor_context_root(anchor) or ''}")
+    print(f"workspace_ref={anchor.get('workspace_ref') or ''}")
+    print(f"project_ref={anchor.get('project_ref') or ''}")
+    settings = anchor.get("settings", {})
+    if isinstance(settings, dict) and settings:
+        print(f"settings={json.dumps(settings, sort_keys=True)}")
+    return 0
+
+
+def cmd_validate_anchor(root: Path, start: str | None) -> int:
+    anchor_path = find_anchor_path(start or Path.cwd())
+    if anchor_path is None:
+        print("No .tep anchor found.")
+        return 1
+    anchor = load_anchor(anchor_path)
+    anchor_root = anchor_context_root(anchor)
+    if anchor_root != root.resolve():
+        print(f"{anchor_path}: context_root does not resolve to active context {root}")
+        return 1
+
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    workspace_ref = str(anchor.get("workspace_ref") or "").strip()
+    project_ref = str(anchor.get("project_ref") or "").strip()
+    if workspace_ref not in records or records[workspace_ref].get("record_type") != "workspace":
+        print(f"{anchor_path}: workspace_ref must reference a workspace record")
+        return 1
+    if project_ref:
+        if project_ref not in records or records[project_ref].get("record_type") != "project":
+            print(f"{anchor_path}: project_ref must reference a project record")
+            return 1
+        if project_ref not in records[workspace_ref].get("project_refs", []):
+            print(f"{anchor_path}: project_ref is not listed in workspace.project_refs")
+            return 1
+    print(f"Validated local TEP anchor: {anchor_path}")
+    return 0
+
+
 def print_restriction_detail(restriction: dict) -> None:
     for line in restriction_detail_lines(restriction):
         print(line)
@@ -629,7 +733,8 @@ def cmd_set_current_workspace(root: Path, workspace_ref: str | None, clear: bool
 def cmd_assign_workspace(
     root: Path,
     workspace_ref: str,
-    record_ref: str | None,
+    record_refs: list[str],
+    records_file: str | None,
     all_unassigned: bool,
     note: str | None,
 ) -> int:
@@ -639,8 +744,18 @@ def cmd_assign_workspace(
     if workspace_ref not in records or records[workspace_ref].get("record_type") != "workspace":
         print(f"{workspace_ref} must reference a workspace record")
         return 1
-    if not record_ref and not all_unassigned:
-        print("assign-workspace requires --record or --all-unassigned")
+    if records_file:
+        try:
+            record_refs.extend(
+                line.strip()
+                for line in Path(records_file).expanduser().read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+        except OSError as exc:
+            print(f"{records_file}: {exc}")
+            return 1
+    if not record_refs and not all_unassigned:
+        print("assign-workspace requires --record, --records-file, or --all-unassigned")
         return 1
 
     timestamp = now_timestamp()
@@ -651,13 +766,15 @@ def cmd_assign_workspace(
             if data.get("record_type") != "workspace" and not data.get("workspace_refs")
         ]
     else:
-        if record_ref not in records:
-            print(f"missing record {record_ref}")
-            return 1
-        if records[record_ref].get("record_type") == "workspace":
-            print("assign-workspace target must not be a workspace record")
-            return 1
-        targets = [record_ref]
+        targets = []
+        for record_ref in record_refs:
+            if record_ref not in records:
+                print(f"missing record {record_ref}")
+                return 1
+            if records[record_ref].get("record_type") == "workspace":
+                print("assign-workspace target must not be a workspace record")
+                return 1
+            targets.append(record_ref)
 
     updates = {
         target: assign_workspace_payload(public_record_payload(records[target]), timestamp, workspace_ref, note)
@@ -685,7 +802,7 @@ def cmd_assign_workspace(
     reason = (
         f"Assigned {len(targets)} unassigned record(s) to workspace {workspace_ref}"
         if all_unassigned
-        else f"Assigned {record_ref} to workspace {workspace_ref}"
+        else f"Assigned {len(targets)} record(s) to workspace {workspace_ref}"
     )
     changed_ids = [*targets]
     if workspace_ref in updates:
@@ -4416,9 +4533,34 @@ def parse_args() -> argparse.Namespace:
         help="Attach existing records to a WSP-* via workspace_refs.",
     )
     assign_workspace.add_argument("--workspace", dest="workspace_ref", required=True)
-    assign_workspace.add_argument("--record", dest="record_ref")
+    assign_workspace.add_argument("--record", dest="record_refs", action="append", default=[])
+    assign_workspace.add_argument("--records-file")
     assign_workspace.add_argument("--all-unassigned", action="store_true")
     assign_workspace.add_argument("--note")
+
+    init_anchor = subparsers.add_parser(
+        "init-anchor",
+        help="Write a local .tep anchor for the current workdir. The anchor is not canonical memory.",
+    )
+    init_anchor.add_argument("--directory", help="Directory where .tep should be written. Defaults to cwd.")
+    init_anchor.add_argument("--workspace", dest="workspace_ref", required=True)
+    init_anchor.add_argument("--project", dest="project_ref")
+    init_anchor.add_argument("--allowed-freedom", choices=sorted(ALLOWED_FREEDOM))
+    init_anchor.add_argument("--hook-verbosity", choices=("quiet", "normal", "debug"))
+    init_anchor.add_argument("--force", action="store_true")
+    init_anchor.add_argument("--note", default="Local TEP anchor. Not canonical memory and not proof.")
+
+    show_anchor = subparsers.add_parser(
+        "show-anchor",
+        help="Show the nearest local .tep anchor.",
+    )
+    show_anchor.add_argument("--start")
+
+    validate_anchor = subparsers.add_parser(
+        "validate-anchor",
+        help="Validate the nearest local .tep anchor against the resolved context.",
+    )
+    validate_anchor.add_argument("--start")
 
     record_project = subparsers.add_parser(
         "record-project",
@@ -5426,11 +5568,29 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             cmd_assign_workspace(
                 root,
                 workspace_ref=args.workspace_ref,
-                record_ref=args.record_ref,
+                record_refs=args.record_refs,
+                records_file=args.records_file,
                 all_unassigned=args.all_unassigned,
                 note=args.note,
             )
         )
+    if args.command == "init-anchor":
+        raise SystemExit(
+            cmd_init_anchor(
+                root,
+                directory=args.directory,
+                workspace_ref=args.workspace_ref,
+                project_ref=args.project_ref,
+                allowed_freedom=args.allowed_freedom,
+                hook_verbosity=args.hook_verbosity,
+                force=args.force,
+                note=args.note,
+            )
+        )
+    if args.command == "show-anchor":
+        raise SystemExit(cmd_show_anchor(args.start))
+    if args.command == "validate-anchor":
+        raise SystemExit(cmd_validate_anchor(root, args.start))
     if args.command == "record-project":
         raise SystemExit(
             cmd_record_project(

@@ -34,6 +34,7 @@ MUTATING_COMMANDS = {
     "record-workspace",
     "set-current-workspace",
     "assign-workspace",
+    "init-anchor",
     "record-project",
     "set-current-project",
     "assign-project",

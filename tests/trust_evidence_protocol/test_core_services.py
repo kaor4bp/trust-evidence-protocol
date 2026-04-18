@@ -534,6 +534,7 @@ from tep_runtime.retrieval import (  # noqa: E402
 )
 from tep_runtime.settings import (  # noqa: E402
     is_strictness_escalation,
+    load_effective_settings,
     load_settings,
     load_strictness_requests,
     next_strictness_request_id,
@@ -4006,6 +4007,30 @@ def test_context_root_resolver_prefers_explicit_env_global_then_legacy(tmp_path:
     assert resolve_context_root(start=tmp_path, require_exists=True) is None
 
 
+def test_context_root_resolver_uses_local_tep_anchor_before_global(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setattr(Path, "home", lambda: home)
+    global_root = home / ".tep_context"
+    global_root.mkdir(parents=True)
+    anchored_root = tmp_path / "anchored-context"
+    anchored_root.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    write_json_file(
+        workspace / ".tep",
+        {
+            "schema_version": 1,
+            "context_root": str(anchored_root),
+            "workspace_ref": "WSP-20260418-abcdef12",
+            "project_ref": "PRJ-20260418-abcdef12",
+            "settings": {"allowed_freedom": "proof-only"},
+        },
+    )
+
+    assert resolve_context_root(start=workspace) == anchored_root.resolve()
+    assert resolve_context_root(start=workspace, require_exists=True) == anchored_root.resolve()
+
+
 def test_claim_core_classifies_lifecycle_retrieval_and_action_blocks() -> None:
     active = {"id": "CLM-20260418-abcdef12", "record_type": "claim"}
     assert claim_lifecycle_state(active) == "active"
@@ -5535,6 +5560,43 @@ def test_settings_core_normalizes_and_persists_policy(tmp_path: Path) -> None:
     assert stored["allowed_freedom"] == "evidence-authorized"
     assert stored["current_task_ref"] is None
     assert "updated_at" in json.loads(settings_path(root).read_text(encoding="utf-8"))
+
+
+def test_local_anchor_overrides_focus_and_can_only_lower_allowed_freedom(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / ".tep_context"
+    root.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    write_settings(root, allowed_freedom="proof-only", current_workspace_ref=None, current_project_ref=None)
+    write_json_file(
+        workspace / ".tep",
+        {
+            "schema_version": 1,
+            "context_root": str(root),
+            "workspace_ref": "WSP-20260418-abcdef12",
+            "project_ref": "PRJ-20260418-abcdef12",
+            "settings": {"allowed_freedom": "implementation-choice", "hooks": {"verbosity": "debug"}},
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    effective = load_effective_settings(root)
+    assert effective["current_workspace_ref"] == "WSP-20260418-abcdef12"
+    assert effective["current_project_ref"] == "PRJ-20260418-abcdef12"
+    assert effective["allowed_freedom"] == "proof-only"
+    assert effective["hooks"]["verbosity"] == "debug"
+
+    write_settings(root, allowed_freedom="implementation-choice")
+    write_json_file(
+        workspace / ".tep",
+        {
+            "schema_version": 1,
+            "context_root": str(root),
+            "workspace_ref": "WSP-20260418-abcdef12",
+            "settings": {"allowed_freedom": "proof-only"},
+        },
+    )
+    assert load_effective_settings(root)["allowed_freedom"] == "proof-only"
 
 
 def test_settings_core_handles_strictness_approval_requests(tmp_path: Path) -> None:

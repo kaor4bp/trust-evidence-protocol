@@ -18,7 +18,7 @@ from .io import write_text_file
 from .links import dependency_refs_for_record
 from .records import RECORD_DIRS
 from .reports import rel_display, write_report
-from .settings import load_settings
+from .settings import load_effective_settings, load_settings
 from .validation import safe_list
 
 ACTIVE_PLAN_STATUSES = {"proposed", "active", "blocked"}
@@ -225,7 +225,7 @@ def fallback_claims(records: dict[str, dict], limit: int) -> list[dict]:
 
 
 def write_attention_report(root: Path, records: dict[str, dict], limit: int = 12) -> None:
-    settings = load_settings(root)
+    settings = load_effective_settings(root)
     current_workspace_ref = str(settings.get("current_workspace_ref") or "").strip()
     current_project_ref = str(settings.get("current_project_ref") or "").strip()
     current_task_ref = str(settings.get("current_task_ref") or "").strip()
@@ -548,7 +548,7 @@ def build_index(root: Path, records: dict[str, dict]) -> None:
             summary = f"{data.get('status', '')} | {data.get('question', '')}"
         groups[record_type].append((record_id, str(data.get("scope", "")), summary))
 
-    settings = load_settings(root)
+    settings = load_effective_settings(root)
     lines = [
         "# Codex Context Index\n",
         "\n",

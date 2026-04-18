@@ -60,6 +60,7 @@ def session_ref_from_payload(payload: dict) -> str | None:
 
 
 def capture_user_prompt(context_root, payload: dict) -> bool:
+    cwd = payload.get("cwd")
     settings = load_settings(context_root)
     input_capture = settings.get("input_capture", {}) if isinstance(settings.get("input_capture"), dict) else {}
     mode = str(input_capture.get("user_prompts", "capture"))
@@ -97,16 +98,17 @@ def capture_user_prompt(context_root, payload: dict) -> bool:
     ]
     if session_ref:
         args.extend(["--session-ref", session_ref])
-    result = run_context_cli(*args, input_text=captured_text)
+    result = run_context_cli(*args, input_text=captured_text, cwd=cwd)
     if result.returncode != 0:
         return False
-    hydrate = run_runtime_gate("--context", str(context_root), "hydrate-context")
+    hydrate = run_runtime_gate("--context", str(context_root), "hydrate-context", cwd=cwd)
     return hydrate.returncode == 0
 
 
 def main() -> int:
     payload = load_payload()
-    context_root = locate_context(payload.get("cwd"))
+    cwd = payload.get("cwd")
+    context_root = locate_context(cwd)
     if context_root is None:
         return 0
     if not hooks_enabled(context_root):
@@ -116,7 +118,7 @@ def main() -> int:
         return 0
     capture_user_prompt(context_root, payload)
 
-    result = run_runtime_gate("--context", str(context_root), "show-hydration")
+    result = run_runtime_gate("--context", str(context_root), "show-hydration", cwd=cwd)
     if result.returncode == 0:
         if mode == "remind" and hook_verbosity(context_root) != "quiet":
             emit(

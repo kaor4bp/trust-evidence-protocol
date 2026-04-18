@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .settings import load_settings
+from .settings import load_effective_settings, load_settings
 
 
 def current_task_ref(root: Path) -> str:
@@ -12,11 +12,11 @@ def current_task_ref(root: Path) -> str:
 
 
 def current_project_ref(root: Path) -> str:
-    return str(load_settings(root).get("current_project_ref") or "").strip()
+    return str(load_effective_settings(root).get("current_project_ref") or "").strip()
 
 
 def current_workspace_ref(root: Path) -> str:
-    return str(load_settings(root).get("current_workspace_ref") or "").strip()
+    return str(load_effective_settings(root).get("current_workspace_ref") or "").strip()
 
 
 def workspace_refs_for_write(root: Path, explicit_refs: list[str]) -> list[str]:

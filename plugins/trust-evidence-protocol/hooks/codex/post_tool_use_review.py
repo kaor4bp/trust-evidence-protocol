@@ -39,7 +39,8 @@ def emit_warning(reason: str, *, hydration_marked_stale: bool) -> None:
 
 def main() -> int:
     payload = load_payload()
-    context_root = locate_context(payload.get("cwd"))
+    cwd = payload.get("cwd")
+    context_root = locate_context(cwd)
     if context_root is None:
         return 0
     if not hooks_enabled(context_root):
@@ -67,6 +68,7 @@ def main() -> int:
         "invalidate-hydration",
         "--reason",
         f"mutating Bash command completed ({action_kind}): {command[:120]}",
+        cwd=cwd,
     )
     if result.returncode != 0:
         return 0

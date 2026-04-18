@@ -60,7 +60,7 @@ PLUGIN_SCRIPTS = PLUGIN_ROOT / "scripts"
 if str(PLUGIN_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(PLUGIN_SCRIPTS))
 
-from context_lib import DEFAULT_HOOK_SETTINGS, load_records, load_settings, resolve_context_root  # noqa: E402
+from context_lib import DEFAULT_HOOK_SETTINGS, load_effective_settings, load_records, load_settings, resolve_context_root  # noqa: E402
 
 TEP_ICON = "🛡️"
 
@@ -126,7 +126,7 @@ def locate_context(start: str | None) -> Path | None:
 def load_hook_settings(context_root: Path | None) -> dict:
     if context_root is None:
         return dict(DEFAULT_HOOK_SETTINGS)
-    settings = load_settings(context_root)
+    settings = load_effective_settings(context_root)
     hooks = settings.get("hooks")
     if isinstance(hooks, dict):
         return {**DEFAULT_HOOK_SETTINGS, **hooks}
@@ -164,7 +164,7 @@ def permission_applies(permission: dict, project_ref: str | None, task_ref: str 
 
 
 def active_permission_context(context_root: Path, action_kind: str, *, limit: int = 5) -> str:
-    settings = load_settings(context_root)
+    settings = load_effective_settings(context_root)
     records, errors = load_records(context_root)
     project_ref = str(settings.get("current_project_ref") or "").strip() or None
     task_ref = str(settings.get("current_task_ref") or "").strip() or None
@@ -266,22 +266,22 @@ def infer_action_kind(command: str, context_root: Path | None = None) -> str | N
     return None
 
 
-def run_runtime_gate(*args: str) -> subprocess.CompletedProcess[str]:
+def run_runtime_gate(*args: str, cwd: str | Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(RUNTIME_GATE), *args],
         capture_output=True,
         text=True,
-        cwd=str(REPO_ROOT),
+        cwd=str(cwd or REPO_ROOT),
         check=False,
     )
 
 
-def run_context_cli(*args: str, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+def run_context_cli(*args: str, input_text: str | None = None, cwd: str | Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(CONTEXT_CLI), *args],
         input=input_text,
         capture_output=True,
         text=True,
-        cwd=str(REPO_ROOT),
+        cwd=str(cwd or REPO_ROOT),
         check=False,
     )

@@ -4,7 +4,7 @@ Use plugin commands when available instead of manually editing canonical records
 Write raw payload files directly only under `<context>/artifacts/`; write canonical records through `context_cli.py` commands.
 
 When operating in normal live mode, omit `--context` and let the runtime resolve
-`TEP_CONTEXT_ROOT`, `~/.tep_context`, or legacy `.codex_context`.
+`TEP_CONTEXT_ROOT`, nearest `.tep.context_root`, `~/.tep_context`, or legacy `.codex_context`.
 The examples below keep explicit `--context .codex_context` for fixture,
 migration, and debugging clarity; do not treat that as a requirement to prefer
 repo-local memory over the unified global context.
@@ -107,6 +107,20 @@ Use `context_budget` as policy for compact/normal/debug output; do not treat com
 Use `input_capture` as policy for prompt provenance; `INP-*` records are not proof until classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
 Use `analysis` as policy for optional helpers such as Z3 and NMF; it is not proof and not permission to silently install dependencies.
 
+## Local Anchors
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context ~/.tep_context init-anchor --directory . --workspace WSP-* --project PRJ-* --allowed-freedom proof-only
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py show-anchor
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context ~/.tep_context validate-anchor
+```
+
+Use `.tep` as a workdir-local anchor when one global `~/.tep_context` contains several workspaces or projects.
+The anchor stores `context_root`, `workspace_ref`, optional `project_ref`, and local display/budget settings.
+It is not canonical memory and must not contain facts, records, permissions, restrictions, guidelines, or proposals.
+Local `allowed_freedom` can only lower the effective strictness; it cannot raise `proof-only` to a more permissive mode.
+Hooks use the Codex payload cwd when available, so anchored workdirs keep their own workspace/project focus even when the plugin code lives elsewhere.
+
 ## Code Index
 
 ```bash
@@ -139,6 +153,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context show-workspace
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context set-current-workspace --workspace WSP-*
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context assign-workspace --workspace WSP-* --all-unassigned
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context assign-workspace --workspace WSP-* --records-file /tmp/record-ids.txt
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-project --project-key "..." --title "..." --root-ref SRC-* --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context show-project
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context set-current-project --project PRJ-*

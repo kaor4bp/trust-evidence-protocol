@@ -148,6 +148,7 @@ venv.bak/
 # Local agent/runtime context
 .codex_context/
 .tep_context/
+.tep
 .codex/
 .codex-test-home/
 

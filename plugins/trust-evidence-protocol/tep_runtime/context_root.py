@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from .local_anchor import anchor_context_root, find_anchor
+
 TEP_CONTEXT_ENV = "TEP_CONTEXT_ROOT"
 GLOBAL_CONTEXT_DIR = ".tep_context"
 LEGACY_CONTEXT_DIR = ".codex_context"
@@ -59,6 +61,11 @@ def resolve_context_root(
         env_root = env_context_root()
         if env_root is not None:
             candidates.append(env_root)
+
+        anchor = find_anchor(start, stop=stop)
+        anchor_root = anchor_context_root(anchor)
+        if anchor_root is not None:
+            candidates.append(anchor_root)
 
         global_root = global_context_root()
         if global_root.is_dir():
