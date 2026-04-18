@@ -51,6 +51,7 @@ from context_lib import (
     LOGIC_SOLVER_OPTIONAL_BACKENDS,
     MODEL_KNOWLEDGE_CLASSES,
     MODEL_STATUSES,
+    NEXT_STEP_INTENTS,
     OPEN_QUESTION_STATUSES,
     PERMISSION_REQUIRED_FREEDOMS,
     PERMISSION_APPLIES_TO,
@@ -80,6 +81,7 @@ from context_lib import (
     build_claim_payload,
     build_comparison_payload,
     build_context_brief_payload,
+    build_next_step_payload,
     build_flow_oracle,
     build_flow_payload,
     build_flow_preconditions,
@@ -133,6 +135,7 @@ from context_lib import (
     collect_link_edges,
     context_write_lock,
     context_brief_text_lines,
+    next_step_text_lines,
     code_index_entries_root,
     code_index_entry_path,
     active_restrictions_for,
@@ -1609,6 +1612,16 @@ def cmd_brief_context(root: Path, task: str, limit: int, detail: str) -> int:
     return 0
 
 
+def cmd_next_step(root: Path, intent: str, task: str, detail: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload = build_next_step_payload(records, root, intent=intent, task=task)
+    for line in next_step_text_lines(payload, TEP_ICON, detail=detail):
+        print(line)
+    return 0
+
+
 ANALYSIS_SETTING_SPECS = {
     "logic_solver.enabled": ("bool", None),
     "logic_solver.backend": ("choice", LOGIC_SOLVER_BACKENDS),
@@ -1805,6 +1818,7 @@ def cmd_help(topic: str) -> int:
             "probe inspect: mechanically expand one curiosity probe into record details and link status",
             "probe chain draft: mechanically draft an evidence-chain skeleton from one curiosity probe",
             "probe pack: compact mechanical probe, inspection, and chain-draft bundle",
+            "next step: compact action route that tells the agent which TEP branch to follow next",
             "logic index: generated predicate atom/rule projection over CLM.logic blocks",
             "code index: index files/symbols/areas and attach navigation-only CIX annotations",
             "strictness: inspect or change allowed_freedom through user-backed requests",
@@ -1812,6 +1826,7 @@ def cmd_help(topic: str) -> int:
         ],
         "commands": [
             "review-context | reindex-context | scan-conflicts",
+            "next-step --intent answer|plan|edit|test|persist|permission|debug --task ...",
             "brief-context --task ... | search-records --query ... | record-detail --record ...",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
@@ -4955,6 +4970,13 @@ def parse_args() -> argparse.Namespace:
     brief_context.add_argument("--task", required=True)
     brief_context.add_argument("--limit", type=int, default=8)
     brief_context.add_argument("--detail", choices=("compact", "full"), default="compact")
+    next_step = subparsers.add_parser(
+        "next-step",
+        help="Print the compact TEP action route for the agent's current intent.",
+    )
+    next_step.add_argument("--intent", choices=sorted(NEXT_STEP_INTENTS), default="auto")
+    next_step.add_argument("--task", default="")
+    next_step.add_argument("--detail", choices=("compact", "full"), default="compact")
     search_records = subparsers.add_parser(
         "search-records",
         help="Search canonical records by keyword before expanding links.",
@@ -6055,6 +6077,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(cmd_reindex_context(root))
     if args.command == "brief-context":
         raise SystemExit(cmd_brief_context(root, task=args.task, limit=args.limit, detail=args.detail))
+    if args.command == "next-step":
+        raise SystemExit(cmd_next_step(root, intent=args.intent, task=args.task, detail=args.detail))
     if args.command == "search-records":
         raise SystemExit(
             cmd_search_records(

@@ -14,6 +14,7 @@ repo-local memory over the unified global context.
 When the plugin MCP server is available, prefer MCP for lookup-heavy work and keep CLI for mutation:
 
 - `brief_context`: equivalent to compact `brief-context --task "..."`; pass `detail=full` only when the expanded brief is needed
+- `next_step`: equivalent to `next-step --intent ...`; use it as the first route branch when unsure what to do next
 - `search_records`: equivalent to `search-records --query "..."`
 - `record_detail`: equivalent to `record-detail --record ID`
 - `linked_records`: equivalent to `linked-records --record ID`
@@ -65,6 +66,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context scan-conflicts
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context brief-context --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context brief-context --task "..." --detail full
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context next-step --intent plan --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context search-records --query "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-detail --record CLM-*
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-neighborhood --record CLM-* --depth 2

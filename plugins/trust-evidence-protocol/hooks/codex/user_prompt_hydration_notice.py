@@ -13,6 +13,7 @@ from hook_common import (
     load_payload,
     load_settings,
     locate_context,
+    next_step_hint,
     run_context_cli,
     run_runtime_gate,
 )
@@ -57,6 +58,24 @@ def session_ref_from_payload(payload: dict) -> str | None:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+def infer_intent(prompt_text: str) -> str:
+    text = prompt_text.lower()
+    if any(
+        word in text
+        for word in ("commit", "edit", "fix", "implement", "write code", "patch", "refactor", "реализ", "сделай", "почини")
+    ):
+        return "edit"
+    if any(word in text for word in ("test", "pytest", "docker", "check")):
+        return "test"
+    if any(word in text for word in ("permission", "разреш", "approve", "approval")):
+        return "permission"
+    if any(word in text for word in ("plan", "план", "think", "думаешь", "обсудим")):
+        return "plan"
+    if any(word in text for word in ("debug", "investigate", "проверь", "разбер", "why", "почему")):
+        return "debug"
+    return "answer"
 
 
 def capture_user_prompt(context_root, payload: dict) -> bool:
@@ -120,11 +139,15 @@ def main() -> int:
 
     result = run_runtime_gate("--context", str(context_root), "show-hydration", cwd=cwd)
     if result.returncode == 0:
+        prompt_text = prompt_text_from_payload(payload)
+        route_hint = next_step_hint(context_root, intent=infer_intent(prompt_text), task=prompt_text)
         if mode == "remind" and hook_verbosity(context_root) != "quiet":
             emit(
-                additional_context=PROTOCOL_REMINDER,
+                additional_context=f"{route_hint}\n{PROTOCOL_REMINDER}",
                 system_message="Trust Evidence Protocol reminder.",
             )
+        elif mode == "remind":
+            emit(additional_context=route_hint, system_message="TEP route.")
         return 0
 
     emit(

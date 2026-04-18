@@ -3147,6 +3147,11 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     assert model_id in brief
     assert claim_id in brief
 
+    next_step = run_cli(context, "next-step", "--intent", "edit", "--task", "debug bridge check-r1 retry").stdout
+    assert "TEP Next Step" in next_step
+    assert "intent: edit" in next_step
+    assert "hydrate-context" in next_step
+
     reasoning = run_cli(
         context,
         "build-reasoning-case",

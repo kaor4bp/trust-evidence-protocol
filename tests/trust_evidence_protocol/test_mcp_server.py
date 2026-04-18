@@ -390,6 +390,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "limit": 3, "scope": "all", "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 21,
+                "method": "tools/call",
+                "params": {
+                    "name": "next_step",
+                    "arguments": {"context": str(context), "intent": "plan", "task": "MCP route"},
+                },
+            },
         ]
     )
 
@@ -398,6 +407,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     tool_names = {tool["name"] for tool in by_id[2]["result"]["tools"]}
     assert {
         "search_records",
+        "next_step",
         "record_detail",
         "linked_records",
         "code_search",
@@ -513,6 +523,11 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert '"comparison_is_proof": false' in attention_diagram_compare["content"][0]["text"]
     assert '"record_summaries"' in attention_diagram_compare["content"][0]["text"]
     assert '"payload_char_count"' in attention_diagram_compare["content"][0]["text"]
+
+    next_step = by_id[21]["result"]
+    assert next_step["isError"] is False
+    assert "TEP Next Step" in next_step["content"][0]["text"]
+    assert "intent: plan" in next_step["content"][0]["text"]
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:

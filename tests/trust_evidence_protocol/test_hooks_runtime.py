@@ -593,6 +593,7 @@ def test_user_prompt_hook_reminds_when_context_is_fresh(tmp_path: Path) -> None:
     payload = hook_json(HOOK_DIR / "user_prompt_hydration_notice.py", hook_payload(context, ""))
     assert payload["systemMessage"] == "🛡️ Trust Evidence Protocol reminder."
     additional_context = payload["hookSpecificOutput"]["additionalContext"]
+    assert "TEP route:" in additional_context
     assert "Use the Trust Evidence Protocol skill" in additional_context
     assert "Evidence Chain" in additional_context
     assert "GLD-* + quote" in additional_context
@@ -612,6 +613,7 @@ def test_user_prompt_hook_captures_prompt_input_and_keeps_hydration_fresh(tmp_pa
 
     hook_output = hook_json(HOOK_DIR / "user_prompt_hydration_notice.py", payload)
     assert hook_output["systemMessage"] == "🛡️ Trust Evidence Protocol reminder."
+    assert "TEP route:" in hook_output["hookSpecificOutput"]["additionalContext"]
     assert "Use the Trust Evidence Protocol skill" in hook_output["hookSpecificOutput"]["additionalContext"]
 
     input_ids = record_ids(context, "input")
@@ -647,10 +649,15 @@ def test_quiet_hook_verbosity_compacts_session_and_suppresses_fresh_prompt_remin
     assert session_payload["systemMessage"] == "🛡️ Context hydrated."
     additional_context = session_payload["hookSpecificOutput"]["additionalContext"]
     assert "Current task:" in additional_context
+    assert "TEP route:" in additional_context
     assert "Use the Trust Evidence Protocol skill" not in additional_context
 
-    prompt_result = run_script(HOOK_DIR / "user_prompt_hydration_notice.py", hook_payload(context, ""))
-    assert prompt_result.stdout.strip() == ""
+    quiet_prompt = hook_payload(context, "")
+    quiet_prompt["prompt"] = "implement quiet route"
+    prompt_payload = hook_json(HOOK_DIR / "user_prompt_hydration_notice.py", quiet_prompt)
+    assert prompt_payload["systemMessage"] == "🛡️ TEP route."
+    assert "TEP route: intent=edit" in prompt_payload["hookSpecificOutput"]["additionalContext"]
+    assert "Use the Trust Evidence Protocol skill" not in prompt_payload["hookSpecificOutput"]["additionalContext"]
 
 
 def test_pre_and_post_tool_hooks_track_mutating_bash_commands(tmp_path: Path) -> None:

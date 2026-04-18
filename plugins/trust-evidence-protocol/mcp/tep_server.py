@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.47"
+SERVER_VERSION = "0.1.48"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -65,6 +65,25 @@ TOOLS: list[JsonObject] = [
                 },
             },
             ["task"],
+        ),
+    },
+    {
+        "name": "next_step",
+        "description": (
+            "Read the compact TEP action route for the current agent intent. "
+            "Use this before choosing between answering, planning, editing, testing, persisting, permission, or debugging."
+        ),
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "intent": {
+                    "type": "string",
+                    "enum": ["auto", "answer", "plan", "edit", "test", "persist", "permission", "debug", "after-mutation"],
+                    "default": "auto",
+                },
+                "task": {"type": "string", "description": "Optional concrete task or prompt summary."},
+                "detail": {"type": "string", "enum": ["compact", "full"], "default": "compact"},
+            },
         ),
     },
     {
@@ -557,6 +576,21 @@ def tool_brief_context(args: JsonObject) -> tuple[bool, str]:
     )
 
 
+def tool_next_step(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "next-step",
+            "--intent",
+            str(args.get("intent") or "auto"),
+            "--task",
+            str(args.get("task") or ""),
+            "--detail",
+            str(args.get("detail") or "compact"),
+        ],
+    )
+
+
 def tool_search_records(args: JsonObject) -> tuple[bool, str]:
     cli_args = [
         "search-records",
@@ -982,6 +1016,7 @@ def tool_logic_conflict_candidates(args: JsonObject) -> tuple[bool, str]:
 
 TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "brief_context": tool_brief_context,
+    "next_step": tool_next_step,
     "search_records": tool_search_records,
     "record_detail": tool_record_detail,
     "linked_records": tool_linked_records,

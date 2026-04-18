@@ -34,6 +34,7 @@ Do not use hidden chain-of-thought, unsupported memory, raw text, generated view
 
 When MCP tools are available, prefer them for read-only lookup:
 
+- use `next_step` first when you are unsure which TEP branch to follow; treat it as navigation only
 - use compact `brief_context` before planning, answering, editing, or asking permission; request `detail=full` only when the compact brief is insufficient
 - use `search_records` before inspecting raw files from scratch
 - use `record_detail` or `linked_records` before citing a record

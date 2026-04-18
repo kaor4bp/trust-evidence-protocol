@@ -60,7 +60,15 @@ PLUGIN_SCRIPTS = PLUGIN_ROOT / "scripts"
 if str(PLUGIN_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(PLUGIN_SCRIPTS))
 
-from context_lib import DEFAULT_HOOK_SETTINGS, load_effective_settings, load_records, load_settings, resolve_context_root  # noqa: E402
+from context_lib import (  # noqa: E402
+    DEFAULT_HOOK_SETTINGS,
+    build_next_step_payload,
+    load_effective_settings,
+    load_records,
+    load_settings,
+    next_step_inline,
+    resolve_context_root,
+)
 
 TEP_ICON = "🛡️"
 
@@ -223,6 +231,14 @@ def active_permission_context(context_root: Path, action_kind: str, *, limit: in
         lines.append(f"Permission context was partial because {len(errors)} record load issue(s) were found.")
     lines.append("If a permission should authorize this action, cite its `PRM-*` in the public Evidence Chain.")
     return "\n".join(lines)
+
+
+def next_step_hint(context_root: Path, *, intent: str = "auto", task: str = "") -> str:
+    records, errors = load_records(context_root)
+    if errors:
+        return "TEP route: review-context -> fix record load issues"
+    payload = build_next_step_payload(records, context_root, intent=intent, task=task)
+    return next_step_inline(payload)
 
 
 def unquote_shell_token(value: str) -> str:

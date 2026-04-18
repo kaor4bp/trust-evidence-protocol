@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 
-from hook_common import TEP_ICON, hook_mode, hook_verbosity, hooks_enabled, load_payload, locate_context, run_runtime_gate
+from hook_common import TEP_ICON, hook_mode, hook_verbosity, hooks_enabled, load_payload, locate_context, next_step_hint, run_runtime_gate
 
 
 PROTOCOL_REMINDER = (
@@ -90,6 +90,7 @@ def main() -> int:
         if task_context and not quiet:
             additional_parts.append(task_context)
         additional_parts.append(compact_hydration_summary(stdout) if quiet else hydration_summary(stdout))
+        additional_parts.append(next_step_hint(context_root, intent="auto"))
         if "hydrated with" in stdout.lower():
             additional_parts.append(
                 (
