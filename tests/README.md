@@ -68,6 +68,18 @@ The live-agent harness:
 - runs `codex exec` inside Docker
 - writes JSON output validated by `tests/case_output.schema.json`
 
+Most live-agent tests validate the agent's TEP reasoning behavior through the
+skill and JSON verdict schema. They are not sufficient proof that the full
+plugin runtime is installed.
+
+`tests/trust_evidence_protocol/test_live_plugin_runtime.py` is the plugin
+runtime canary. It installs the full plugin bundle into isolated
+`CODEX_HOME/plugins/cache/home-local-plugins/...`, enables the plugin in
+`config.toml`, creates an anchored `.tep_context`, and requires the live agent
+to run plugin runtime commands such as `context_cli.py`. This test should fail
+if the environment only has a copied standalone skill or if the runtime image
+cannot execute the plugin.
+
 ## Manual `codex exec`
 
 Run a one-off prompt through the same isolated harness:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -14,8 +15,10 @@ REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 TESTS_DIR: Final = REPO_ROOT / "tests"
 ENV_PATH: Final = REPO_ROOT / ".env"
 SCHEMA_PATH: Final = TESTS_DIR / "case_output.schema.json"
+PLUGIN_RUNTIME_SCHEMA_PATH: Final = TESTS_DIR / "plugin_runtime_output.schema.json"
 DOCKERFILE_PATH: Final = TESTS_DIR / "Dockerfile"
 IMAGE_TAG: Final = "tim-codex-skill-runner"
+PLUGIN_ROOT: Final = REPO_ROOT / "plugins" / "trust-evidence-protocol"
 PLUGIN_SKILLS_ROOT: Final = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "skills"
 DEFAULT_SKILL: Final = "trust-evidence-protocol"
 DEFAULT_ANSWER_OPTIONS: Final[dict[str, str]] = {
@@ -27,6 +30,31 @@ _LAST_RUN_CHECKSUM: str | None = None
 _LAST_SKILL_CHECKSUM_BEFORE: str | None = None
 _LAST_SKILL_CHECKSUM_AFTER: str | None = None
 _LAST_RESULT_PAYLOAD: dict[str, object] | None = None
+_LAST_STDOUT: str | None = None
+_LAST_STDERR: str | None = None
+
+_PLUGIN_RUNTIME_PROMPT_TEMPLATE: Final = """\
+Use the Trust Evidence Protocol skill from the installed TEP Runtime plugin.
+This is a live plugin conformance test. Do not answer from memory only.
+
+You must verify the plugin mechanically:
+1. Check that the installed plugin root exists at `{plugin_root}`.
+2. Run the plugin runtime CLI against `/workspace/.tep_context`.
+3. Run a hydration or review command through the plugin runtime.
+4. Base your verdict on observed command output.
+
+Return JSON matching the provided schema.
+Set `plugin_checks.skill_prompt_visible` true only if the prompt/context mentions TEP Runtime or the Trust Evidence Protocol skill.
+Set `plugin_checks.plugin_root_exists` true only if `{plugin_root}` exists.
+Set `plugin_checks.context_cli_works` true only if `context_cli.py` runs successfully.
+Set `plugin_checks.hydration_or_review_works` true only if a hydration/review/preflight command succeeds.
+Use `observed_markers` for short literal markers you observed, such as `TEP Runtime`, `Hydrated context`, `Review OK`, or `Validated strict Codex context`.
+Use `commands_run` for the exact commands you ran.
+Verdict must be `plugin-active` only when all checks are true.
+
+User scenario:
+{prompt}
+"""
 
 _SYSTEM_PROMPT_TEMPLATE: Final = """\
 Use the {skill} skill.
@@ -61,6 +89,7 @@ def run_case(
     answer_options: dict[str, str] | list[str] | tuple[str, ...] | None = None,
 ) -> str:
     global _LAST_RUN_CHECKSUM, _LAST_SKILL_CHECKSUM_BEFORE, _LAST_SKILL_CHECKSUM_AFTER, _LAST_RESULT_PAYLOAD
+    global _LAST_STDOUT, _LAST_STDERR
 
     env = _codex_env()
     _ensure_image()
@@ -125,12 +154,16 @@ def run_case(
         if result.returncode != 0:
             stdout = result.stdout.decode("utf-8", errors="replace")
             stderr = result.stderr.decode("utf-8", errors="replace")
+            _LAST_STDOUT = stdout
+            _LAST_STDERR = stderr
             raise RuntimeError(
                 "codex exec failed\n"
                 f"exit_code={result.returncode}\n"
                 f"stdout:\n{stdout}\n"
                 f"stderr:\n{stderr}"
             )
+        _LAST_STDOUT = result.stdout.decode("utf-8", errors="replace")
+        _LAST_STDERR = result.stderr.decode("utf-8", errors="replace")
 
         _LAST_SKILL_CHECKSUM_AFTER = sha256sum_path(source_skill_path)
         if _LAST_SKILL_CHECKSUM_AFTER != _LAST_SKILL_CHECKSUM_BEFORE:
@@ -208,6 +241,93 @@ def run_case(
         return verdict
 
 
+def run_plugin_runtime_case(prompt: str) -> dict[str, object]:
+    """Run a real Codex agent with the full plugin bundle installed in CODEX_HOME."""
+    global _LAST_RUN_CHECKSUM, _LAST_RESULT_PAYLOAD, _LAST_STDOUT, _LAST_STDERR
+
+    env = _codex_env()
+    _ensure_image()
+    version = _plugin_version()
+
+    with tempfile.TemporaryDirectory(prefix="codex-tep-plugin-case.") as tmp_dir:
+        workspace = Path(tmp_dir)
+        codex_home = workspace / "codex-home"
+        plugin_root = codex_home / "plugins" / "cache" / "home-local-plugins" / "trust-evidence-protocol" / version
+        _sync_plugin(plugin_root)
+        _write_plugin_config(codex_home)
+        context_root = workspace / ".tep_context"
+        workspace_ref, project_ref = _bootstrap_context(context_root)
+        _write_workspace_anchor(workspace, workspace_ref=workspace_ref, project_ref=project_ref)
+
+        prompt_path = workspace / "prompt.txt"
+        output_path = workspace / "plugin-result.json"
+        schema_path = workspace / PLUGIN_RUNTIME_SCHEMA_PATH.name
+        shutil.copyfile(PLUGIN_RUNTIME_SCHEMA_PATH, schema_path)
+        prompt_path.write_text(
+            _build_plugin_runtime_prompt(
+                prompt,
+                plugin_root=f"/codex-home/plugins/cache/home-local-plugins/trust-evidence-protocol/{version}",
+            ),
+            encoding="utf-8",
+        )
+
+        _login_codex(codex_home, env["OPENAI_API_KEY"], env=env)
+
+        command = [
+            "docker",
+            "run",
+            "--rm",
+            "-i",
+            "-e",
+            "CODEX_HOME=/codex-home",
+            "-v",
+            f"{codex_home}:/codex-home",
+            "-v",
+            f"{workspace}:/workspace",
+            IMAGE_TAG,
+            "codex",
+            "exec",
+            "--cd",
+            "/workspace",
+            "--sandbox",
+            "workspace-write",
+            "--skip-git-repo-check",
+            "--color",
+            "never",
+            "--output-schema",
+            f"/workspace/{schema_path.name}",
+            "-o",
+            f"/workspace/{output_path.name}",
+            "-",
+        ]
+
+        with prompt_path.open("rb") as stdin_file:
+            result = subprocess.run(
+                command,
+                stdin=stdin_file,
+                capture_output=True,
+                text=False,
+                check=False,
+                env=env,
+            )
+
+        _LAST_STDOUT = result.stdout.decode("utf-8", errors="replace")
+        _LAST_STDERR = result.stderr.decode("utf-8", errors="replace")
+        if result.returncode != 0:
+            raise RuntimeError(
+                "codex exec failed\n"
+                f"exit_code={result.returncode}\n"
+                f"stdout:\n{_LAST_STDOUT}\n"
+                f"stderr:\n{_LAST_STDERR}"
+            )
+
+        payload = json.loads(output_path.read_text(encoding="utf-8"))
+        _validate_plugin_runtime_payload(payload)
+        _LAST_RESULT_PAYLOAD = payload
+        _LAST_RUN_CHECKSUM = sha256sum_path(output_path)
+        return dict(payload)
+
+
 def get_last_run_checksum() -> str:
     if _LAST_RUN_CHECKSUM is None:
         raise RuntimeError("No case has been executed yet.")
@@ -218,6 +338,18 @@ def get_last_result_payload() -> dict[str, object]:
     if _LAST_RESULT_PAYLOAD is None:
         raise RuntimeError("No case has been executed yet.")
     return dict(_LAST_RESULT_PAYLOAD)
+
+
+def get_last_stdout() -> str:
+    if _LAST_STDOUT is None:
+        raise RuntimeError("No case has been executed yet.")
+    return _LAST_STDOUT
+
+
+def get_last_stderr() -> str:
+    if _LAST_STDERR is None:
+        raise RuntimeError("No case has been executed yet.")
+    return _LAST_STDERR
 
 
 def get_last_reason() -> str:
@@ -264,6 +396,15 @@ def _build_prompt(user_prompt: str, *, skill: str, answer_options: dict[str, str
     return dedent(system_prompt).strip() + "\n\n" + dedent(user_prompt).strip() + "\n"
 
 
+def _build_plugin_runtime_prompt(user_prompt: str, *, plugin_root: str) -> str:
+    return (
+        dedent(_PLUGIN_RUNTIME_PROMPT_TEMPLATE)
+        .format(plugin_root=plugin_root, prompt=dedent(user_prompt).strip())
+        .strip()
+        + "\n"
+    )
+
+
 def _normalize_answer_options(
     answer_options: dict[str, str] | list[str] | tuple[str, ...] | None,
 ) -> dict[str, str]:
@@ -306,7 +447,7 @@ def _ensure_image() -> None:
         text=True,
         check=False,
     )
-    if inspect.returncode == 0:
+    if inspect.returncode == 0 and _image_has_python():
         return
 
     build = subprocess.run(
@@ -329,6 +470,16 @@ def _ensure_image() -> None:
             f"stdout:\n{build.stdout}\n"
             f"stderr:\n{build.stderr}"
         )
+
+
+def _image_has_python() -> bool:
+    result = subprocess.run(
+        ["docker", "run", "--rm", IMAGE_TAG, "python3", "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0
 
 
 def _login_codex(codex_home: Path, api_key: str, *, env: dict[str, str]) -> None:
@@ -398,6 +549,162 @@ def _sync_skill(source_skill_path: Path, codex_home: Path, skill: str) -> None:
     skills_dir = codex_home / "skills"
     skills_dir.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source_skill_path, skills_dir / skill)
+
+
+def _plugin_version() -> str:
+    manifest = PLUGIN_ROOT / ".codex-plugin" / "plugin.json"
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    version = payload["version"]
+    if not isinstance(version, str) or not version:
+        raise RuntimeError(f"Invalid plugin version in {manifest}")
+    return version
+
+
+def _sync_plugin(target: Path) -> None:
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(
+        PLUGIN_ROOT,
+        target,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+
+
+def _write_plugin_config(codex_home: Path) -> None:
+    codex_home.mkdir(parents=True, exist_ok=True)
+    (codex_home / "config.toml").write_text(
+        dedent(
+            """
+            [features]
+            codex_hooks = true
+
+            [plugins."trust-evidence-protocol@home-local-plugins"]
+            enabled = true
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _bootstrap_context(context_root: Path) -> tuple[str, str]:
+    subprocess.run(
+        ["python3", str(PLUGIN_ROOT / "scripts" / "bootstrap_codex_context.py"), str(context_root)],
+        check=True,
+    )
+    workspace_ref = _record_workspace(context_root)
+    project_ref = _record_project(context_root, workspace_ref)
+    _run_context_cli(context_root, "set-current-workspace", "--workspace", workspace_ref)
+    _run_context_cli(context_root, "set-current-project", "--project", project_ref)
+    subprocess.run(
+        [
+            "python3",
+            str(PLUGIN_ROOT / "scripts" / "runtime_gate.py"),
+            "--context",
+            str(context_root),
+            "hydrate-context",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return workspace_ref, project_ref
+
+
+def _write_workspace_anchor(workspace: Path, *, workspace_ref: str, project_ref: str) -> None:
+    (workspace / ".tep").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "context_root": "/workspace/.tep_context",
+                "workspace_ref": workspace_ref,
+                "project_ref": project_ref,
+                "settings": {
+                    "allowed_freedom": "proof-only",
+                    "hooks": {"verbosity": "quiet"},
+                    "context_budget": {"hydration": "compact"},
+                },
+                "note": "Live plugin conformance test anchor.",
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _record_workspace(context_root: Path) -> str:
+    result = _run_context_cli(
+        context_root,
+        "record-workspace",
+        "--workspace-key",
+        "live-plugin-test",
+        "--title",
+        "Live Plugin Test Workspace",
+        "--root-ref",
+        "/workspace",
+        "--note",
+        "Ephemeral live-agent plugin conformance workspace.",
+    )
+    return _extract_record_id(result.stdout, "WSP")
+
+
+def _record_project(context_root: Path, workspace_ref: str) -> str:
+    result = _run_context_cli(
+        context_root,
+        "record-project",
+        "--project-key",
+        "live-plugin-test-project",
+        "--title",
+        "Live Plugin Test Project",
+        "--root-ref",
+        "/workspace",
+        "--workspace",
+        workspace_ref,
+        "--note",
+        "Ephemeral live-agent plugin conformance project.",
+    )
+    return _extract_record_id(result.stdout, "PRJ")
+
+
+def _run_context_cli(context_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["python3", str(PLUGIN_ROOT / "scripts" / "context_cli.py"), "--context", str(context_root), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _extract_record_id(stdout: str, prefix: str) -> str:
+    match = re.search(rf"\b({re.escape(prefix)}-[A-Za-z0-9-]+)\b", stdout)
+    if not match:
+        raise RuntimeError(f"Could not extract {prefix}-* id from output: {stdout!r}")
+    return match.group(1)
+
+
+def _validate_plugin_runtime_payload(payload: dict[str, object]) -> None:
+    if payload.get("verdict") not in {"plugin-active", "plugin-missing"}:
+        raise RuntimeError(f"Unexpected plugin runtime verdict: {payload.get('verdict')!r}")
+    checks = payload.get("plugin_checks")
+    if not isinstance(checks, dict):
+        raise TypeError(f"Unexpected plugin_checks type: {type(checks)!r}")
+    for key in (
+        "skill_prompt_visible",
+        "plugin_root_exists",
+        "context_cli_works",
+        "hydration_or_review_works",
+    ):
+        if not isinstance(checks.get(key), bool):
+            raise TypeError(f"Unexpected plugin check {key}: {checks.get(key)!r}")
+    for key in ("commands_run", "observed_markers", "reason"):
+        value = payload.get(key)
+        if not isinstance(value, list if key != "reason" else str):
+            raise TypeError(f"Unexpected {key} type: {type(value)!r}")
+    if not all(isinstance(item, str) for item in payload["commands_run"]):
+        raise TypeError("commands_run must contain only strings")
+    if not all(isinstance(item, str) for item in payload["observed_markers"]):
+        raise TypeError("observed_markers must contain only strings")
 
 
 def _sha256_file(path: Path) -> str:
