@@ -72,12 +72,37 @@ for root in (local_source, cache_target):
     hook = root / "hooks" / "codex" / "hook_common.py"
     if "should_defer_unanchored_hydration" not in hook.read_text(encoding="utf-8"):
         raise SystemExit(f"{hook}: missing unanchored hydration guard")
+    bytecode = [
+        path
+        for path in root.rglob("*")
+        if path.name == "__pycache__" or path.suffix == ".pyc"
+    ]
+    if bytecode:
+        sample = "\n".join(str(path) for path in bytecode[:10])
+        raise SystemExit(f"{root}: bytecode/cache artifacts must not be installed:\n{sample}")
 print(f"verified version={expected}")
 PY
 
 if [[ -d "$HOME/.tep_context" ]]; then
   "$cache_target/hooks/hydrate_context.sh" --allow-unanchored >/dev/null || true
 fi
+
+python3 - "$local_source" "$cache_target" <<'PY'
+import sys
+from pathlib import Path
+
+for root_arg in sys.argv[1:]:
+    root = Path(root_arg)
+    bytecode = [
+        path
+        for path in root.rglob("*")
+        if path.name == "__pycache__" or path.suffix == ".pyc"
+    ]
+    if bytecode:
+        sample = "\n".join(str(path) for path in bytecode[:10])
+        raise SystemExit(f"{root}: post-hydration bytecode/cache artifacts must not remain:\n{sample}")
+print("verified bytecode-free install")
+PY
 
 echo "active_cache_dirs:"
 find "$cache_base" -mindepth 1 -maxdepth 1 -type d -print | sort
