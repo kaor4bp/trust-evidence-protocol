@@ -297,6 +297,21 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
 
     run_cli(
         context,
+        "record-workspace",
+        "--workspace-key",
+        "qa-tim",
+        "--title",
+        "QA TIM Workspace",
+        "--root-ref",
+        "/tmp/pray-and-run",
+        "--note",
+        "workspace boundary",
+    )
+    workspace_id = record_ids(context, "workspace")[0]
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+
+    run_cli(
+        context,
         "record-project",
         "--project-key",
         "pray-and-run",
@@ -308,6 +323,8 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
         "project boundary",
     )
     project_id = record_ids(context, "project")[0]
+    workspace = json.loads((context / "records" / "workspace" / f"{workspace_id}.json").read_text(encoding="utf-8"))
+    assert workspace["project_refs"] == [project_id]
 
     run_cli(context, "set-current-project", "--project", project_id)
 
@@ -331,6 +348,7 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
     )
     source_id = record_ids(context, "source")[0]
     source = json.loads((context / "records" / "source" / f"{source_id}.json").read_text(encoding="utf-8"))
+    assert source["workspace_refs"] == [workspace_id]
     assert source["project_refs"] == [project_id]
 
     run_cli(
@@ -351,6 +369,7 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
     )
     claim_id = record_ids(context, "claim")[0]
     claim = json.loads((context / "records" / "claim" / f"{claim_id}.json").read_text(encoding="utf-8"))
+    assert claim["workspace_refs"] == [workspace_id]
     assert claim["project_refs"] == [project_id]
     run_cli(context, "assign-project", "--project", project_id, "--record", claim_id)
 
@@ -408,6 +427,7 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
     restriction_id = record_ids(context, "restriction")[0]
 
     hydrate = run_runtime(context, "hydrate-context")
+    assert f"Current workspace: {workspace_id}" in hydrate.stdout
     assert f"Current project: {project_id}" in hydrate.stdout
     assert f"Current task: {task_id}" in hydrate.stdout
     assert f"Active restrictions: 1 ({restriction_id})" in hydrate.stdout
@@ -415,6 +435,7 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
     attention = (context / "review" / "attention.md").read_text(encoding="utf-8")
     assert "generated as an attention/navigation view" in attention
     assert "Trust order for lookup" in attention
+    assert workspace_id in attention
     assert project_id in attention
     assert task_id in attention
     assert claim_id in attention

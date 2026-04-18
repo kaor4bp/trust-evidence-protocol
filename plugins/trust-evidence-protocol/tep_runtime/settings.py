@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .errors import ValidationError
-from .ids import PROJECT_ID_PATTERN, TASK_ID_PATTERN, now_timestamp
+from .ids import PROJECT_ID_PATTERN, TASK_ID_PATTERN, WORKSPACE_ID_PATTERN, now_timestamp
 from .io import write_json_file
 from .paths import settings_path
 
@@ -114,6 +114,7 @@ DEFAULT_SETTINGS = {
     "cleanup": DEFAULT_CLEANUP_SETTINGS,
     "analysis": DEFAULT_ANALYSIS_SETTINGS,
     "current_task_ref": None,
+    "current_workspace_ref": None,
     "current_project_ref": None,
 }
 
@@ -463,6 +464,7 @@ def normalize_settings_payload(raw: object) -> dict:
         "cleanup": normalize_cleanup_settings(None),
         "analysis": normalize_analysis_settings(None),
         "current_task_ref": None,
+        "current_workspace_ref": None,
         "current_project_ref": None,
     }
     if not isinstance(raw, dict):
@@ -483,6 +485,11 @@ def normalize_settings_payload(raw: object) -> dict:
         payload["current_task_ref"] = None
     elif isinstance(current_task_ref, str) and TASK_ID_PATTERN.match(current_task_ref.strip()):
         payload["current_task_ref"] = current_task_ref.strip()
+    current_workspace_ref = raw.get("current_workspace_ref")
+    if current_workspace_ref is None:
+        payload["current_workspace_ref"] = None
+    elif isinstance(current_workspace_ref, str) and WORKSPACE_ID_PATTERN.match(current_workspace_ref.strip()):
+        payload["current_workspace_ref"] = current_workspace_ref.strip()
     current_project_ref = raw.get("current_project_ref")
     if current_project_ref is None:
         payload["current_project_ref"] = None
@@ -517,6 +524,10 @@ def validate_settings_state(root: Path, records: dict[str, dict]) -> list[Valida
         if raw_current_task_ref not in (None, ""):
             if not isinstance(raw_current_task_ref, str) or not TASK_ID_PATTERN.match(raw_current_task_ref.strip()):
                 return [ValidationError(path, "current_task_ref must be empty or TASK-YYYYMMDD-xxxxxxxx")]
+        raw_current_workspace_ref = raw_settings.get("current_workspace_ref")
+        if raw_current_workspace_ref not in (None, ""):
+            if not isinstance(raw_current_workspace_ref, str) or not WORKSPACE_ID_PATTERN.match(raw_current_workspace_ref.strip()):
+                return [ValidationError(path, "current_workspace_ref must be empty or WSP-YYYYMMDD-xxxxxxxx")]
         raw_current_project_ref = raw_settings.get("current_project_ref")
         if raw_current_project_ref not in (None, ""):
             if not isinstance(raw_current_project_ref, str) or not PROJECT_ID_PATTERN.match(raw_current_project_ref.strip()):
@@ -643,6 +654,7 @@ def validate_settings_state(root: Path, records: dict[str, dict]) -> list[Valida
 
     settings = load_settings(root)
     current_task_ref = str(settings.get("current_task_ref") or "").strip()
+    current_workspace_ref = str(settings.get("current_workspace_ref") or "").strip()
     current_project_ref = str(settings.get("current_project_ref") or "").strip()
     errors: list[ValidationError] = []
     if current_task_ref not in records:
@@ -650,6 +662,11 @@ def validate_settings_state(root: Path, records: dict[str, dict]) -> list[Valida
             errors.append(ValidationError(settings_path(root), f"current_task_ref missing task record: {current_task_ref}"))
     elif records[current_task_ref].get("record_type") != "task":
         errors.append(ValidationError(settings_path(root), f"current_task_ref must reference a task record: {current_task_ref}"))
+    if current_workspace_ref not in records:
+        if current_workspace_ref:
+            errors.append(ValidationError(settings_path(root), f"current_workspace_ref missing workspace record: {current_workspace_ref}"))
+    elif records[current_workspace_ref].get("record_type") != "workspace":
+        errors.append(ValidationError(settings_path(root), f"current_workspace_ref must reference a workspace record: {current_workspace_ref}"))
     if current_project_ref not in records:
         if current_project_ref:
             errors.append(ValidationError(settings_path(root), f"current_project_ref missing project record: {current_project_ref}"))
@@ -668,6 +685,7 @@ def write_settings(
     cleanup: dict | None = None,
     analysis: dict | None = None,
     current_task_ref: object = _UNSET,
+    current_workspace_ref: object = _UNSET,
     current_project_ref: object = _UNSET,
 ) -> None:
     payload = normalize_settings_payload(load_settings(root))
@@ -692,6 +710,13 @@ def write_settings(
             payload["current_task_ref"] = current_task_ref.strip()
         else:
             raise ValueError("current_task_ref must be empty or TASK-YYYYMMDD-xxxxxxxx")
+    if current_workspace_ref is not _UNSET:
+        if current_workspace_ref is None:
+            payload["current_workspace_ref"] = None
+        elif isinstance(current_workspace_ref, str) and WORKSPACE_ID_PATTERN.match(current_workspace_ref.strip()):
+            payload["current_workspace_ref"] = current_workspace_ref.strip()
+        else:
+            raise ValueError("current_workspace_ref must be empty or WSP-YYYYMMDD-xxxxxxxx")
     if current_project_ref is not _UNSET:
         if current_project_ref is None:
             payload["current_project_ref"] = None

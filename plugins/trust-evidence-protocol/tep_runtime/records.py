@@ -8,6 +8,7 @@ from .paths import code_index_entries_root
 
 
 RECORD_DIRS = {
+    "workspace": "workspace",
     "project": "project",
     "input": "input",
     "source": "source",
@@ -27,6 +28,7 @@ RECORD_DIRS = {
 }
 
 RECORD_TYPE_TO_PREFIX = {
+    "workspace": "WSP-",
     "project": "PRJ-",
     "input": "INP-",
     "source": "SRC-",

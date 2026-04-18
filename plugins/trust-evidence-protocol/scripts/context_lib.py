@@ -144,6 +144,7 @@ from tep_runtime.ids import (
     RANDOM_ID_SUFFIX_PATTERN,
     TASK_ID_PATTERN,
     WORKING_CONTEXT_ID_PATTERN,
+    WORKSPACE_ID_PATTERN,
     next_artifact_id,
     next_record_id,
     now_timestamp,
@@ -319,12 +320,14 @@ from tep_runtime.scopes import (
     active_restrictions_for,
     current_project_ref,
     current_task_ref,
+    current_workspace_ref,
     guideline_applies,
     permission_applies,
     project_refs_for_write,
     record_belongs_to_project,
     record_belongs_to_task,
     task_refs_for_write,
+    workspace_refs_for_write,
 )
 from tep_runtime.schemas import (
     ACTION_SAFETY_CLASSES,
@@ -359,10 +362,12 @@ from tep_runtime.schemas import (
     TASK_TYPES,
     WORKING_CONTEXT_KINDS,
     WORKING_CONTEXT_STATUSES,
+    WORKSPACE_STATUSES,
     artifact_ref_exists,
     validate_record,
     validate_refs,
 )
+from tep_runtime.workspaces import assign_workspace_payload, build_workspace_payload
 from tep_runtime.search import (
     concise,
     public_record_summary,

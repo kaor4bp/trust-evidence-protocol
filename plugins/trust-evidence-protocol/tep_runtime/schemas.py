@@ -29,6 +29,7 @@ CLAIM_LIFECYCLE_STATES = {"active", "resolved", "historical", "archived"}
 CLAIM_ATTENTION_LEVELS = {"normal", "low", "fallback-only", "explicit-only"}
 ACTION_STATUSES = {"planned", "executed", "abandoned"}
 ACTION_SAFETY_CLASSES = {"safe", "guarded", "unsafe"}
+WORKSPACE_STATUSES = {"active", "archived"}
 PROJECT_STATUSES = {"active", "archived"}
 PERMISSION_APPLIES_TO = {"global", "project", "task"}
 RESTRICTION_STATUSES = {"active", "inactive", "superseded"}
@@ -67,6 +68,7 @@ REF_KEYS = {
     "derived_from",
     "input_refs",
     "derived_record_refs",
+    "workspace_refs",
     "project_refs",
     "task_refs",
     "working_context_refs",
@@ -136,7 +138,31 @@ def validate_record(record_id: str, data: dict) -> list[str]:
     if not str(data.get("note", "")).strip():
         errors.append("note is required")
 
-    if record_type == "project":
+    if record_type == "workspace":
+        if not str(data.get("workspace_key", "")).strip():
+            errors.append("workspace_key is required")
+        if not str(data.get("title", "")).strip():
+            errors.append("title is required")
+        if str(data.get("status", "")).strip() not in WORKSPACE_STATUSES:
+            errors.append("invalid workspace status")
+        if not str(data.get("context_root", "")).strip():
+            errors.append("context_root is required")
+        if not str(data.get("created_at", "")).strip():
+            errors.append("created_at is required")
+        if not str(data.get("updated_at", "")).strip():
+            errors.append("updated_at is required")
+        try:
+            ensure_string_list(data, "root_refs")
+        except ValueError as exc:
+            errors.append(str(exc))
+        for key in ("project_refs", "tags"):
+            if key in data:
+                try:
+                    ensure_list(data, key)
+                except ValueError as exc:
+                    errors.append(str(exc))
+
+    elif record_type == "project":
         if not str(data.get("project_key", "")).strip():
             errors.append("project_key is required")
         if not str(data.get("title", "")).strip():
@@ -152,7 +178,7 @@ def validate_record(record_id: str, data: dict) -> list[str]:
                 errors.append("project must define root_refs")
         except ValueError as exc:
             errors.append(str(exc))
-        for key in ("related_project_refs",):
+        for key in ("related_project_refs", "workspace_refs"):
             if key in data:
                 try:
                     ensure_list(data, key)
@@ -735,6 +761,9 @@ def validate_refs(records: dict[str, dict]) -> list[ValidationError]:
         for ref in safe_list(data, "project_refs") + safe_list(data, "related_project_refs"):
             if ref in records and records[ref].get("record_type") != "project":
                 errors.append(ValidationError(path, f"project ref {ref} must reference a project record"))
+        for ref in safe_list(data, "workspace_refs"):
+            if ref in records and records[ref].get("record_type") != "workspace":
+                errors.append(ValidationError(path, f"workspace ref {ref} must reference a workspace record"))
         for ref in safe_list(data, "task_refs"):
             if ref in records and records[ref].get("record_type") != "task":
                 errors.append(ValidationError(path, f"task ref {ref} must reference a task record"))
@@ -765,6 +794,11 @@ def validate_refs(records: dict[str, dict]) -> list[ValidationError]:
         for ref in safe_list(data, "input_refs"):
             if ref in records and records[ref].get("record_type") != "input":
                 errors.append(ValidationError(path, f"input ref {ref} must reference an input record"))
+
+        if data.get("record_type") == "workspace":
+            for ref in safe_list(data, "project_refs"):
+                if ref in records and records[ref].get("record_type") != "project":
+                    errors.append(ValidationError(path, f"workspace project ref {ref} must reference a project record"))
 
         if data.get("record_type") == "project":
             for ref in safe_list(data, "related_project_refs"):

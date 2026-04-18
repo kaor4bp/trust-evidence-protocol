@@ -38,7 +38,7 @@ files only after manifest hash verification and refuses conflicting overwrites.
 - claim `status` is truth state; claim `lifecycle.state` is retrieval/attention state
 - `resolved` and `historical` claims remain searchable but are fallback-only
 - `archived` claims are explicit-reference/audit material and must not appear in normal task context
-- records may use `project_refs` for project boundaries and `task_refs` for task-local scope
+- records should use `workspace_refs` for memory boundaries, `project_refs` for project boundaries, and `task_refs` for task-local scope
 - reusable coding, testing, review, debugging, architecture, or agent-behavior rules belong in `GLD-*` guideline records
 - constructive agent critique and solution options belong in `PRP-*` proposal records
 - proposal assumptions may guide discussion, but must not be used as proof in evidence chains
@@ -60,6 +60,7 @@ files only after manifest hash verification and refuses conflicting overwrites.
   index.md
   backlog.md
   records/
+    workspace/
     project/
     input/
     source/
@@ -139,6 +140,7 @@ Use the templates bundled with the plugin:
 It currently stores:
 
 - `allowed_freedom`
+- `current_workspace_ref`
 - `current_project_ref`
 - `current_task_ref`
 - repo-local Codex hook modes under `hooks`
@@ -189,7 +191,8 @@ Logic vocabulary pressure:
 - `working_context` records capture operational focus, pinned refs, local assumptions, concerns, and handoff context; they do not prove claims or grant permission
 - `guideline` records capture reusable operational rules; they guide work but do not prove truth
 - `proposal` records capture constructive agent position, critique, concrete options, and stop conditions; they do not prove truth or grant permission
-- `project` records capture context boundaries; records may link to them with `project_refs`
+- `workspace` records capture memory boundaries; records should link to them with `workspace_refs`
+- `project` records capture optional narrower boundaries inside a workspace; records may link to them with `project_refs`
 - `restriction` records capture global, project, or task-scoped constraints; they do not prove truth
 - `permission` records may be global, project-scoped, or task-scoped through `applies_to`, `project_refs`, and `task_refs`
 - `hypotheses.jsonl` is an index of active tentative `CLM-*` records, not a second source of truth

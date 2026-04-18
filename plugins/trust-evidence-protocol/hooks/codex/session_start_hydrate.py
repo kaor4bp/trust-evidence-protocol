@@ -44,6 +44,7 @@ def hydration_summary(stdout: str) -> str:
         if line.startswith(
             (
                 "Current project:",
+                "Current workspace:",
                 "Current task:",
                 "Active restrictions:",
                 "Active guidelines:",
@@ -51,7 +52,7 @@ def hydration_summary(stdout: str) -> str:
         ):
             lines.append(line)
     if not lines:
-        lines.append("Project context hydrated. No current task/project summary was emitted.")
+        lines.append("Project context hydrated. No current task/project/workspace summary was emitted.")
     lines.append(PROTOCOL_REMINDER)
     return "\n".join(lines)
 
@@ -60,7 +61,7 @@ def compact_hydration_summary(stdout: str) -> str:
     lines = [
         line
         for line in stdout.splitlines()
-        if line.startswith(("Current project:", "Current task:", "Active restrictions:", "Active guidelines:"))
+        if line.startswith(("Current workspace:", "Current project:", "Current task:", "Active restrictions:", "Active guidelines:"))
     ]
     if not lines:
         lines.append("Project context hydrated.")

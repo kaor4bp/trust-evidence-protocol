@@ -3249,6 +3249,98 @@ def test_guidelines_store_operational_coding_rules_separately_from_claims(tmp_pa
     assert "evidence chain is mechanically valid" in valid.stdout
 
 
+def test_workspace_commands_make_workspace_explicit_and_support_legacy_assignment(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    run_cli(
+        context,
+        "record-source",
+        "--scope",
+        "legacy.import",
+        "--source-kind",
+        "runtime",
+        "--critique-status",
+        "accepted",
+        "--origin-kind",
+        "command",
+        "--origin-ref",
+        "legacy import",
+        "--quote",
+        "legacy source before workspace assignment",
+        "--note",
+        "legacy source",
+    )
+    source_id = only_record_id(context, "source")
+    source = load_record(context, "source", source_id)
+    assert "workspace_refs" not in source
+
+    run_cli(
+        context,
+        "record-workspace",
+        "--workspace-key",
+        "qa-tim",
+        "--title",
+        "QA TIM Workspace",
+        "--root-ref",
+        "/tmp/pray-and-run",
+        "--note",
+        "workspace boundary",
+    )
+    workspace_id = only_record_id(context, "workspace")
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+
+    show = run_cli(context, "show-workspace")
+    assert f"`{workspace_id}` status=`active` key=`qa-tim`" in show.stdout
+
+    run_cli(
+        context,
+        "record-project",
+        "--project-key",
+        "smartpick",
+        "--title",
+        "SmartPick",
+        "--root-ref",
+        "/tmp/smartpick",
+        "--note",
+        "project inside current workspace",
+    )
+    project_id = only_record_id(context, "project")
+    project = load_record(context, "project", project_id)
+    workspace = load_record(context, "workspace", workspace_id)
+    assert project["workspace_refs"] == [workspace_id]
+    assert workspace["project_refs"] == [project_id]
+
+    run_cli(context, "assign-workspace", "--workspace", workspace_id, "--all-unassigned")
+    assigned = load_record(context, "source", source_id)
+    assert assigned["workspace_refs"] == [workspace_id]
+
+    run_cli(
+        context,
+        "record-source",
+        "--scope",
+        "qa-tim.runtime",
+        "--source-kind",
+        "runtime",
+        "--critique-status",
+        "accepted",
+        "--origin-kind",
+        "command",
+        "--origin-ref",
+        "current workspace",
+        "--quote",
+        "new source inherits workspace",
+        "--note",
+        "current workspace source",
+    )
+    new_source_id = next(
+        path.stem
+        for path in (context / "records" / "source").glob("*.json")
+        if "new source inherits workspace" in path.read_text(encoding="utf-8")
+    )
+    new_source = load_record(context, "source", new_source_id)
+    assert new_source["workspace_refs"] == [workspace_id]
+
+
 def test_proposals_are_recorded_scoped_surfaced_and_not_proof(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 

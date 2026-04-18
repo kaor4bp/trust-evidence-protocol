@@ -15,6 +15,18 @@ def current_project_ref(root: Path) -> str:
     return str(load_settings(root).get("current_project_ref") or "").strip()
 
 
+def current_workspace_ref(root: Path) -> str:
+    return str(load_settings(root).get("current_workspace_ref") or "").strip()
+
+
+def workspace_refs_for_write(root: Path, explicit_refs: list[str]) -> list[str]:
+    refs = {ref.strip() for ref in explicit_refs if ref.strip()}
+    current = current_workspace_ref(root)
+    if not refs and current:
+        refs.add(current)
+    return sorted(refs)
+
+
 def project_refs_for_write(root: Path, explicit_refs: list[str]) -> list[str]:
     refs = {ref.strip() for ref in explicit_refs if ref.strip()}
     current = current_project_ref(root)

@@ -94,6 +94,21 @@ def current_project_summary(root: Path, records: dict[str, dict]) -> dict | None
     }
 
 
+def current_workspace_summary(root: Path, records: dict[str, dict]) -> dict | None:
+    current_workspace_ref = str(load_settings(root).get("current_workspace_ref") or "").strip()
+    if not current_workspace_ref:
+        return None
+    workspace = records.get(current_workspace_ref)
+    if not workspace or workspace.get("record_type") != "workspace":
+        return {"id": current_workspace_ref, "status": "missing", "workspace_key": "", "title": ""}
+    return {
+        "id": current_workspace_ref,
+        "status": str(workspace.get("status", "")).strip(),
+        "workspace_key": str(workspace.get("workspace_key", "")).strip(),
+        "title": str(workspace.get("title", "")).strip(),
+    }
+
+
 def active_restriction_summaries(records: dict[str, dict], project_ref: str | None, task_ref: str | None) -> list[dict]:
     restrictions: list[dict] = []
     for restriction in records.values():
@@ -170,6 +185,15 @@ def render_current_project(project: dict) -> str:
     )
 
 
+def render_current_workspace(workspace: dict) -> str:
+    title = str(workspace.get("title", "")).strip()
+    title_suffix = f" | {title}" if title else ""
+    return (
+        f"Current workspace: {workspace.get('id')} | status={workspace.get('status', '')} "
+        f"| key={workspace.get('workspace_key', '')}{title_suffix}"
+    )
+
+
 def cmd_hydrate_context(root: Path) -> int:
     records, errors = collect_validation_errors(root)
     write_validation_report(root, errors)
@@ -178,6 +202,7 @@ def cmd_hydrate_context(root: Path) -> int:
     fingerprint = compute_context_fingerprint(root)
     settings = load_settings(root)
     current_task = current_task_summary(root, records)
+    current_workspace = current_workspace_summary(root, records)
     current_project = current_project_summary(root, records)
     restrictions = active_restriction_summaries(
         records,
@@ -194,6 +219,7 @@ def cmd_hydrate_context(root: Path) -> int:
         "hydrated_at": now_timestamp(),
         "fingerprint": fingerprint,
         "allowed_freedom": settings.get("allowed_freedom", "proof-only"),
+        "current_workspace": current_workspace,
         "current_project": current_project,
         "current_task": current_task,
         "active_restrictions": restrictions,
@@ -208,6 +234,8 @@ def cmd_hydrate_context(root: Path) -> int:
         print_errors(errors)
         print(f"{hydration_state_path(root)}: hydration blocked by validation errors")
         return 1
+    if current_workspace:
+        print(render_current_workspace(current_workspace))
     if current_project:
         print(render_current_project(current_project))
     if current_task:
@@ -232,6 +260,13 @@ def cmd_show_hydration(root: Path) -> int:
     print(f"hydration_status={state.get('status', 'unhydrated')}")
     print(f"hydrated_at={state.get('hydrated_at', '')}")
     print(f"allowed_freedom={load_settings(root).get('allowed_freedom', 'proof-only')}")
+    current_workspace = state.get("current_workspace")
+    if isinstance(current_workspace, dict) and current_workspace.get("id"):
+        print(
+            "current_workspace="
+            f"{current_workspace.get('id')} status={current_workspace.get('status', '')} "
+            f"key={current_workspace.get('workspace_key', '')} title={current_workspace.get('title', '')}"
+        )
     current_project = state.get("current_project")
     if isinstance(current_project, dict) and current_project.get("id"):
         print(

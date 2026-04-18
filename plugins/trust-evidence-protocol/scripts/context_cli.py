@@ -69,6 +69,7 @@ from context_lib import (
     TOPIC_PREFILTER_REBUILD_MODES,
     WORKING_CONTEXT_KINDS,
     WORKING_CONTEXT_STATUSES,
+    WORKSPACE_STATUSES,
     add_remove_values,
     build_action_payload,
     build_claim_payload,
@@ -92,6 +93,7 @@ from context_lib import (
     build_permission_payload,
     build_precedent_review_payload,
     build_project_payload,
+    build_workspace_payload,
     build_proposal_payload,
     build_restriction_payload,
     build_impact_graph_payload,
@@ -133,6 +135,7 @@ from context_lib import (
     augmented_evidence_chain_text_lines,
     current_project_ref,
     current_task_ref,
+    current_workspace_ref,
     dependency_refs_for_record,
     evidence_chain_report_lines,
     effective_logic_solver,
@@ -167,6 +170,7 @@ from context_lib import (
     active_hypothesis_entry_by_claim,
     active_permissions_for,
     assign_project_payload,
+    assign_workspace_payload,
     assign_task_payload,
     build_hypothesis_entry,
     close_hypothesis_entries,
@@ -190,6 +194,7 @@ from context_lib import (
     fork_working_context_payload,
     strictness_request_allows_change,
     task_refs_for_write,
+    workspace_refs_for_write,
     task_detail_lines,
     pause_task_for_switch_payload,
     parse_working_context_assumptions,
@@ -506,6 +511,26 @@ def print_project_detail(project: dict) -> None:
         print(line)
 
 
+def workspace_detail_lines(workspace: dict) -> list[str]:
+    lines = [
+        f"- `{workspace.get('id')}` status=`{workspace.get('status')}` "
+        f"key=`{workspace.get('workspace_key')}` title=\"{workspace.get('title', '')}\""
+    ]
+    context_root = str(workspace.get("context_root", "")).strip()
+    if context_root:
+        lines.append(f"  context_root: {context_root}")
+    for key in ("root_refs", "project_refs"):
+        values = workspace.get(key, [])
+        if values:
+            lines.append(f"  {key}: {values}")
+    return lines
+
+
+def print_workspace_detail(workspace: dict) -> None:
+    for line in workspace_detail_lines(workspace):
+        print(line)
+
+
 def print_restriction_detail(restriction: dict) -> None:
     for line in restriction_detail_lines(restriction):
         print(line)
@@ -516,11 +541,164 @@ def print_guideline_detail(guideline: dict) -> None:
         print(line)
 
 
+def cmd_record_workspace(
+    root: Path,
+    workspace_key: str,
+    title: str,
+    context_root: str | None,
+    root_refs: list[str],
+    project_refs: list[str],
+    status: str,
+    tags: list[str],
+    note: str,
+) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    for project_ref in project_refs:
+        if project_ref not in records or records[project_ref].get("record_type") != "project":
+            print(f"{project_ref} must reference a project record")
+            return 1
+
+    timestamp = now_timestamp()
+    payload = build_workspace_payload(
+        record_id=next_record_id(records, "WSP-"),
+        timestamp=timestamp,
+        workspace_key=workspace_key,
+        title=title,
+        status=status,
+        context_root=context_root or str(root),
+        root_refs=root_refs,
+        project_refs=project_refs,
+        tags=tags,
+        note=note,
+    )
+    return persist_candidate(root, records, payload, "workspace")
+
+
+def cmd_show_workspace(root: Path, show_all: bool) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    workspaces = [data for data in records.values() if data.get("record_type") == "workspace"]
+    if show_all:
+        if not workspaces:
+            print("No workspace records found.")
+            return 0
+        for workspace in sorted(workspaces, key=lambda item: str(item.get("workspace_key", ""))):
+            print_workspace_detail(workspace)
+        return 0
+
+    ref = current_workspace_ref(root)
+    if not ref:
+        print("No current workspace.")
+        return 0
+    workspace = records.get(ref)
+    if not workspace:
+        print(f"Current workspace ref is missing: {ref}")
+        return 1
+    print("Current workspace:")
+    print_workspace_detail(workspace)
+    return 0
+
+
+def cmd_set_current_workspace(root: Path, workspace_ref: str | None, clear: bool) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    if clear:
+        write_settings(root, current_workspace_ref=None)
+        refresh_generated_outputs(root, records)
+        invalidate_hydration_state(root, "cleared current workspace")
+        print("Cleared current workspace")
+        return 0
+    if not workspace_ref:
+        print("set-current-workspace requires --workspace or --clear")
+        return 1
+    workspace = records.get(workspace_ref)
+    if not workspace or workspace.get("record_type") != "workspace":
+        print(f"{workspace_ref} must reference a workspace record")
+        return 1
+    write_settings(root, current_workspace_ref=workspace_ref)
+    refresh_generated_outputs(root, records)
+    invalidate_hydration_state(root, f"set current workspace {workspace_ref}")
+    print(f"Set current workspace {workspace_ref}")
+    return 0
+
+
+def cmd_assign_workspace(
+    root: Path,
+    workspace_ref: str,
+    record_ref: str | None,
+    all_unassigned: bool,
+    note: str | None,
+) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    if workspace_ref not in records or records[workspace_ref].get("record_type") != "workspace":
+        print(f"{workspace_ref} must reference a workspace record")
+        return 1
+    if not record_ref and not all_unassigned:
+        print("assign-workspace requires --record or --all-unassigned")
+        return 1
+
+    timestamp = now_timestamp()
+    if all_unassigned:
+        targets = [
+            record_id
+            for record_id, data in records.items()
+            if data.get("record_type") != "workspace" and not data.get("workspace_refs")
+        ]
+    else:
+        if record_ref not in records:
+            print(f"missing record {record_ref}")
+            return 1
+        if records[record_ref].get("record_type") == "workspace":
+            print("assign-workspace target must not be a workspace record")
+            return 1
+        targets = [record_ref]
+
+    updates = {
+        target: assign_workspace_payload(public_record_payload(records[target]), timestamp, workspace_ref, note)
+        for target in targets
+    }
+    project_targets = [
+        target
+        for target in targets
+        if records[target].get("record_type") == "project"
+        and target not in records[workspace_ref].get("project_refs", [])
+    ]
+    if project_targets:
+        workspace_payload = public_record_payload(records[workspace_ref])
+        workspace_payload["project_refs"] = sorted({*workspace_payload.get("project_refs", []), *project_targets})
+        workspace_payload["updated_at"] = timestamp
+        workspace_payload["note"] = append_note(
+            str(workspace_payload.get("note", "")),
+            f"[{timestamp}] linked projects through assign-workspace: {', '.join(project_targets)}",
+        )
+        updates[workspace_ref] = workspace_payload
+    merged_records, errors = validate_mutated_records(root, records, updates)
+    if errors:
+        print_errors(errors)
+        return 1
+    reason = (
+        f"Assigned {len(targets)} unassigned record(s) to workspace {workspace_ref}"
+        if all_unassigned
+        else f"Assigned {record_ref} to workspace {workspace_ref}"
+    )
+    changed_ids = [*targets]
+    if workspace_ref in updates:
+        changed_ids.append(workspace_ref)
+    return persist_mutated_records(root, merged_records, changed_ids, reason)
+
+
 def cmd_record_project(
     root: Path,
     project_key: str,
     title: str,
     root_refs: list[str],
+    workspace_refs: list[str],
     status: str,
     related_project_refs: list[str],
     tags: list[str],
@@ -531,6 +709,7 @@ def cmd_record_project(
         return 1
 
     timestamp = now_timestamp()
+    resolved_workspace_refs = workspace_refs_for_write(root, workspace_refs)
     payload = build_project_payload(
         record_id=next_record_id(records, "PRJ-"),
         timestamp=timestamp,
@@ -539,10 +718,37 @@ def cmd_record_project(
         status=status,
         root_refs=root_refs,
         related_project_refs=related_project_refs,
+        workspace_refs=resolved_workspace_refs,
         tags=tags,
         note=note,
     )
-    return persist_candidate(root, records, payload, "project")
+    updates = {payload["id"]: payload}
+    for workspace_ref in resolved_workspace_refs:
+        workspace = records.get(workspace_ref)
+        if not workspace or workspace.get("record_type") != "workspace":
+            print(f"{workspace_ref} must reference a workspace record")
+            return 1
+        workspace_payload = public_record_payload(workspace)
+        workspace_payload["project_refs"] = sorted({*workspace_payload.get("project_refs", []), payload["id"]})
+        workspace_payload["updated_at"] = timestamp
+        workspace_payload["note"] = append_note(
+            str(workspace_payload.get("note", "")),
+            f"[{timestamp}] linked project {payload['id']}",
+        )
+        updates[workspace_ref] = workspace_payload
+
+    if len(updates) == 1:
+        return persist_candidate(root, records, payload, "project")
+    merged_records, errors = validate_mutated_records(root, records, updates)
+    if errors:
+        print_errors(errors)
+        return 1
+    return persist_mutated_records(
+        root,
+        merged_records,
+        list(updates),
+        f"Recorded project {payload['id']} and linked {len(resolved_workspace_refs)} workspace(s)",
+    )
 
 
 def cmd_show_project(root: Path, show_all: bool) -> int:
@@ -1262,6 +1468,7 @@ def cmd_brief_context(root: Path, task: str, limit: int) -> int:
         root,
         task,
         current_task_ref(root),
+        current_workspace_ref(root),
         current_project_ref(root),
         limit,
     )
@@ -4178,6 +4385,41 @@ def parse_args() -> argparse.Namespace:
         help="Scan comparable supported facts for structured contradictions.",
     )
 
+    record_workspace = subparsers.add_parser(
+        "record-workspace",
+        help="Create a canonical WSP-* workspace boundary record.",
+    )
+    record_workspace.add_argument("--workspace-key", required=True)
+    record_workspace.add_argument("--title", required=True)
+    record_workspace.add_argument("--context-root")
+    record_workspace.add_argument("--root-ref", dest="root_refs", action="append", default=[])
+    record_workspace.add_argument("--project", dest="project_refs", action="append", default=[])
+    record_workspace.add_argument("--status", default="active", choices=sorted(WORKSPACE_STATUSES))
+    record_workspace.add_argument("--tag", dest="tags", action="append", default=[])
+    record_workspace.add_argument("--note", required=True)
+
+    show_workspace = subparsers.add_parser(
+        "show-workspace",
+        help="Show the current WSP-* boundary, or all workspaces with --all.",
+    )
+    show_workspace.add_argument("--all", action="store_true", dest="show_all")
+
+    set_current_workspace = subparsers.add_parser(
+        "set-current-workspace",
+        help="Set or clear settings.current_workspace_ref.",
+    )
+    set_current_workspace.add_argument("--workspace", dest="workspace_ref")
+    set_current_workspace.add_argument("--clear", action="store_true")
+
+    assign_workspace = subparsers.add_parser(
+        "assign-workspace",
+        help="Attach existing records to a WSP-* via workspace_refs.",
+    )
+    assign_workspace.add_argument("--workspace", dest="workspace_ref", required=True)
+    assign_workspace.add_argument("--record", dest="record_ref")
+    assign_workspace.add_argument("--all-unassigned", action="store_true")
+    assign_workspace.add_argument("--note")
+
     record_project = subparsers.add_parser(
         "record-project",
         help="Create a canonical PRJ-* project boundary record.",
@@ -4185,6 +4427,7 @@ def parse_args() -> argparse.Namespace:
     record_project.add_argument("--project-key", required=True)
     record_project.add_argument("--title", required=True)
     record_project.add_argument("--root-ref", dest="root_refs", action="append", required=True)
+    record_project.add_argument("--workspace", dest="workspace_refs", action="append", default=[])
     record_project.add_argument("--status", default="active", choices=sorted(PROJECT_STATUSES))
     record_project.add_argument("--related-project", dest="related_project_refs", action="append", default=[])
     record_project.add_argument("--tag", dest="tags", action="append", default=[])
@@ -5160,6 +5403,34 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         )
     if args.command == "scan-conflicts":
         raise SystemExit(cmd_scan_conflicts(root))
+    if args.command == "record-workspace":
+        raise SystemExit(
+            cmd_record_workspace(
+                root,
+                workspace_key=args.workspace_key,
+                title=args.title,
+                context_root=args.context_root,
+                root_refs=args.root_refs,
+                project_refs=args.project_refs,
+                status=args.status,
+                tags=args.tags,
+                note=args.note,
+            )
+        )
+    if args.command == "show-workspace":
+        raise SystemExit(cmd_show_workspace(root, show_all=args.show_all))
+    if args.command == "set-current-workspace":
+        raise SystemExit(cmd_set_current_workspace(root, workspace_ref=args.workspace_ref, clear=args.clear))
+    if args.command == "assign-workspace":
+        raise SystemExit(
+            cmd_assign_workspace(
+                root,
+                workspace_ref=args.workspace_ref,
+                record_ref=args.record_ref,
+                all_unassigned=args.all_unassigned,
+                note=args.note,
+            )
+        )
     if args.command == "record-project":
         raise SystemExit(
             cmd_record_project(
@@ -5167,6 +5438,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 project_key=args.project_key,
                 title=args.title,
                 root_refs=args.root_refs,
+                workspace_refs=args.workspace_refs,
                 status=args.status,
                 related_project_refs=args.related_project_refs,
                 tags=args.tags,

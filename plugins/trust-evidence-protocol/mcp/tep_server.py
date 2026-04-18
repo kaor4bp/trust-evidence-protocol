@@ -40,7 +40,7 @@ TOOLS: list[JsonObject] = [
     {
         "name": "brief_context",
         "description": (
-            "Read a task-oriented .codex_context brief: current project/task, relevant models, flows, "
+            "Read a task-oriented .codex_context brief: current workspace/project/task, relevant models, flows, "
             "claims, permissions, restrictions, guidelines, proposals, plans, debt, and questions. "
             "Use before answering, planning, or editing."
         ),

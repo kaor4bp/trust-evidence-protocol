@@ -257,11 +257,23 @@ Proposal assumptions are not proof.
 
 ## Operational Records
 
+### Workspace
+
+`WSP-*` records define operational memory boundaries.
+
+One workspace can contain multiple projects. A record may not have a precise
+project, especially after migration or when a user prompt spans several
+repositories, but new records should link to the current workspace through
+`workspace_refs` when `settings.json.current_workspace_ref` is set.
+
+Workspace records do not prove truth.
+
 ### Project
 
 `PRJ-*` records define context boundaries.
 
-They prevent records about different repositories, domains, or products from leaking into each other.
+They prevent records about different repositories, domains, or products inside a
+workspace from leaking into each other.
 
 ### Task
 
@@ -493,6 +505,7 @@ Common link fields:
 - `plan_refs`
 - `debt_refs`
 - `action_refs`
+- `workspace_refs`
 - `project_refs`
 - `task_refs`
 - `supersedes_refs`

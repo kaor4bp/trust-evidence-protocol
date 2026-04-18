@@ -93,6 +93,7 @@ Additional transient index:
 `.codex_context/settings.json` is the policy layer for:
 
 - `allowed_freedom`
+- `current_workspace_ref`
 - `current_project_ref`
 - `current_task_ref`
 - repo-local Codex hook modes
@@ -168,7 +169,7 @@ When an agent needs to answer a question, plan, ask for permission, or edit code
 
 Use this order:
 
-1. Run or inspect hydration: current project, current task, current task type, active restrictions, active guidelines, active permissions, conflicts.
+1. Run or inspect hydration: current workspace, current project, current task, current task type, active restrictions, active guidelines, active permissions, conflicts.
 2. Read `review/attention.md` or run `brief-context --task "..."` as navigation only.
 3. Check active `WCTX-*` working contexts for pinned refs, focus paths, assumptions, and concerns.
 4. Use `topic-search` or `topic_info` as a prefilter when keyword search is too broad, then inspect canonical records.
@@ -586,9 +587,31 @@ Guideline disclosure for code edits:
 - If no guideline applies, the agent should say `Guidelines: none found`.
 - `required` guideline conflicts should stop the edit or trigger a user question; `preferred` guideline conflicts require a scoped explanation.
 
+- `record-workspace --workspace-key ... --title ... --root-ref ... --note ...`
+  - creates a canonical `WSP-*` workspace memory-boundary record
+  - a workspace groups one or more project records under one TEP context root
+  - workspace records do not prove claims
+
+- `set-current-workspace --workspace WSP-*`
+  - stores the active workspace boundary in `.codex_context/settings.json.current_workspace_ref`
+  - causes new canonical records to inherit `workspace_refs` automatically
+  - hydration and session-start hooks show the current workspace explicitly
+
+- `set-current-workspace --clear`
+  - clears the current workspace boundary
+
+- `show-workspace [--all]`
+  - prints the current workspace boundary, or all workspace records with `--all`
+
+- `assign-workspace --workspace WSP-* --record <ID>`
+  - attaches an existing record to a workspace via `workspace_refs`
+
+- `assign-workspace --workspace WSP-* --all-unassigned`
+  - migrates legacy records that have no `workspace_refs` without guessing their `project_refs`
+
 - `record-project --project-key ... --title ... --root-ref ... --note ...`
   - creates a canonical `PRJ-*` project boundary record
-  - project records separate mixed domains in one `.codex_context`
+  - project records separate mixed domains inside one workspace
   - project records do not prove claims
 
 - `set-current-project --project PRJ-*`
@@ -842,7 +865,16 @@ Current prioritization behavior:
 
 ## Projects And Restrictions
 
-`project` is an explicit context boundary.
+`workspace` is an explicit memory boundary.
+
+- canonical workspace records live in `records/workspace/WSP-*.json`
+- records should link to workspaces through `workspace_refs`
+- `settings.json.current_workspace_ref` selects the current workspace boundary
+- hydration and session-start hook output must show the current workspace when one is set
+- new canonical records automatically inherit the current workspace
+- legacy records can be migrated safely with `assign-workspace --all-unassigned`; this does not guess project ownership
+
+`project` is an optional narrower context boundary inside a workspace.
 
 - canonical project records live in `records/project/PRJ-*.json`
 - records can link to projects through `project_refs`

@@ -103,7 +103,7 @@ Source -> Claim
 Claim(status=tentative) -> hypothesis role
 Claim(status=supported) -> fact role
 Claim(status=corroborated) -> evidence role
-Permission/Restriction/Guideline/Proposal/Task/Project/WorkingContext/Model/Flow/CodeIndex -/-> truth
+Permission/Restriction/Guideline/Proposal/Task/Workspace/Project/WorkingContext/Model/Flow/CodeIndex -/-> truth
 generated view -/-> canonical source of truth
 memory -/-> proof by itself
 ```
@@ -127,13 +127,15 @@ Canonical objects:
 - `Guideline`: scoped reusable operational rule for coding, tests, review, debugging, architecture, or agent behavior
 - `Proposal`: constructive agent position, critique, concrete options, risks, and stop conditions
 - `Action`: durable intended or executed operation
+- `Workspace`: `WSP-*` operational memory boundary that groups one or more projects under one TEP context
 - `Working Context`: `WCTX-*` operational focus/handoff snapshot with pinned refs, focus paths, local assumptions, concerns, and topic seeds
 - `Code Index Entry`: `CIX-*` navigation entry for a file, directory, glob, symbol, or logical code area
 
 Operational layers:
 
 - `allowed_freedom`: strictness level for action
-- `Project`: context boundary and relevance filter
+- `Workspace`: current memory boundary; every new canonical record should link to the current workspace when one is set
+- `Project`: optional narrower repository/product/service/domain boundary and relevance filter inside a workspace
 - `Task`: current execution focus with `task_type` for drift checks and precedent review
 - `Model`: evidence-backed picture over claims for one domain/aspect
 - `Flow`: integrated process understanding over models and claims
@@ -149,6 +151,7 @@ Operational layers:
 
 Operational layers guide attention and continuity.
 They do not prove truth unless their underlying `CLM-*` records prove it.
+The current workspace should be visible to the user during hydration; a record may lack precise `project_refs`, but should not lack `workspace_refs` once a current workspace exists.
 `CIX-*` entries guide where to inspect, but file behavior and guideline compliance still require `SRC-*`/`CLM-*` support before they become proof.
 `WCTX-*` and `topic_index/` guide what to read next, but they must not appear as decisive proof in evidence chains.
 `logic_index/` can reveal predicate-level candidates, but proof still resolves to the underlying `CLM-*` records and accepted `SRC-*` quotes.

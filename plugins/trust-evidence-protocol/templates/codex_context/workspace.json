@@ -1,0 +1,15 @@
+{
+  "id": "WSP-YYYYMMDD-xxxxxxxx",
+  "record_type": "workspace",
+  "scope": "example-workspace",
+  "workspace_key": "example-workspace",
+  "title": "Example Workspace",
+  "status": "active",
+  "context_root": "/absolute/path/to/.tep_context",
+  "root_refs": [],
+  "project_refs": [],
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "updated_at": "2026-01-01T00:00:00+00:00",
+  "tags": [],
+  "note": "Workspace records define an operational memory boundary and may contain multiple projects. They do not prove facts."
+}

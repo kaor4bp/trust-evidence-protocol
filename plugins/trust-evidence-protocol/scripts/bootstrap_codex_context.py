@@ -15,6 +15,7 @@ PLUGIN_ROOT = SCRIPT_DIR.parent
 TEMPLATES_ROOT = PLUGIN_ROOT / "templates" / "codex_context"
 
 REQUIRED_DIRS = (
+    "records/workspace",
     "records/project",
     "records/input",
     "records/source",
@@ -87,6 +88,7 @@ Generated navigation layers:
 
 Runtime state:
 - `runtime/hydration.json`
+- current workspace pointer lives in `settings.json.current_workspace_ref`
 - current project pointer lives in `settings.json.current_project_ref`
 - current task pointer lives in `settings.json.current_task_ref`
 - hook verbosity and context budget preferences live in `settings.json`

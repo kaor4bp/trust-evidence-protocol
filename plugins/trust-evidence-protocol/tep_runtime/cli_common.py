@@ -20,6 +20,7 @@ from .io import write_json_file
 from .notes import append_note
 from .paths import record_path
 from .reports import write_validation_report
+from .scopes import workspace_refs_for_write
 from .state_validation import collect_validation_errors, validate_candidate_record, validate_records_state
 
 TEP_ICON = "🛡️"
@@ -30,6 +31,9 @@ MUTATING_COMMANDS = {
     "scan-conflicts",
     "change-strictness",
     "request-strictness-change",
+    "record-workspace",
+    "set-current-workspace",
+    "assign-workspace",
     "record-project",
     "set-current-project",
     "assign-project",
@@ -112,6 +116,11 @@ def persist_candidate(
     record_type: str,
     allowed_freedom: str | None = None,
 ) -> int:
+    if payload.get("record_type") != "workspace" and not payload.get("workspace_refs"):
+        refs = workspace_refs_for_write(root, [])
+        if refs:
+            payload = dict(payload)
+            payload["workspace_refs"] = refs
     candidate, candidate_errors = validate_candidate_record(
         root,
         records,

@@ -226,12 +226,14 @@ def fallback_claims(records: dict[str, dict], limit: int) -> list[dict]:
 
 def write_attention_report(root: Path, records: dict[str, dict], limit: int = 12) -> None:
     settings = load_settings(root)
+    current_workspace_ref = str(settings.get("current_workspace_ref") or "").strip()
     current_project_ref = str(settings.get("current_project_ref") or "").strip()
     current_task_ref = str(settings.get("current_task_ref") or "").strip()
 
     lines = [
         "This file is generated as an attention/navigation view. Do not treat it as a source of truth.\n",
         "\n",
+        f"- current_workspace_ref: `{current_workspace_ref or 'none'}`\n",
         f"- current_project_ref: `{current_project_ref or 'none'}`\n",
         f"- current_task_ref: `{current_task_ref or 'none'}`\n",
         "\n",
@@ -241,7 +243,7 @@ def write_attention_report(root: Path, records: dict[str, dict], limit: int = 12
         "\n",
     ]
 
-    focus_ids = [ref for ref in (current_project_ref, current_task_ref) if ref and ref in records]
+    focus_ids = [ref for ref in (current_workspace_ref, current_project_ref, current_task_ref) if ref and ref in records]
     if focus_ids:
         for record_id in focus_ids:
             lines.append(attention_line(root, records[record_id]))
@@ -567,12 +569,14 @@ def build_index(root: Path, records: dict[str, dict]) -> None:
         "- `review/attention.md`\n",
         "\n",
         f"Current strictness: `{settings.get('allowed_freedom', 'proof-only')}`\n",
+        f"Current workspace: `{settings.get('current_workspace_ref') or 'none'}`\n",
         f"Current project: `{settings.get('current_project_ref') or 'none'}`\n",
         f"Current task: `{settings.get('current_task_ref') or 'none'}`\n",
         "\n",
         "Counts:\n",
     ]
     for record_type in (
+        "workspace",
         "project",
         "source",
         "claim",

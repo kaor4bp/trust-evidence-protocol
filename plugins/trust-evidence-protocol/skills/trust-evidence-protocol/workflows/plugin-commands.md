@@ -132,9 +132,13 @@ When a smell repeats and has support, create a `PRP-*` for options or a `GLD-*` 
 Agents should attach smells to the smallest applicable CIX target, preferring symbol over file and file over directory/area.
 Critical smell annotations require a supporting `CLM-*`.
 
-## Projects And Tasks
+## Workspaces, Projects, And Tasks
 
 ```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-workspace --workspace-key "..." --title "..." --root-ref /abs/project --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context show-workspace
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context set-current-workspace --workspace WSP-*
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context assign-workspace --workspace WSP-* --all-unassigned
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-project --project-key "..." --title "..." --root-ref SRC-* --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context show-project
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context set-current-project --project PRJ-*
@@ -149,6 +153,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context stop-task
 ```
 
+Use `WSP-*` as the memory boundary first. A record can lack a precise `PRJ-*`, but new records should inherit the current workspace when one is set.
 Use `task-drift-check` when intended work may no longer match the current `TASK-*`.
 If the work is adjacent, note or expand the task context.
 If it is drifted, pause/switch/start a task instead of silently continuing.

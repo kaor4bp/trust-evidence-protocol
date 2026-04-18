@@ -23,6 +23,21 @@ def project_detail_lines(project: dict) -> list[str]:
     return lines
 
 
+def workspace_detail_lines(workspace: dict) -> list[str]:
+    lines = [
+        f"- `{workspace.get('id')}` status=`{workspace.get('status')}` "
+        f"key=`{workspace.get('workspace_key')}` title=\"{workspace.get('title', '')}\""
+    ]
+    context_root = str(workspace.get("context_root", "")).strip()
+    if context_root:
+        lines.append(f"  context_root: {context_root}")
+    for key in ("root_refs", "project_refs"):
+        values = workspace.get(key, [])
+        if values:
+            lines.append(f"  {key}: {values}")
+    return lines
+
+
 def task_detail_lines(task: dict) -> list[str]:
     lines = [f"- {task_summary_line(task)}"]
     description = str(task.get("description", "")).strip()
@@ -88,12 +103,14 @@ def build_context_brief_payload(
     root: Path,
     task: str,
     current_ref: str,
+    workspace_ref: str,
     project_ref: str,
     limit: int,
 ) -> dict:
     task_ref = current_ref or None
     project_filter = project_ref or None
     current_task = records.get(current_ref) if current_ref else None
+    current_workspace = records.get(workspace_ref) if workspace_ref else None
     current_project = records.get(project_ref) if project_ref else None
     terms = task_terms(task)
     models = select_records(records, "model", terms, limit, project_ref=project_filter, task_ref=task_ref)
@@ -112,7 +129,9 @@ def build_context_brief_payload(
     return {
         "task": task,
         "current_task": current_task,
+        "current_workspace": current_workspace,
         "current_project": current_project,
+        "workspace_ref": workspace_ref,
         "project_ref": project_ref,
         "models": models,
         "flows": flows,
@@ -177,8 +196,13 @@ def _append_record_list(lines: list[str], title: str, records: list[dict], empty
 def context_brief_text_lines(payload: dict, icon: str) -> list[str]:
     limit = int(payload.get("limit", 8))
     lines = [f"# {icon} Context Brief", ""]
+    current_workspace = payload.get("current_workspace")
     current_project = payload.get("current_project")
     current_task = payload.get("current_task")
+    if current_workspace:
+        lines.append("## Current Workspace")
+        lines.extend(workspace_detail_lines(current_workspace))
+        lines.append("")
     if current_project:
         lines.append("## Current Project")
         lines.extend(project_detail_lines(current_project))

@@ -65,12 +65,14 @@ from context_lib import active_restrictions_for as compat_active_restrictions_fo
 from context_lib import collect_link_edges as compat_collect_link_edges  # noqa: E402
 from context_lib import current_project_ref as compat_current_project_ref  # noqa: E402
 from context_lib import current_task_ref as compat_current_task_ref  # noqa: E402
+from context_lib import current_workspace_ref as compat_current_workspace_ref  # noqa: E402
 from context_lib import dependency_refs_for_record as compat_dependency_refs_for_record  # noqa: E402
 from context_lib import linked_records_payload as compat_linked_records_payload  # noqa: E402
 from context_lib import guideline_applies as compat_guideline_applies  # noqa: E402
 from context_lib import permission_applies as compat_permission_applies  # noqa: E402
 from context_lib import parse_timestamp as compat_parse_timestamp  # noqa: E402
 from context_lib import project_refs_for_write as compat_project_refs_for_write  # noqa: E402
+from context_lib import workspace_refs_for_write as compat_workspace_refs_for_write  # noqa: E402
 from context_lib import public_record_summary as compat_public_record_summary  # noqa: E402
 from context_lib import quote_matches_record as compat_quote_matches_record  # noqa: E402
 from context_lib import record_belongs_to_project as compat_record_belongs_to_project  # noqa: E402
@@ -367,12 +369,14 @@ from tep_runtime.scopes import (  # noqa: E402
     active_restrictions_for,
     current_project_ref,
     current_task_ref,
+    current_workspace_ref,
     guideline_applies,
     permission_applies,
     project_refs_for_write,
     record_belongs_to_project,
     record_belongs_to_task,
     task_refs_for_write,
+    workspace_refs_for_write,
 )
 from tep_runtime.search import (  # noqa: E402
     concise,
@@ -425,6 +429,7 @@ from tep_runtime.context_brief import (  # noqa: E402
     project_detail_lines,
     restriction_detail_lines,
     task_detail_lines,
+    workspace_detail_lines,
 )
 from tep_runtime.ids import next_artifact_id, next_record_id, now_timestamp  # noqa: E402
 from tep_runtime.io import context_write_lock, parse_json_file, write_json_file  # noqa: E402
@@ -473,6 +478,7 @@ from tep_runtime.topic_index import (  # noqa: E402
 from tep_runtime.models import build_model_payload, promote_model_to_domain_payloads  # noqa: E402
 from tep_runtime.open_questions import build_open_question_payload  # noqa: E402
 from tep_runtime.projects import assign_project_payload, build_project_payload  # noqa: E402
+from tep_runtime.workspaces import assign_workspace_payload, build_workspace_payload  # noqa: E402
 from tep_runtime.tasks import (  # noqa: E402
     assign_task_payload,
     build_precedent_review_payload,
@@ -614,8 +620,10 @@ def test_paths_are_importable_core_services_and_context_lib_facade_reuses_them(t
     assert compat_ref_paths is ref_paths
     assert compat_current_project_ref is current_project_ref
     assert compat_current_task_ref is current_task_ref
+    assert compat_current_workspace_ref is current_workspace_ref
     assert compat_active_restrictions_for is active_restrictions_for
     assert compat_project_refs_for_write is project_refs_for_write
+    assert compat_workspace_refs_for_write is workspace_refs_for_write
     assert compat_task_refs_for_write is task_refs_for_write
     assert compat_record_belongs_to_project is record_belongs_to_project
     assert compat_record_belongs_to_task is record_belongs_to_task
@@ -907,6 +915,7 @@ def test_display_core_renders_public_record_lines() -> None:
 
 def test_context_brief_core_builds_payload_and_text(tmp_path: Path) -> None:
     root = tmp_path / ".codex_context"
+    workspace_id = "WSP-20260418-work1111"
     project_id = "PRJ-20260418-project1"
     task_id = "TASK-20260418-task111"
     source_id = "SRC-20260418-source11"
@@ -925,6 +934,17 @@ def test_context_brief_core_builds_payload_and_text(tmp_path: Path) -> None:
     plan_id = "PLN-20260418-plan111"
     debt_id = "DEBT-20260418-debt111"
     records = {
+        workspace_id: {
+            "id": workspace_id,
+            "record_type": "workspace",
+            "scope": "qa-tim",
+            "status": "active",
+            "workspace_key": "qa-tim",
+            "title": "QA TIM Workspace",
+            "context_root": str(root),
+            "root_refs": ["ROOT-1", "ROOT-2"],
+            "project_refs": [project_id],
+        },
         project_id: {
             "id": project_id,
             "record_type": "project",
@@ -1109,9 +1129,11 @@ def test_context_brief_core_builds_payload_and_text(tmp_path: Path) -> None:
         root,
         "context brief extraction flow",
         task_id,
+        workspace_id,
         project_id,
         8,
     )
+    assert payload["current_workspace"]["id"] == workspace_id
     assert payload["current_project"]["id"] == project_id
     assert payload["current_task"]["id"] == task_id
     assert [item["id"] for item in payload["models"]] == [model_id]
@@ -1130,10 +1152,16 @@ def test_context_brief_core_builds_payload_and_text(tmp_path: Path) -> None:
     assert lines[:6] == [
         "# TEP Context Brief",
         "",
+        "## Current Workspace",
+        '- `WSP-20260418-work1111` status=`active` key=`qa-tim` title="QA TIM Workspace"',
+        f"  context_root: {root}",
+        "  root_refs: ['ROOT-1', 'ROOT-2']",
+    ]
+    assert lines[6:10] == [
+        "  project_refs: ['PRJ-20260418-project1']",
+        "",
         "## Current Project",
         '- `PRJ-20260418-project1` status=`active` key=`tep` title="TEP Project"',
-        "  root_refs: ['ROOT-1']",
-        "",
     ]
     assert "Project filter: `PRJ-20260418-project1`. Unassigned records are excluded from relevance sections." in lines
     assert any(line.startswith("- `MODEL-20260418-model111` status=`working` domain=`tep`") for line in lines)
@@ -1153,7 +1181,7 @@ def test_context_brief_core_builds_payload_and_text(tmp_path: Path) -> None:
     assert f"- `{debt_id}` status=`open` priority=`medium`: Context CLI still has other handlers" in lines
     assert lines[-1] == "- If the brief has facts but no model/flow for the scope, update the context after the next supported observation."
 
-    empty_payload = build_context_brief_payload({}, root, "unknown brief", "", "", 3)
+    empty_payload = build_context_brief_payload({}, root, "unknown brief", "", "", "", 3)
     empty_lines = context_brief_text_lines(empty_payload, "TEP")
     assert "- none found; gather sources before making decisive claims" in empty_lines
     assert "- none; create `PRP-*` when the agent has a constructive alternative or critique" in empty_lines
@@ -1471,6 +1499,34 @@ def test_proposal_core_parses_options_and_summarizes_recommended_choice() -> Non
 
 
 def test_project_and_proposal_core_build_payloads() -> None:
+    workspace = build_workspace_payload(
+        record_id="WSP-20260418-work1111",
+        timestamp="2026-04-18T08:00:00+03:00",
+        workspace_key=" qa_tim_workspace ",
+        title=" QA TIM Workspace ",
+        status="active",
+        context_root=" /Users/example/.tep_context ",
+        root_refs=["/repo", "/bridge"],
+        project_refs=["PRJ-20260418-abcdef12"],
+        tags=["tep-core-rewrite"],
+        note=" workspace note ",
+    )
+    assert workspace == {
+        "id": "WSP-20260418-work1111",
+        "record_type": "workspace",
+        "scope": "qa_tim_workspace",
+        "workspace_key": "qa_tim_workspace",
+        "title": "QA TIM Workspace",
+        "status": "active",
+        "context_root": "/Users/example/.tep_context",
+        "root_refs": ["/repo", "/bridge"],
+        "project_refs": ["PRJ-20260418-abcdef12"],
+        "created_at": "2026-04-18T08:00:00+03:00",
+        "updated_at": "2026-04-18T08:00:00+03:00",
+        "tags": ["tep-core-rewrite"],
+        "note": "workspace note",
+    }
+
     project = build_project_payload(
         record_id="PRJ-20260418-abcdef12",
         timestamp="2026-04-18T08:00:00+03:00",
@@ -1479,6 +1535,7 @@ def test_project_and_proposal_core_build_payloads() -> None:
         status="active",
         root_refs=["/repo"],
         related_project_refs=["PRJ-20260418-bbbb2222"],
+        workspace_refs=["WSP-20260418-work1111"],
         tags=["tep-core-rewrite"],
         note=" project note ",
     )
@@ -1491,6 +1548,7 @@ def test_project_and_proposal_core_build_payloads() -> None:
         "status": "active",
         "root_refs": ["/repo"],
         "related_project_refs": ["PRJ-20260418-bbbb2222"],
+        "workspace_refs": ["WSP-20260418-work1111"],
         "created_at": "2026-04-18T08:00:00+03:00",
         "updated_at": "2026-04-18T08:00:00+03:00",
         "tags": ["tep-core-rewrite"],
