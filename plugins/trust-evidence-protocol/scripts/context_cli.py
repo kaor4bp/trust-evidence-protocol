@@ -20,6 +20,7 @@ from context_lib import (
     ACTION_SAFETY_CLASSES,
     ANALYSIS_INSTALL_POLICIES,
     ANALYSIS_MISSING_DEPENDENCY_POLICIES,
+    BACKEND_MODES,
     CLAIM_COMPARATORS,
     CLAIM_KINDS,
     CLAIM_PLANES,
@@ -32,6 +33,7 @@ from context_lib import (
     CODE_INDEX_LINK_KEYS,
     CODE_INDEX_STATUSES,
     CODE_INDEX_TARGET_KINDS,
+    CODE_INTELLIGENCE_BACKENDS,
     CODE_SMELL_CATEGORIES,
     CODE_SMELL_SEVERITIES,
     CONFIDENCE_LEVELS,
@@ -39,6 +41,8 @@ from context_lib import (
     CONTEXT_BUDGET_VALUES,
     CRITIQUE_STATUSES,
     DEBT_STATUSES,
+    DERIVATION_BACKENDS,
+    FACT_VALIDATION_BACKENDS,
     GUIDELINE_APPLIES_TO,
     GUIDELINE_DOMAINS,
     GUIDELINE_PRIORITIES,
@@ -79,6 +83,8 @@ from context_lib import (
     append_access_event,
     append_tap_event,
     attention_map_text_lines,
+    backend_status_payload,
+    backend_status_text_lines,
     build_attention_index,
     build_action_payload,
     build_claim_payload,
@@ -207,6 +213,7 @@ from context_lib import (
     impact_graph_text_lines,
     rollback_report_text_lines,
     select_fallback_claims,
+    select_backend_status,
     select_records,
     stale_knowledge_target_ids,
     logic_solver_settings,
@@ -1745,12 +1752,98 @@ def apply_analysis_setting_items(analysis: dict, items: list[str]) -> tuple[bool
     return changed, None
 
 
+def parse_backend_setting(key: str, value: str) -> tuple[object | None, str | None]:
+    parsed_bool = parse_bool_setting(value)
+    if parsed_bool is not None:
+        return parsed_bool, None
+    if key.endswith(".max_results"):
+        try:
+            return int(value), None
+        except ValueError:
+            return None, f"invalid integer for backends.{key}: {value}"
+    return value.strip(), None
+
+
+def apply_backend_setting_items(backends: dict, items: list[str]) -> tuple[bool, str | None]:
+    changed = False
+    for item in items:
+        if "=" not in item:
+            return changed, f"backend setting must be key=value: {item}"
+        key, raw_value = [part.strip() for part in item.split("=", 1)]
+        parts = key.split(".")
+        if len(parts) < 2:
+            return changed, f"backend setting must be section.key=value: {item}"
+        section = parts[0]
+        if section not in {"fact_validation", "code_intelligence", "derivation"}:
+            return changed, f"unknown backend setting section: {section}"
+        parsed, error = parse_backend_setting(key, raw_value)
+        if error:
+            return changed, error
+
+        if section == "fact_validation":
+            if parts == ["fact_validation", "backend"]:
+                if parsed not in FACT_VALIDATION_BACKENDS:
+                    return changed, "backends.fact_validation.backend has invalid value"
+                backends.setdefault(section, {})["backend"] = parsed
+            elif len(parts) == 3 and parts[1] == "rdf_shacl":
+                if parts[2] == "enabled" and not isinstance(parsed, bool):
+                    return changed, "backends.fact_validation.rdf_shacl.enabled must be boolean"
+                if parts[2] == "mode" and parsed not in BACKEND_MODES:
+                    return changed, "backends.fact_validation.rdf_shacl.mode has invalid value"
+                if parts[2] == "strict" and not isinstance(parsed, bool):
+                    return changed, "backends.fact_validation.rdf_shacl.strict must be boolean"
+                if parts[2] not in {"enabled", "mode", "strict"}:
+                    return changed, f"unknown backend setting key: {key}"
+                backends.setdefault(section, {}).setdefault("rdf_shacl", {})[parts[2]] = parsed
+            else:
+                return changed, f"unknown backend setting key: {key}"
+        elif section == "code_intelligence":
+            if parts == ["code_intelligence", "backend"]:
+                if parsed not in CODE_INTELLIGENCE_BACKENDS:
+                    return changed, "backends.code_intelligence.backend has invalid value"
+                backends.setdefault(section, {})["backend"] = parsed
+            elif len(parts) == 3 and parts[1] in {"serena", "cocoindex"}:
+                if parts[2] == "enabled" and not isinstance(parsed, bool):
+                    return changed, f"backends.code_intelligence.{parts[1]}.enabled must be boolean"
+                if parts[2] == "mode" and parsed not in BACKEND_MODES:
+                    return changed, f"backends.code_intelligence.{parts[1]}.mode has invalid value"
+                if parts[2] == "max_results" and (isinstance(parsed, bool) or not isinstance(parsed, int)):
+                    return changed, f"backends.code_intelligence.{parts[1]}.max_results has invalid value"
+                if parts[2] == "max_results" and not 1 <= parsed <= 100:
+                    return changed, f"backends.code_intelligence.{parts[1]}.max_results has invalid value"
+                if parts[2] == "import_into_cix" and (parts[1] != "cocoindex" or not isinstance(parsed, bool)):
+                    return changed, "backends.code_intelligence.cocoindex.import_into_cix must be boolean"
+                if parts[2] not in {"enabled", "mode", "max_results", "import_into_cix"}:
+                    return changed, f"unknown backend setting key: {key}"
+                backends.setdefault(section, {}).setdefault(parts[1], {})[parts[2]] = parsed
+            else:
+                return changed, f"unknown backend setting key: {key}"
+        elif section == "derivation":
+            if parts == ["derivation", "backend"]:
+                if parsed not in DERIVATION_BACKENDS:
+                    return changed, "backends.derivation.backend has invalid value"
+                backends.setdefault(section, {})["backend"] = parsed
+            elif len(parts) == 3 and parts[1] == "datalog":
+                if parts[2] == "enabled" and not isinstance(parsed, bool):
+                    return changed, "backends.derivation.datalog.enabled must be boolean"
+                if parts[2] == "mode" and parsed not in BACKEND_MODES:
+                    return changed, "backends.derivation.datalog.mode has invalid value"
+                if parts[2] not in {"enabled", "mode"}:
+                    return changed, f"unknown backend setting key: {key}"
+                backends.setdefault(section, {}).setdefault("datalog", {})[parts[2]] = parsed
+            else:
+                return changed, f"unknown backend setting key: {key}"
+        changed = True
+    return changed, None
+
+
 def cmd_configure_runtime(
     root: Path,
     hook_verbosity: str | None,
     budget_items: list[str],
     input_capture_items: list[str],
     analysis_items: list[str],
+    backend_items: list[str],
     show: bool,
 ) -> int:
     settings = load_settings(root)
@@ -1758,6 +1851,7 @@ def cmd_configure_runtime(
     context_budget = dict(settings.get("context_budget", {}))
     input_capture = dict(settings.get("input_capture", {}))
     analysis = dict(settings.get("analysis", {}))
+    backends = dict(settings.get("backends", {}))
     changed = False
     if hook_verbosity:
         hooks["verbosity"] = hook_verbosity
@@ -1785,8 +1879,13 @@ def cmd_configure_runtime(
         print(analysis_error)
         return 1
     changed = changed or analysis_changed
+    backend_changed, backend_error = apply_backend_setting_items(backends, backend_items)
+    if backend_error:
+        print(backend_error)
+        return 1
+    changed = changed or backend_changed
     if changed:
-        write_settings(root, hooks=hooks, context_budget=context_budget, input_capture=input_capture, analysis=analysis)
+        write_settings(root, hooks=hooks, context_budget=context_budget, input_capture=input_capture, analysis=analysis, backends=backends)
         invalidate_hydration_state(root, "updated runtime configuration")
     settings = load_settings(root)
     if show or changed:
@@ -1807,6 +1906,57 @@ def cmd_configure_runtime(
                 elif isinstance(value, bool):
                     value = str(value).lower()
                 print(f"analysis.{section}.{key}={value}")
+        for section, values in sorted(settings.get("backends", {}).items()):
+            if not isinstance(values, dict):
+                continue
+            for key, value in sorted(values.items()):
+                if isinstance(value, dict):
+                    for nested_key, nested_value in sorted(value.items()):
+                        if isinstance(nested_value, bool):
+                            nested_value = str(nested_value).lower()
+                        print(f"backends.{section}.{key}.{nested_key}={nested_value}")
+                else:
+                    if isinstance(value, bool):
+                        value = str(value).lower()
+                    print(f"backends.{section}.{key}={value}")
+    return 0
+
+
+def append_backend_access_event(root: Path, tool: str, access_kind: str, backend: str | None = None) -> None:
+    event = {
+        "channel": "cli",
+        "tool": tool,
+        "access_kind": access_kind,
+        "access_is_proof": False,
+        "workspace_ref": current_workspace_ref(root),
+        "project_ref": current_project_ref(root),
+        "task_ref": current_task_ref(root),
+    }
+    if backend:
+        event["backend"] = backend
+    append_access_event(root, event)
+
+
+def cmd_backend_status(root: Path, output_format: str) -> int:
+    payload = backend_status_payload(root)
+    append_backend_access_event(root, "backend-status", "backend_status")
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        for line in backend_status_text_lines(payload):
+            print(line)
+    return 0
+
+
+def cmd_backend_check(root: Path, backend: str, output_format: str) -> int:
+    payload = backend_status_payload(root)
+    selected = select_backend_status(payload, backend)
+    append_backend_access_event(root, "backend-check", "backend_check", backend=backend)
+    if output_format == "json":
+        print(json.dumps({"backend_status_is_proof": False, "query": backend, "matches": selected}, indent=2, ensure_ascii=False))
+    else:
+        for line in backend_status_text_lines(payload, selected=selected):
+            print(line)
     return 0
 
 
@@ -1830,8 +1980,9 @@ def cmd_help(topic: str) -> int:
             "next step: compact action route and --format json route_graph for mechanical branch selection",
             "logic index: generated predicate atom/rule projection over CLM.logic blocks",
             "code index: index files/symbols/areas and attach navigation-only CIX annotations",
+            "backend registry: inspect optional helper availability without treating helper output as proof",
             "strictness: inspect or change allowed_freedom through user-backed requests",
-            "runtime budget: tune hook verbosity, context budget, and optional analysis backend policy through settings",
+            "runtime budget: tune hook verbosity, context budget, optional analysis policy, and external backend policy through settings",
         ],
         "commands": [
             "review-context | reindex-context | scan-conflicts",
@@ -1848,7 +1999,8 @@ def cmd_help(topic: str) -> int:
             "topic-index build --method lexical | topic-search --query ...",
             "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | attention-map | curiosity-probes --budget 5 | probe-inspect --index 1 | probe-chain-draft --index 1 | probe-pack --budget 3",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
-            "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3",
+            "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]",
+            "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3 --backend derivation.backend=datalog",
         ],
         "records": [
             "INP-* preserves prompt/input provenance; it is not proof until classified into source-backed records",
@@ -5780,6 +5932,13 @@ def parse_args() -> argparse.Namespace:
         help="Set analysis section.key=value, e.g. logic_solver.backend=z3 or topic_prefilter.backend=nmf.",
     )
     configure_runtime.add_argument(
+        "--backend",
+        dest="backend_items",
+        action="append",
+        default=[],
+        help="Set backend section.key=value, e.g. fact_validation.backend=rdf_shacl or derivation.datalog.enabled=true.",
+    )
+    configure_runtime.add_argument(
         "--input-capture",
         dest="input_capture_items",
         action="append",
@@ -5787,6 +5946,19 @@ def parse_args() -> argparse.Namespace:
         help="Set input_capture key=value, e.g. user_prompts=metadata-only or session_linking=false.",
     )
     configure_runtime.add_argument("--show", action="store_true")
+
+    backend_status = subparsers.add_parser(
+        "backend-status",
+        help="Show optional backend availability. Backend output is not proof.",
+    )
+    backend_status.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+
+    backend_check = subparsers.add_parser(
+        "backend-check",
+        help="Show one optional backend or backend group. Backend output is not proof.",
+    )
+    backend_check.add_argument("--backend", required=True)
+    backend_check.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
 
     start_task = subparsers.add_parser(
         "start-task",
@@ -6831,9 +7003,14 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 budget_items=args.context_budget,
                 input_capture_items=args.input_capture_items,
                 analysis_items=args.analysis_items,
+                backend_items=args.backend_items,
                 show=args.show,
             )
         )
+    if args.command == "backend-status":
+        raise SystemExit(cmd_backend_status(root, output_format=args.output_format))
+    if args.command == "backend-check":
+        raise SystemExit(cmd_backend_check(root, backend=args.backend, output_format=args.output_format))
     if args.command == "start-task":
         raise SystemExit(
             cmd_start_task(

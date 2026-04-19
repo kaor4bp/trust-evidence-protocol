@@ -527,6 +527,7 @@ from tep_runtime.reasoning import (  # noqa: E402
     validate_evidence_chain_payload,
 )
 from tep_runtime.reasoning_case import build_reasoning_case_payload, reasoning_case_text_lines  # noqa: E402
+from tep_runtime.backends import backend_status_payload, backend_status_text_lines, select_backend_status  # noqa: E402
 from tep_runtime.retrieval import (  # noqa: E402
     active_guidelines_for,
     active_permissions_for,
@@ -539,6 +540,7 @@ from tep_runtime.settings import (  # noqa: E402
     load_settings,
     load_strictness_requests,
     next_strictness_request_id,
+    normalize_backend_settings,
     normalize_settings_payload,
     permission_allows_strictness,
     strictness_request_allows_change,
@@ -5602,6 +5604,23 @@ def test_settings_core_normalizes_and_persists_policy(tmp_path: Path) -> None:
                 "logic_solver": {"backend": "z3", "timeout_ms": 50, "max_symbols": 12},
                 "topic_prefilter": {"backend": "nmf", "max_records": 10},
             },
+            "backends": {
+                "fact_validation": {
+                    "backend": "rdf_shacl",
+                    "rdf_shacl": {"enabled": True, "mode": "fake", "strict": True},
+                },
+                "code_intelligence": {
+                    "backend": "serena",
+                    "serena": {"enabled": True, "mode": "mcp", "max_results": 5},
+                    "cocoindex": {
+                        "enabled": True,
+                        "mode": "cli",
+                        "max_results": 6,
+                        "import_into_cix": True,
+                    },
+                },
+                "derivation": {"backend": "datalog", "datalog": {"enabled": True, "mode": "fake"}},
+            },
             "current_task_ref": "TASK-20260418-abcdef12",
             "current_project_ref": "PRJ-20260418-abcdef12",
         }
@@ -5629,6 +5648,15 @@ def test_settings_core_normalizes_and_persists_policy(tmp_path: Path) -> None:
     assert normalized["analysis"]["logic_solver"]["timeout_ms"] == 2000
     assert normalized["analysis"]["logic_solver"]["max_symbols"] == 12
     assert normalized["analysis"]["topic_prefilter"]["backend"] == "nmf"
+    assert normalized["backends"]["fact_validation"]["backend"] == "rdf_shacl"
+    assert normalized["backends"]["fact_validation"]["rdf_shacl"]["enabled"] is True
+    assert normalized["backends"]["fact_validation"]["rdf_shacl"]["mode"] == "fake"
+    assert normalized["backends"]["fact_validation"]["rdf_shacl"]["strict"] is True
+    assert normalized["backends"]["code_intelligence"]["backend"] == "serena"
+    assert normalized["backends"]["code_intelligence"]["serena"]["max_results"] == 5
+    assert normalized["backends"]["code_intelligence"]["cocoindex"]["import_into_cix"] is True
+    assert normalized["backends"]["derivation"]["backend"] == "datalog"
+    assert normalized["backends"]["derivation"]["datalog"]["mode"] == "fake"
     assert normalized["current_task_ref"] == "TASK-20260418-abcdef12"
 
     write_settings(root, allowed_freedom="evidence-authorized", current_task_ref=None)
@@ -5636,6 +5664,22 @@ def test_settings_core_normalizes_and_persists_policy(tmp_path: Path) -> None:
     assert stored["allowed_freedom"] == "evidence-authorized"
     assert stored["current_task_ref"] is None
     assert "updated_at" in json.loads(settings_path(root).read_text(encoding="utf-8"))
+
+    backend_status = backend_status_payload(root)
+    assert backend_status["backend_status_is_proof"] is False
+    assert select_backend_status(backend_status, "fact_validation")[0]["id"] == "builtin"
+    assert "Backend status is diagnostic/navigation data only" in "\n".join(
+        backend_status_text_lines(backend_status)
+    )
+
+    fake_settings = normalize_backend_settings(
+        {"derivation": {"backend": "datalog", "datalog": {"enabled": True, "mode": "fake"}}}
+    )
+    write_settings(root, backends=fake_settings)
+    fake_status = backend_status_payload(root)
+    datalog = select_backend_status(fake_status, "derivation.datalog")[0]
+    assert datalog["available"] is True
+    assert datalog["backend_output_is_proof"] is False
 
 
 def test_local_anchor_overrides_focus_and_can_only_lower_allowed_freedom(tmp_path: Path, monkeypatch) -> None:
@@ -5823,6 +5867,40 @@ def test_settings_core_validates_raw_policy_shapes_and_refs(tmp_path: Path) -> N
         (
             {"analysis": {"topic_prefilter": {"max_records": True}}},
             "analysis.topic_prefilter.max_records has invalid value",
+        ),
+        ({"backends": []}, "backends must be an object"),
+        ({"backends": {"fact_validation": []}}, "backends.fact_validation must be an object"),
+        (
+            {"backends": {"fact_validation": {"backend": "custom"}}},
+            "backends.fact_validation.backend has invalid value",
+        ),
+        (
+            {"backends": {"fact_validation": {"rdf_shacl": []}}},
+            "backends.fact_validation.rdf_shacl must be an object",
+        ),
+        (
+            {"backends": {"fact_validation": {"rdf_shacl": {"enabled": "yes"}}}},
+            "backends.fact_validation.rdf_shacl.enabled must be boolean",
+        ),
+        (
+            {"backends": {"code_intelligence": {"backend": "ctags"}}},
+            "backends.code_intelligence.backend has invalid value",
+        ),
+        (
+            {"backends": {"code_intelligence": {"serena": {"max_results": 0}}}},
+            "backends.code_intelligence.serena.max_results has invalid value",
+        ),
+        (
+            {"backends": {"code_intelligence": {"cocoindex": {"import_into_cix": "yes"}}}},
+            "backends.code_intelligence.cocoindex.import_into_cix must be boolean",
+        ),
+        (
+            {"backends": {"derivation": {"backend": "prolog"}}},
+            "backends.derivation.backend has invalid value",
+        ),
+        (
+            {"backends": {"derivation": {"datalog": {"mode": "prod"}}}},
+            "backends.derivation.datalog.mode has invalid value",
         ),
     ]
     for raw, expected in raw_error_cases:

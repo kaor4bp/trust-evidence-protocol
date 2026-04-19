@@ -89,6 +89,9 @@ Persistence write boundary:
 - Vocabulary graph smells such as orphan symbols, duplicate-like symbols, single-use predicates, and generic rule variables are pressure signals, not proof.
 - `<context>/settings.json.analysis` controls optional mechanical helpers such as Z3 solver policy and NMF topic prefilter policy.
 - Analysis helper settings are not proof and are not permission to silently install dependencies; respect `missing_dependency` and `install_policy`.
+- `<context>/settings.json.backends` controls optional external adapters for fact validation, code intelligence, and derivation.
+- Backend status and backend output are navigation/diagnostic data only; cite canonical `SRC-*` and `CLM-*` records before using a backend result as proof.
+- Use `backend-status` / `backend-check` before relying on an optional backend, and degrade cleanly when dependencies are missing.
 - Z3 `unsat` results identify claims participating in an inconsistent formal snapshot; they do not prove each listed claim is false.
 - Before resolving a Z3 candidate, inspect the reported `CLM-*` refs, logic refs, derived atoms, scopes, lifecycle state, and underlying `SRC-*` quotes.
 - MCP lookup tools are read-only accelerators over the same records and indexes; MCP output is not a new source of truth.
@@ -174,6 +177,7 @@ Operational layers:
 - `Topic Index`: generated/navigation lexical prefilter over records
 - `Logic Index`: generated/navigation predicate projection over `CLM.logic`
 - `Analysis Backend Policy`: settings for optional mechanical helpers such as structural/Z3 logic checks and lexical/NMF topic prefilters
+- `External Backend Registry`: settings for optional adapters such as RDF/SHACL validation, Serena/CocoIndex code intelligence, and Datalog-style derivation
 - generated indexes/views: navigation only
 
 Operational layers guide attention and continuity.

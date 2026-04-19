@@ -89,6 +89,8 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-conflict-candidates
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context tap-record --record CLM-* --kind cited --intent support
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context telemetry-report --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context backend-status --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context backend-check --backend derivation.datalog --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-index build
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-map --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-diagram --scope current --limit 8 --detail compact
@@ -119,6 +121,8 @@ Use `topic-search` only as a lexical prefilter, then inspect canonical records b
 Use `topic-conflict-candidates` only to find records worth structured comparison; it does not replace `scan-conflicts`.
 Use `tap-record` to record non-proof activity when a record was retrieved, opened, cited, decisive, updated, challenged, or contradicted.
 Use `telemetry-report` to inspect non-proof lookup telemetry, including whether agents are using MCP/CLI compact views or reading raw claim files.
+Use `backend-status` and `backend-check` to inspect optional helper availability before relying on external fact-validation, code-intelligence, or derivation backends.
+Backend status is diagnostic/navigation data only; it is not proof and does not replace canonical `SRC-*` or `CLM-*` support.
 Use `attention-map` and `curiosity-probes` to reduce token-heavy context exploration by asking the runtime for cold zones and bounded inspection questions.
 Use `attention-diagram` when a Mermaid cluster/link map is a cheaper orientation aid than reading several textual reports.
 Use `attention-diagram --detail full` only when compact node labels are not enough.
@@ -146,12 +150,14 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --input-capture user_prompts=metadata-only --input-capture session_linking=false
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis logic_solver.backend=z3 --analysis logic_solver.install_policy=ask
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis topic_prefilter.backend=nmf --analysis topic_prefilter.missing_dependency=warn
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend derivation.backend=datalog --backend derivation.datalog.enabled=true --backend derivation.datalog.mode=fake
 ```
 
 Use `hooks.verbosity=quiet` to reduce routine hook chatter while preserving stale/conflict/blocking messages.
 Use `context_budget` as policy for compact/normal/debug output; do not treat compact output as permission to omit decisive ids.
 Use `input_capture` as policy for prompt provenance; `INP-*` records are not proof until classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
 Use `analysis` as policy for optional helpers such as Z3 and NMF; it is not proof and not permission to silently install dependencies.
+Use `backends` as policy for optional external adapters such as RDF/SHACL, Serena, CocoIndex, and Datalog-style derivation; missing dependencies must degrade to status diagnostics instead of crashing normal TEP commands.
 
 ## Local Anchors
 

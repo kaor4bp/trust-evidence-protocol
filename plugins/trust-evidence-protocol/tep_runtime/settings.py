@@ -88,6 +88,11 @@ TOPIC_PREFILTER_REBUILD_MODES = {"manual", "on-demand", "on-hydrate"}
 ANALYSIS_MISSING_DEPENDENCY_POLICIES = {"warn", "error"}
 ANALYSIS_INSTALL_POLICIES = {"never", "ask", "allow-safe"}
 
+BACKEND_MODES = {"disabled", "fake", "local", "docker", "mcp", "cli"}
+FACT_VALIDATION_BACKENDS = {"builtin", "rdf_shacl"}
+CODE_INTELLIGENCE_BACKENDS = {"builtin", "serena", "cocoindex"}
+DERIVATION_BACKENDS = {"builtin", "datalog"}
+
 DEFAULT_ANALYSIS_SETTINGS = {
     "logic_solver": {
         "enabled": True,
@@ -112,6 +117,38 @@ DEFAULT_ANALYSIS_SETTINGS = {
     },
 }
 
+DEFAULT_BACKEND_SETTINGS = {
+    "fact_validation": {
+        "backend": "builtin",
+        "rdf_shacl": {
+            "enabled": False,
+            "mode": "local",
+            "strict": False,
+        },
+    },
+    "code_intelligence": {
+        "backend": "builtin",
+        "serena": {
+            "enabled": False,
+            "mode": "mcp",
+            "max_results": 12,
+        },
+        "cocoindex": {
+            "enabled": False,
+            "mode": "cli",
+            "max_results": 8,
+            "import_into_cix": False,
+        },
+    },
+    "derivation": {
+        "backend": "builtin",
+        "datalog": {
+            "enabled": False,
+            "mode": "fake",
+        },
+    },
+}
+
 DEFAULT_SETTINGS = {
     "allowed_freedom": "proof-only",
     "hooks": DEFAULT_HOOK_SETTINGS,
@@ -120,6 +157,7 @@ DEFAULT_SETTINGS = {
     "artifact_policy": DEFAULT_ARTIFACT_POLICY,
     "cleanup": DEFAULT_CLEANUP_SETTINGS,
     "analysis": DEFAULT_ANALYSIS_SETTINGS,
+    "backends": DEFAULT_BACKEND_SETTINGS,
     "current_task_ref": None,
     "current_workspace_ref": None,
     "current_project_ref": None,
@@ -461,6 +499,108 @@ def normalize_analysis_settings(raw: object) -> dict:
     return payload
 
 
+def _normalize_backend_mode(raw: object, default: str) -> str:
+    if isinstance(raw, str) and raw in BACKEND_MODES:
+        return raw
+    return default
+
+
+def normalize_backend_settings(raw: object) -> dict:
+    default_fact = DEFAULT_BACKEND_SETTINGS["fact_validation"]
+    default_code = DEFAULT_BACKEND_SETTINGS["code_intelligence"]
+    default_derivation = DEFAULT_BACKEND_SETTINGS["derivation"]
+    payload = {
+        "fact_validation": {
+            "backend": default_fact["backend"],
+            "rdf_shacl": dict(default_fact["rdf_shacl"]),
+        },
+        "code_intelligence": {
+            "backend": default_code["backend"],
+            "serena": dict(default_code["serena"]),
+            "cocoindex": dict(default_code["cocoindex"]),
+        },
+        "derivation": {
+            "backend": default_derivation["backend"],
+            "datalog": dict(default_derivation["datalog"]),
+        },
+    }
+    if not isinstance(raw, dict):
+        return payload
+
+    fact = raw.get("fact_validation")
+    if isinstance(fact, dict):
+        backend = fact.get("backend")
+        if isinstance(backend, str) and backend in FACT_VALIDATION_BACKENDS:
+            payload["fact_validation"]["backend"] = backend
+        rdf_shacl = fact.get("rdf_shacl")
+        if isinstance(rdf_shacl, dict):
+            enabled = rdf_shacl.get("enabled")
+            if isinstance(enabled, bool):
+                payload["fact_validation"]["rdf_shacl"]["enabled"] = enabled
+            payload["fact_validation"]["rdf_shacl"]["mode"] = _normalize_backend_mode(
+                rdf_shacl.get("mode"),
+                payload["fact_validation"]["rdf_shacl"]["mode"],
+            )
+            strict = rdf_shacl.get("strict")
+            if isinstance(strict, bool):
+                payload["fact_validation"]["rdf_shacl"]["strict"] = strict
+
+    code = raw.get("code_intelligence")
+    if isinstance(code, dict):
+        backend = code.get("backend")
+        if isinstance(backend, str) and backend in CODE_INTELLIGENCE_BACKENDS:
+            payload["code_intelligence"]["backend"] = backend
+        serena = code.get("serena")
+        if isinstance(serena, dict):
+            enabled = serena.get("enabled")
+            if isinstance(enabled, bool):
+                payload["code_intelligence"]["serena"]["enabled"] = enabled
+            payload["code_intelligence"]["serena"]["mode"] = _normalize_backend_mode(
+                serena.get("mode"),
+                payload["code_intelligence"]["serena"]["mode"],
+            )
+            payload["code_intelligence"]["serena"]["max_results"] = _bounded_int(
+                serena.get("max_results"),
+                payload["code_intelligence"]["serena"]["max_results"],
+                1,
+                100,
+            )
+        cocoindex = code.get("cocoindex")
+        if isinstance(cocoindex, dict):
+            enabled = cocoindex.get("enabled")
+            if isinstance(enabled, bool):
+                payload["code_intelligence"]["cocoindex"]["enabled"] = enabled
+            payload["code_intelligence"]["cocoindex"]["mode"] = _normalize_backend_mode(
+                cocoindex.get("mode"),
+                payload["code_intelligence"]["cocoindex"]["mode"],
+            )
+            payload["code_intelligence"]["cocoindex"]["max_results"] = _bounded_int(
+                cocoindex.get("max_results"),
+                payload["code_intelligence"]["cocoindex"]["max_results"],
+                1,
+                100,
+            )
+            import_into_cix = cocoindex.get("import_into_cix")
+            if isinstance(import_into_cix, bool):
+                payload["code_intelligence"]["cocoindex"]["import_into_cix"] = import_into_cix
+
+    derivation = raw.get("derivation")
+    if isinstance(derivation, dict):
+        backend = derivation.get("backend")
+        if isinstance(backend, str) and backend in DERIVATION_BACKENDS:
+            payload["derivation"]["backend"] = backend
+        datalog = derivation.get("datalog")
+        if isinstance(datalog, dict):
+            enabled = datalog.get("enabled")
+            if isinstance(enabled, bool):
+                payload["derivation"]["datalog"]["enabled"] = enabled
+            payload["derivation"]["datalog"]["mode"] = _normalize_backend_mode(
+                datalog.get("mode"),
+                payload["derivation"]["datalog"]["mode"],
+            )
+    return payload
+
+
 def normalize_settings_payload(raw: object) -> dict:
     payload = {
         "allowed_freedom": DEFAULT_SETTINGS["allowed_freedom"],
@@ -470,6 +610,7 @@ def normalize_settings_payload(raw: object) -> dict:
         "artifact_policy": normalize_artifact_policy(None),
         "cleanup": normalize_cleanup_settings(None),
         "analysis": normalize_analysis_settings(None),
+        "backends": normalize_backend_settings(None),
         "current_task_ref": None,
         "current_workspace_ref": None,
         "current_project_ref": None,
@@ -487,6 +628,7 @@ def normalize_settings_payload(raw: object) -> dict:
     payload["artifact_policy"] = normalize_artifact_policy(raw.get("artifact_policy"))
     payload["cleanup"] = normalize_cleanup_settings(raw.get("cleanup"))
     payload["analysis"] = normalize_analysis_settings(raw.get("analysis"))
+    payload["backends"] = normalize_backend_settings(raw.get("backends"))
     current_task_ref = raw.get("current_task_ref")
     if current_task_ref is None:
         payload["current_task_ref"] = None
@@ -694,6 +836,68 @@ def validate_settings_state(root: Path, records: dict[str, dict]) -> list[Valida
                     isinstance(max_records, bool) or not isinstance(max_records, int) or max_records < 1 or max_records > 1000000
                 ):
                     return [ValidationError(path, "analysis.topic_prefilter.max_records has invalid value")]
+        raw_backends = raw_settings.get("backends")
+        if raw_backends is not None and not isinstance(raw_backends, dict):
+            return [ValidationError(path, "backends must be an object")]
+        if isinstance(raw_backends, dict):
+            raw_fact = raw_backends.get("fact_validation")
+            if raw_fact is not None and not isinstance(raw_fact, dict):
+                return [ValidationError(path, "backends.fact_validation must be an object")]
+            if isinstance(raw_fact, dict):
+                if raw_fact.get("backend") is not None and raw_fact.get("backend") not in FACT_VALIDATION_BACKENDS:
+                    return [ValidationError(path, "backends.fact_validation.backend has invalid value")]
+                raw_rdf = raw_fact.get("rdf_shacl")
+                if raw_rdf is not None and not isinstance(raw_rdf, dict):
+                    return [ValidationError(path, "backends.fact_validation.rdf_shacl must be an object")]
+                if isinstance(raw_rdf, dict):
+                    if raw_rdf.get("enabled") is not None and not isinstance(raw_rdf.get("enabled"), bool):
+                        return [ValidationError(path, "backends.fact_validation.rdf_shacl.enabled must be boolean")]
+                    if raw_rdf.get("mode") is not None and raw_rdf.get("mode") not in BACKEND_MODES:
+                        return [ValidationError(path, "backends.fact_validation.rdf_shacl.mode has invalid value")]
+                    if raw_rdf.get("strict") is not None and not isinstance(raw_rdf.get("strict"), bool):
+                        return [ValidationError(path, "backends.fact_validation.rdf_shacl.strict must be boolean")]
+
+            raw_code = raw_backends.get("code_intelligence")
+            if raw_code is not None and not isinstance(raw_code, dict):
+                return [ValidationError(path, "backends.code_intelligence must be an object")]
+            if isinstance(raw_code, dict):
+                if raw_code.get("backend") is not None and raw_code.get("backend") not in CODE_INTELLIGENCE_BACKENDS:
+                    return [ValidationError(path, "backends.code_intelligence.backend has invalid value")]
+                for backend_name in ("serena", "cocoindex"):
+                    raw_backend = raw_code.get(backend_name)
+                    if raw_backend is not None and not isinstance(raw_backend, dict):
+                        return [ValidationError(path, f"backends.code_intelligence.{backend_name} must be an object")]
+                    if isinstance(raw_backend, dict):
+                        if raw_backend.get("enabled") is not None and not isinstance(raw_backend.get("enabled"), bool):
+                            return [ValidationError(path, f"backends.code_intelligence.{backend_name}.enabled must be boolean")]
+                        if raw_backend.get("mode") is not None and raw_backend.get("mode") not in BACKEND_MODES:
+                            return [ValidationError(path, f"backends.code_intelligence.{backend_name}.mode has invalid value")]
+                        max_results = raw_backend.get("max_results")
+                        if max_results is not None and (
+                            isinstance(max_results, bool) or not isinstance(max_results, int) or max_results < 1 or max_results > 100
+                        ):
+                            return [ValidationError(path, f"backends.code_intelligence.{backend_name}.max_results has invalid value")]
+                        if (
+                            backend_name == "cocoindex"
+                            and raw_backend.get("import_into_cix") is not None
+                            and not isinstance(raw_backend.get("import_into_cix"), bool)
+                        ):
+                            return [ValidationError(path, "backends.code_intelligence.cocoindex.import_into_cix must be boolean")]
+
+            raw_derivation = raw_backends.get("derivation")
+            if raw_derivation is not None and not isinstance(raw_derivation, dict):
+                return [ValidationError(path, "backends.derivation must be an object")]
+            if isinstance(raw_derivation, dict):
+                if raw_derivation.get("backend") is not None and raw_derivation.get("backend") not in DERIVATION_BACKENDS:
+                    return [ValidationError(path, "backends.derivation.backend has invalid value")]
+                raw_datalog = raw_derivation.get("datalog")
+                if raw_datalog is not None and not isinstance(raw_datalog, dict):
+                    return [ValidationError(path, "backends.derivation.datalog must be an object")]
+                if isinstance(raw_datalog, dict):
+                    if raw_datalog.get("enabled") is not None and not isinstance(raw_datalog.get("enabled"), bool):
+                        return [ValidationError(path, "backends.derivation.datalog.enabled must be boolean")]
+                    if raw_datalog.get("mode") is not None and raw_datalog.get("mode") not in BACKEND_MODES:
+                        return [ValidationError(path, "backends.derivation.datalog.mode has invalid value")]
 
     settings = load_settings(root)
     current_task_ref = str(settings.get("current_task_ref") or "").strip()
@@ -727,6 +931,7 @@ def write_settings(
     artifact_policy: dict | None = None,
     cleanup: dict | None = None,
     analysis: dict | None = None,
+    backends: dict | None = None,
     current_task_ref: object = _UNSET,
     current_workspace_ref: object = _UNSET,
     current_project_ref: object = _UNSET,
@@ -746,6 +951,8 @@ def write_settings(
         payload["cleanup"] = normalize_cleanup_settings(cleanup)
     if analysis is not None:
         payload["analysis"] = normalize_analysis_settings(analysis)
+    if backends is not None:
+        payload["backends"] = normalize_backend_settings(backends)
     if current_task_ref is not _UNSET:
         if current_task_ref is None:
             payload["current_task_ref"] = None

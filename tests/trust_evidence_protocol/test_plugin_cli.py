@@ -776,6 +776,7 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
 
     commands_help = run_cli(context, "help", "commands").stdout
     assert "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]" in commands_help
+    assert "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]" in commands_help
 
     configured = run_cli(
         context,
@@ -794,10 +795,18 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
         "topic_prefilter.backend=nmf",
         "--analysis",
         "topic_prefilter.rebuild=manual",
+        "--backend",
+        "derivation.backend=datalog",
+        "--backend",
+        "derivation.datalog.enabled=true",
+        "--backend",
+        "derivation.datalog.mode=fake",
     ).stdout
     assert "hooks.verbosity=quiet" in configured
     assert "analysis.logic_solver.backend=z3" in configured
     assert "analysis.topic_prefilter.backend=nmf" in configured
+    assert "backends.derivation.backend=datalog" in configured
+    assert "backends.derivation.datalog.enabled=true" in configured
     settings = json.loads((context / "settings.json").read_text(encoding="utf-8"))
     assert settings["hooks"]["verbosity"] == "quiet"
     assert settings["context_budget"]["hydration"] == "compact"
@@ -805,10 +814,31 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert settings["analysis"]["logic_solver"]["install_policy"] == "ask"
     assert settings["analysis"]["topic_prefilter"]["backend"] == "nmf"
     assert settings["analysis"]["topic_prefilter"]["rebuild"] == "manual"
+    assert settings["backends"]["derivation"]["backend"] == "datalog"
+    assert settings["backends"]["derivation"]["datalog"]["enabled"] is True
+    assert settings["backends"]["derivation"]["datalog"]["mode"] == "fake"
 
     invalid_analysis = run_cli(context, "configure-runtime", "--analysis", "logic_solver.backend=bad", check=False)
     assert invalid_analysis.returncode == 1
     assert "invalid value for analysis.logic_solver.backend" in invalid_analysis.stdout
+    invalid_backend = run_cli(context, "configure-runtime", "--backend", "code_intelligence.backend=ctags", check=False)
+    assert invalid_backend.returncode == 1
+    assert "backends.code_intelligence.backend has invalid value" in invalid_backend.stdout
+
+    status_payload = json.loads(run_cli(context, "backend-status", "--format", "json").stdout)
+    assert status_payload["backend_status_is_proof"] is False
+    assert status_payload["groups"]["derivation"]["selected"] == "datalog"
+    assert any(item["id"] == "datalog" and item["available"] is True for item in status_payload["backends"])
+    check_payload = json.loads(
+        run_cli(context, "backend-check", "--backend", "derivation.datalog", "--format", "json").stdout
+    )
+    assert check_payload["backend_status_is_proof"] is False
+    assert check_payload["matches"][0]["backend_output_is_proof"] is False
+    telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
+    assert telemetry["by_tool"]["backend-status"] >= 1
+    assert telemetry["by_tool"]["backend-check"] >= 1
+    assert telemetry["by_access_kind"]["backend_status"] >= 1
+    assert telemetry["by_access_kind"]["backend_check"] >= 1
 
     first = run_cli(
         context,

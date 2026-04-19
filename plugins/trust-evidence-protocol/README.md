@@ -152,6 +152,7 @@ combine explicit taps and lookup telemetry as navigation/heatmap signals.
 - `artifact_policy` for when referenced files are copied or only linked
 - `cleanup` staging and retention thresholds
 - optional `analysis` backend policy for logic solving and topic prefiltering
+- optional `backends` registry policy for external fact-validation, code-intelligence, and derivation helpers
 
 `.tep` is intentionally excluded from canonical storage.
 Do not use it to store records, claims, user facts, permissions, restrictions, or guidelines.
@@ -206,6 +207,28 @@ Default analysis policy:
 The baseline runtime must work with structural logic checks and lexical topic prefiltering.
 Optional backends such as `z3` and `nmf` may be enabled per project, but missing dependencies should warn or error according to settings instead of silently installing packages.
 When `install_policy = "ask"`, the agent may propose the install command and record the action only after user approval.
+
+Default external backend registry:
+
+- `backends.fact_validation.backend = "builtin"`
+- `backends.fact_validation.rdf_shacl.enabled = false`
+- `backends.fact_validation.rdf_shacl.mode = "local"`
+- `backends.fact_validation.rdf_shacl.strict = false`
+- `backends.code_intelligence.backend = "builtin"`
+- `backends.code_intelligence.serena.enabled = false`
+- `backends.code_intelligence.serena.mode = "mcp"`
+- `backends.code_intelligence.serena.max_results = 12`
+- `backends.code_intelligence.cocoindex.enabled = false`
+- `backends.code_intelligence.cocoindex.mode = "cli"`
+- `backends.code_intelligence.cocoindex.max_results = 8`
+- `backends.code_intelligence.cocoindex.import_into_cix = false`
+- `backends.derivation.backend = "builtin"`
+- `backends.derivation.datalog.enabled = false`
+- `backends.derivation.datalog.mode = "fake"`
+
+`backends` is an adapter registry, not proof.
+Use `backend-status` or `backend-check` to inspect dependency availability before relying on a helper.
+Backend output may guide lookup, indexing, validation, and candidate generation, but a user-facing proof chain must still cite canonical `SRC-*` and `CLM-*` records.
 
 Prompt capture mechanics:
 
@@ -356,11 +379,24 @@ Commands:
   - shows or updates `hooks.verbosity`
   - shows or updates `context_budget`
   - shows or updates optional `analysis` backend policy
+  - shows or updates optional external backend registry policy
   - useful examples:
     - `configure-runtime --show`
     - `configure-runtime --hook-verbosity quiet --context-budget hydration=compact`
     - `configure-runtime --analysis logic_solver.backend=z3 --analysis logic_solver.install_policy=ask`
     - `configure-runtime --analysis topic_prefilter.backend=nmf --analysis topic_prefilter.missing_dependency=warn`
+    - `configure-runtime --backend derivation.backend=datalog --backend derivation.datalog.enabled=true --backend derivation.datalog.mode=fake`
+
+- `backend-status`
+  - reports configured optional backend availability as diagnostic/navigation data
+  - never treats backend output as proof
+  - useful example: `backend-status --format json`
+
+- `backend-check`
+  - reports one backend group or concrete backend id
+  - useful examples:
+    - `backend-check --backend code_intelligence`
+    - `backend-check --backend derivation.datalog --format json`
 
 - `review-context`
   - checks structural correctness

@@ -81,6 +81,7 @@ from tep_runtime.attention import (
     load_tap_events,
     write_attention_index_reports,
 )
+from tep_runtime.backends import backend_status_payload, backend_status_text_lines, select_backend_status
 from tep_runtime.conflicts import (
     CLAIM_COMPARATORS,
     CLAIM_POLARITIES,
@@ -426,12 +427,17 @@ from tep_runtime.settings import (
     ALLOWED_FREEDOM,
     ANALYSIS_INSTALL_POLICIES,
     ANALYSIS_MISSING_DEPENDENCY_POLICIES,
+    BACKEND_MODES,
+    CODE_INTELLIGENCE_BACKENDS,
     CONTEXT_BUDGET_KEYS,
     CONTEXT_BUDGET_VALUES,
     DEFAULT_ANALYSIS_SETTINGS,
+    DEFAULT_BACKEND_SETTINGS,
     DEFAULT_CONTEXT_BUDGET,
     DEFAULT_HOOK_SETTINGS,
     DEFAULT_SETTINGS,
+    DERIVATION_BACKENDS,
+    FACT_VALIDATION_BACKENDS,
     HOOK_MODE_VALUES,
     INPUT_CAPTURE_MODES,
     INPUT_FILE_MENTION_MODES,
@@ -449,6 +455,7 @@ from tep_runtime.settings import (
     load_strictness_requests,
     next_strictness_request_id,
     normalize_analysis_settings,
+    normalize_backend_settings,
     normalize_context_budget,
     normalize_hook_settings,
     normalize_settings_payload,
