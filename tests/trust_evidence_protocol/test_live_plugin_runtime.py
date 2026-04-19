@@ -27,3 +27,29 @@ def test_live_agent_checks_installed_tep_runtime_plugin():
     ), payload
     assert len(get_last_run_checksum()) == 64
     assert "TEP Runtime" in get_last_stdout() or "Trust Evidence Protocol" in get_last_stdout()
+
+
+def test_live_agent_checks_mcp_lookup_telemetry_runtime():
+    payload = run_plugin_runtime_case(
+        """
+        Verify telemetry in the installed TEP Runtime plugin mechanically:
+        1. Run a compact claim lookup such as `claim-graph --query telemetry --format json`
+           against `/workspace/.tep_context`.
+        2. Run `telemetry-report --format json` against `/workspace/.tep_context`.
+        3. Report observed markers proving telemetry_report is available and reports
+           lookup counters such as `telemetry_is_proof`, `event_count`, `by_tool`, or
+           `claim-graph`.
+        Do not rely on memory; base the verdict on command output.
+        """
+    )
+
+    checks = payload["plugin_checks"]
+    commands = " ".join(payload["commands_run"])
+    markers = " ".join(payload["observed_markers"])
+    assert payload["verdict"] == "plugin-active", payload
+    assert checks["plugin_root_exists"] is True, payload
+    assert checks["context_cli_works"] is True, payload
+    assert checks["hydration_or_review_works"] is True, payload
+    assert "claim-graph" in commands, payload
+    assert "telemetry-report" in commands, payload
+    assert any(marker in markers for marker in ("telemetry_is_proof", "event_count", "by_tool", "claim-graph")), payload

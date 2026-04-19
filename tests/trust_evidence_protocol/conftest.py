@@ -18,6 +18,7 @@ LIVE_AGENT_TESTS: Final = {
     "test_classification_and_transfer.py",
     "test_conflicts_and_questions.py",
     "test_hypothesis_reasoning_behavior.py",
+    "test_retrospective_agent_behavior.py",
     "test_curiosity_agent_behavior.py",
     "test_insufficient_evidence.py",
     "test_live_plugin_runtime.py",

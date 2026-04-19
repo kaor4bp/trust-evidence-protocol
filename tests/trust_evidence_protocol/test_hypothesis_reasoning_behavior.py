@@ -43,7 +43,9 @@ def test_five_daughters_allowance_keeps_competing_hypotheses():
         Construct the candidate answer variants yourself. Your reason must name
         multiple distinct fact-compatible candidate amounts or allowance rules
         for the fifth daughter, then decide whether any one amount is forced.
-        Return those variants in `generated_candidates`.
+        Return only concrete candidate amounts or allowance rules in
+        `generated_candidates`; do not include the final underdetermined verdict
+        itself as a generated candidate.
         """,
         answer_options={
             "candidate-set-underdetermined": "generate a set of fact-compatible candidate answers and conclude that no one amount is entailed",
@@ -63,10 +65,12 @@ def test_five_daughters_allowance_keeps_competing_hypotheses():
     generated_amounts = {
         amount for amount in ("$0", "$5", "$10", "$20", "zero", "five", "ten", "twenty") if amount in candidate_text
     }
+    meta_verdict_terms = ("underdetermined", "not entailed", "cannot determine", "insufficient")
 
     assert result == "candidate-set-underdetermined", trace
     assert len(candidates) >= 3, trace
     assert len(generated_amounts) >= 2, trace
+    assert not any(term in candidate["answer"].lower() for candidate in candidates for term in meta_verdict_terms), trace
     assert all(candidate["compatible_with_facts"] is True for candidate in candidates), trace
     assert all(candidate["entailed_by_facts"] is False for candidate in candidates), trace
     assert "fifth" in targets, trace

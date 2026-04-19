@@ -82,6 +82,8 @@ List any under-audit artifacts used as premises in `audit_artifacts_used_as_prem
 Always return `generated_candidates`; use an empty array when no candidate-answer generation was requested.
 When the user asks you to construct candidate answers or hypotheses, return those candidates in `generated_candidates`.
 Each generated candidate must include `id`, `answer`, `rule_or_hypothesis`, `compatible_with_facts`, `entailed_by_facts`, and `why`.
+Set `entailed_by_facts` true only when the candidate answer/route/value itself is proven by the prompt facts.
+Set `entailed_by_facts` false for probes, revalidation targets, historical shortcuts, possible rules, and locally plausible hypotheses that need more evidence.
 """
 
 
