@@ -2346,6 +2346,55 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     context = bootstrap_context(tmp_path)
     repo = tmp_path / "repo"
     repo.mkdir()
+    (repo / "src").mkdir()
+    (repo / "src" / "app.py").write_text(
+        "def choose_backend():\n"
+        "    return 'cocoindex'\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "add", "src/app.py"], cwd=repo, check=True, capture_output=True, text=True)
+    run_cli(context, "init-code-index", "--root", str(repo))
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "code-search.backend",
+            "--source-kind",
+            "code",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "fixture",
+            "--origin-ref",
+            "src/app.py",
+            "--quote",
+            "def choose_backend():",
+            "--note",
+            "backend search link target",
+        ),
+        "source",
+    )
+    claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "code-search.backend",
+            "--plane",
+            "code",
+            "--status",
+            "supported",
+            "--statement",
+            "src/app.py defines choose_backend.",
+            "--source",
+            source_id,
+            "--note",
+            "backend search link candidate",
+        ),
+        "claim",
+    )
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     ccc = fake_bin / "ccc"
@@ -2382,6 +2431,8 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
             "backend choice",
             "--path",
             "src/*.py",
+            "--link-candidate",
+            claim_id,
             "--fields",
             "target",
             "--format",
@@ -2389,7 +2440,7 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
         ).stdout
     )
 
-    assert payload["results"] == []
+    assert payload["results"][0]["target"]["path"] == "src/app.py"
     backend = payload["backend_results"]
     assert backend["backend"] == "cocoindex"
     assert backend["backend_output_is_proof"] is False
@@ -2397,6 +2448,10 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     assert backend["available"] is True
     assert backend["results"][0]["target"] == {"path": "src/app.py", "line_start": 10, "line_end": 12}
     assert backend["results"][0]["snippet"] == "def choose_backend():\n    return 'cocoindex'"
+    assert backend["results"][0]["cix_candidates"][0]["target"]["path"] == "src/app.py"
+    assert backend["results"][0]["link_suggestions"][0]["ref"] == claim_id
+    assert backend["results"][0]["link_suggestions"][0]["command"].startswith("link-code --entry CIX-")
+    assert "index_suggestion" not in backend["results"][0]
 
     telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
     assert telemetry["by_tool"]["code-search"] >= 2

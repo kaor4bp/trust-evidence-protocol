@@ -611,6 +611,9 @@ Commands:
   - searches CIX entries by path, language, code kind, import, symbol, feature, linked ref, or stale state
   - can filter annotations with `--annotation-kind smell` and `--annotation-category ...`
   - can use `--query "..."` to proxy a semantic code search through the configured TEP backend, such as CocoIndex, while returning navigation-only TEP-normalized `backend_results`
+  - enriches backend hits with matching `cix_candidates` when the hit path is indexed
+  - returns an `index_suggestion` when a backend hit has no matching CIX entry yet
+  - can use `--link-candidate <REF>` to return non-mutating `link_suggestions`; apply a suggestion with `link-code` only after verifying the hit is relevant
   - returns only requested projection fields and defaults to a small limit
   - hides missing, superseded, and archived entries unless explicitly requested
   - code search is navigation only; read files or create `SRC-*` support before making truth claims

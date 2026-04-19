@@ -149,6 +149,7 @@ from context_lib import (
     code_index_entry_path,
     cocoindex_search_payload,
     cocoindex_search_text_lines,
+    enrich_backend_results_with_cix,
     active_restrictions_for,
     attention_diagram_mermaid_lines,
     attention_diagram_metrics,
@@ -4304,6 +4305,7 @@ def cmd_code_search(
     symbols: list[str],
     features: list[str],
     refs: list[str],
+    link_candidate_refs: list[str],
     annotation_kind: str | None,
     annotation_categories: list[str],
     annotation_status: str | None,
@@ -4397,6 +4399,25 @@ def cmd_code_search(
             results.append(entry)
     results = sorted(results, key=lambda item: (str(item.get("status", "")), str((item.get("target") or {}).get("path", ""))))[: max(1, limit)]
     backend_payload = None
+    link_candidates: dict[str, list[str]] = {}
+    if link_candidate_refs:
+        records, record_errors = load_records(root)
+        if record_errors:
+            print_errors(record_errors)
+            return 1
+        record_type_to_link_key = {record_type: key for key, record_type in CODE_INDEX_LINK_KEYS.items()}
+        for ref in link_candidate_refs:
+            record = records.get(ref)
+            if not record:
+                print(f"missing link candidate ref: {ref}")
+                return 1
+            ref_key = record_type_to_link_key.get(str(record.get("record_type", "")))
+            if not ref_key:
+                print(f"{ref} cannot be linked from CIX entries")
+                return 1
+            link_candidates.setdefault(ref_key, [])
+            if ref not in link_candidates[ref_key]:
+                link_candidates[ref_key].append(ref)
     if query:
         backend_payload = cocoindex_search_payload(
             root,
@@ -4405,6 +4426,12 @@ def cmd_code_search(
             language=language,
             path_patterns=path_patterns,
             limit=limit,
+        )
+        backend_payload = enrich_backend_results_with_cix(
+            backend_payload,
+            entries,
+            repo_root,
+            link_candidates=link_candidates,
         )
         append_backend_access_event(root, "code-search", "backend_code_search", backend="cocoindex")
     append_lookup_access_event(
@@ -5702,6 +5729,13 @@ def parse_args() -> argparse.Namespace:
     code_search.add_argument("--symbol", dest="symbols", action="append", default=[])
     code_search.add_argument("--feature", dest="features", action="append", default=[])
     code_search.add_argument("--ref", dest="refs", action="append", default=[])
+    code_search.add_argument(
+        "--link-candidate",
+        dest="link_candidate_refs",
+        action="append",
+        default=[],
+        help="Canonical record ref to include in backend-hit link suggestions without mutating records.",
+    )
     code_search.add_argument("--annotation-kind", choices=sorted(CODE_INDEX_ANNOTATION_KINDS))
     code_search.add_argument("--annotation-category", dest="annotation_categories", action="append", default=[])
     code_search.add_argument("--annotation-status", choices=sorted(CODE_INDEX_ANNOTATION_STATUSES))
@@ -6827,6 +6861,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 symbols=args.symbols,
                 features=args.features,
                 refs=args.refs,
+                link_candidate_refs=args.link_candidate_refs,
                 annotation_kind=args.annotation_kind,
                 annotation_categories=args.annotation_categories,
                 annotation_status=args.annotation_status,

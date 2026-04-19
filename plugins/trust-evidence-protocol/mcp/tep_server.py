@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.62"
+SERVER_VERSION = "0.1.63"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -214,6 +214,11 @@ TOOLS: list[JsonObject] = [
                 "symbols": {"type": "array", "items": {"type": "string"}},
                 "features": {"type": "array", "items": {"type": "string"}},
                 "refs": {"type": "array", "items": {"type": "string"}},
+                "link_candidate_refs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Canonical refs to turn backend hits into CIX link suggestions without mutating records.",
+                },
                 "annotation_kind": {
                     "type": "string",
                     "enum": ["agent-note", "review-note", "TODO", "rationale", "risk", "smell"],
@@ -750,6 +755,7 @@ def tool_code_search(args: JsonObject) -> tuple[bool, str]:
         ("symbols", "--symbol"),
         ("features", "--feature"),
         ("refs", "--ref"),
+        ("link_candidate_refs", "--link-candidate"),
     ):
         add_repeated(cli_args, flag, as_list(args.get(key)))
     for key, flag in (("language", "--language"), ("code_kind", "--code-kind"), ("fields", "--fields")):

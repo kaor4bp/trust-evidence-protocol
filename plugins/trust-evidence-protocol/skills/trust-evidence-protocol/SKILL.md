@@ -42,6 +42,7 @@ When MCP tools are available, prefer them for read-only lookup:
 - use `guidelines_for` before sizeable code/test edits
 - use `code_search` and `code_info` to find relevant files or code areas, then read code or cite `SRC-*`/`CLM-*` before making truth claims
 - if semantic code search is needed, use TEP `code_search(query=...)`; do not call CocoIndex or another code backend directly unless debugging the backend itself
+- when a backend hit is useful, inspect its `cix_candidates`, `index_suggestion`, and optional `link_suggestions`; persist the relationship with `link-code` only after verifying relevance
 - avoid reading raw `records/claim/*.json` directly during normal reasoning; use raw files only as an escape hatch for debugging, migration, or missing MCP/CLI coverage
 
 If MCP is unavailable, use the equivalent `context_cli.py` commands from `workflows/plugin-commands.md`.

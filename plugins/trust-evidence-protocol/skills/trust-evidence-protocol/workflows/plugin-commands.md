@@ -188,6 +188,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-info --path tests/unit/test_example.py --fields target,imports,symbols,features,freshness
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --import pytest --fields target,imports,features --limit 20
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --query "prompt choice backend" --fields target --limit 8
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --query "prompt choice backend" --link-candidate CLM-* --fields target --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --annotation-kind smell --annotation-category mixed-responsibility --fields target,annotations
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-smell-report --category mixed-responsibility
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-entry create --target-kind directory --path tests/e2e --summary "E2E tests" --note "manual code area"
@@ -199,6 +200,8 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 
 Treat `CIX-*` as navigation/scope/impact only.
 Do not use CIX entries as proof, claim support, source support, action justification, or evidence-chain nodes.
+Backend hits may include `cix_candidates`, `index_suggestion`, and `link_suggestions`.
+Apply a suggested CIX-to-record link with `link-code` only after inspecting the code hit and verifying that the relationship is useful.
 Read the code or cite a `SRC-*` before making truth claims about behavior or compliance.
 Use smell annotations as local critique/search signals, not hard rules.
 When a smell repeats and has support, create a `PRP-*` for options or a `GLD-*` through normal guideline recording; do not auto-promote smells.

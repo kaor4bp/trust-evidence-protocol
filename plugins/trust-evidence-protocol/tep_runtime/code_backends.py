@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .backends import backend_status_payload, select_backend_status
+from .code_index import code_entry_freshness
 from .settings import load_settings
 
 
@@ -150,6 +151,64 @@ def cocoindex_search_payload(
     return payload
 
 
+def enrich_backend_results_with_cix(
+    payload: dict[str, Any],
+    entries: dict[str, dict],
+    repo_root: Path,
+    *,
+    link_candidates: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """Attach matching CIX candidates and link suggestions to backend hits."""
+
+    by_path: dict[str, list[dict]] = {}
+    for entry in entries.values():
+        target = entry.get("target") if isinstance(entry.get("target"), dict) else {}
+        path = str(target.get("path", "")).strip()
+        if not path or str(entry.get("status", "")) in {"superseded", "archived"}:
+            continue
+        by_path.setdefault(path, []).append(entry)
+
+    for result in payload.get("results") or []:
+        if not isinstance(result, dict):
+            continue
+        target = result.get("target") if isinstance(result.get("target"), dict) else {}
+        path = str(target.get("path", "")).strip()
+        candidates = []
+        for entry in sorted(by_path.get(path, []), key=lambda item: str(item.get("updated_at", "")), reverse=True):
+            candidates.append(
+                {
+                    "id": entry.get("id"),
+                    "status": entry.get("status"),
+                    "target": entry.get("target", {}),
+                    "freshness": code_entry_freshness(repo_root, entry),
+                }
+            )
+        result["cix_candidates"] = candidates
+        if path and not candidates:
+            result["index_suggestion"] = {
+                "command": f"index-code --root <repo-root> --include {path}",
+                "suggestion_is_proof": BACKEND_OUTPUT_IS_PROOF,
+                "reason": "backend hit path is not represented by a CIX entry yet",
+            }
+        suggestions = []
+        if candidates and link_candidates:
+            entry_id = str(candidates[0].get("id") or "")
+            for ref_key, refs in sorted(link_candidates.items()):
+                for ref in refs:
+                    suggestions.append(
+                        {
+                            "entry": entry_id,
+                            "ref_key": ref_key,
+                            "ref": ref,
+                            "command": f"link-code --entry {entry_id} --{ref_key.removesuffix('_refs').replace('_', '-')} {ref} --note <why-this-backend-hit-is-relevant>",
+                            "suggestion_is_proof": BACKEND_OUTPUT_IS_PROOF,
+                        }
+                    )
+        if suggestions:
+            result["link_suggestions"] = suggestions
+    return payload
+
+
 def cocoindex_search_text_lines(payload: dict[str, Any]) -> list[str]:
     status = "available" if payload.get("available") else "unavailable"
     lines = [
@@ -168,4 +227,12 @@ def cocoindex_search_text_lines(payload: dict[str, Any]) -> list[str]:
         if snippet:
             first_line = snippet.splitlines()[0]
             lines.append(f"  snippet: {first_line[:180]}")
+        cix_candidates = item.get("cix_candidates") or []
+        if cix_candidates:
+            lines.append("  cix_candidates: " + ", ".join(str(candidate.get("id")) for candidate in cix_candidates))
+        index_suggestion = item.get("index_suggestion")
+        if isinstance(index_suggestion, dict):
+            lines.append(f"  index_suggestion: {index_suggestion.get('command')}")
+        for suggestion in item.get("link_suggestions") or []:
+            lines.append(f"  link_suggestion: {suggestion.get('command')}")
     return lines

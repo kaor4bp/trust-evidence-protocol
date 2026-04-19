@@ -67,6 +67,7 @@ from tep_runtime.code_index import (
 from tep_runtime.code_backends import (
     cocoindex_search_payload,
     cocoindex_search_text_lines,
+    enrich_backend_results_with_cix,
     parse_cocoindex_search_output,
 )
 from tep_runtime.actions import build_action_payload
