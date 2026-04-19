@@ -40,22 +40,34 @@ def test_five_daughters_allowance_keeps_competing_hypotheses():
         Question:
         How much did the fifth daughter receive?
 
-        Choose the best answer from the provided options. Do not invent a hidden
-        family rule unless it is forced by the facts.
+        Construct the candidate answer variants yourself. Your reason must name
+        multiple distinct fact-compatible candidate amounts or allowance rules
+        for the fifth daughter, then decide whether any one amount is forced.
         """,
         answer_options={
-            "a": "$0, because the fourth daughter's $5 breaks the earlier pattern and the fifth likely gets nothing",
-            "b": "$10, because the first three daughters suggest a $50, $40, $30, $20, $10 linear pattern with an exception",
-            "c": "$20, because the first three daughters suggest a $50, $40, $30, $20, $10 linear pattern and the fourth was an exception",
-            "d": "$5, because the fourth and fifth daughters likely receive the same younger-child allowance",
-            "e": "the facts do not determine one amount; multiple allowance rules remain compatible with the observations",
+            "candidate-set-underdetermined": "generate a set of fact-compatible candidate answers and conclude that no one amount is entailed",
+            "single-forced-amount": "select one exact amount because it is entailed by the facts",
+            "single-pattern-rule": "select one pattern because it is the only plausible rule",
+            "insufficient-without-candidates": "say the data is insufficient without generating competing candidate answers",
         },
     )
 
     trace = get_last_result_payload()
+    reason = trace["reason"].lower()
     targets = " ".join(trace["underdetermined_targets"]).lower()
+    generated_amounts = {
+        amount
+        for amount in ("$0", "$5", "$10", "$20", "zero", "five", "ten", "twenty")
+        if amount in reason
+    }
+    generated_rule_terms = {
+        term
+        for term in ("linear", "exception", "same", "younger", "punished", "breaks")
+        if term in reason
+    }
 
-    assert result == "e", trace
+    assert result == "candidate-set-underdetermined", trace
+    assert len(generated_amounts) >= 2 or len(generated_rule_terms) >= 3, trace
     assert "fifth" in targets, trace
     assert "amount" in targets or "allowance" in targets or "allocation" in targets, trace
 
