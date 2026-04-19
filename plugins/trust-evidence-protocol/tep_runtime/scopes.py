@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .settings import load_effective_settings, load_settings
+from .settings import load_effective_settings
 
 
 def current_task_ref(root: Path) -> str:
-    return str(load_settings(root).get("current_task_ref") or "").strip()
+    return str(load_effective_settings(root).get("current_task_ref") or "").strip()
 
 
 def current_project_ref(root: Path) -> str:

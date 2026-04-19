@@ -44,16 +44,16 @@ def bootstrap_context(tmp_path: Path) -> Path:
 
 
 def recorded_id(result: subprocess.CompletedProcess[str], record_type: str) -> str:
-    match = re.search(rf"Recorded {record_type} ([A-Z]+-\d{{8}}-[0-9a-f]{{8}})", result.stdout)
+    match = re.search(rf"(?:Recorded {record_type}|Started {record_type}) ([A-Z]+-\d{{8}}-[0-9a-f]{{8}})", result.stdout)
     assert match, result.stdout
     return match.group(1)
 
 
-def run_mcp(messages: list[dict]) -> list[dict]:
+def run_mcp(messages: list[dict], cwd: Path = REPO_ROOT) -> list[dict]:
     payload = "\n".join(json.dumps(message) for message in messages) + "\n"
     result = subprocess.run(
         [sys.executable, str(MCP_SERVER)],
-        cwd=REPO_ROOT,
+        cwd=cwd,
         input=payload,
         capture_output=True,
         text=True,
@@ -586,8 +586,37 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
+    global_workdir = tmp_path / "global-workdir"
+    global_workdir.mkdir()
     workdir = tmp_path / "anchored-workdir"
     workdir.mkdir()
+    run_cli(
+        context,
+        "record-workspace",
+        "--workspace-key",
+        "mcp-global",
+        "--title",
+        "MCP Global Workspace",
+        "--root-ref",
+        str(global_workdir),
+        "--note",
+        "global workspace boundary",
+    )
+    global_workspace_id = only_record_id(context, "workspace")
+    run_cli(context, "set-current-workspace", "--workspace", global_workspace_id)
+    global_task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "mcp.global.task",
+            "--title",
+            "MCP Global Task",
+            "--note",
+            "global task must not leak into anchored MCP calls",
+        ),
+        "task",
+    )
     run_cli(
         context,
         "record-workspace",
@@ -600,8 +629,13 @@ def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
         "--note",
         "workspace boundary",
     )
-    workspace_id = only_record_id(context, "workspace")
+    workspace_id = [
+        path.stem
+        for path in sorted((context / "records" / "workspace").glob("*.json"))
+        if path.stem != global_workspace_id
+    ][0]
     run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    run_cli(context, "pause-task", "--task", global_task_id, "--note", "pause global task before anchor task")
     run_cli(
         context,
         "record-project",
@@ -615,6 +649,22 @@ def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
         "project inside current workspace",
     )
     project_id = only_record_id(context, "project")
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "mcp.anchor.task",
+            "--title",
+            "MCP Anchor Task",
+            "--project",
+            project_id,
+            "--note",
+            "local anchor task",
+        ),
+        "task",
+    )
+    run_cli(context, "switch-task", "--task", global_task_id, "--note", "restore global task before MCP cwd call")
     run_cli(
         context,
         "init-anchor",
@@ -624,6 +674,8 @@ def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
         workspace_id,
         "--project",
         project_id,
+        "--task",
+        task_id,
         "--note",
         "local mcp anchor",
     )
@@ -653,3 +705,33 @@ def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
     assert result["isError"] is False
     assert f"`{workspace_id}` status=`active` key=`mcp-anchored`" in result["content"][0]["text"]
     assert f"`{project_id}` status=`active` key=`mcp-project`" in result["content"][0]["text"]
+    assert f"`{task_id}` status=`paused` type=`general` scope=`mcp.anchor.task`" in result["content"][0]["text"]
+    assert global_task_id not in result["content"][0]["text"]
+
+    mcp_server_cwd = tmp_path / "mcp-server-cwd"
+    mcp_server_cwd.mkdir()
+    unanchored_responses = run_mcp(
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "pytest"}},
+            },
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "brief_context",
+                    "arguments": {"context": str(context), "task": "mcp cwd anchor lookup", "detail": "compact"},
+                },
+            },
+        ],
+        cwd=mcp_server_cwd,
+    )
+    unanchored_result = {response["id"]: response for response in unanchored_responses}[2]["result"]
+    assert unanchored_result["isError"] is True
+    assert "MCP cwd is required" in unanchored_result["content"][0]["text"]
+    assert global_task_id not in unanchored_result["content"][0]["text"]

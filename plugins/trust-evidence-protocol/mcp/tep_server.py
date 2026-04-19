@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.65"
+SERVER_VERSION = "0.1.66"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -34,7 +34,10 @@ def schema(
         "cwd",
         {
             "type": "string",
-            "description": "Working directory used for .tep anchor resolution and relative paths. Defaults to the MCP server cwd.",
+            "description": (
+                "Working directory used for .tep anchor resolution and relative paths. "
+                "Pass the active agent workdir in multi-workspace contexts; otherwise MCP refuses unsafe global focus fallback."
+            ),
         },
     )
     return {
@@ -594,6 +597,48 @@ def call_cwd(args: JsonObject) -> Path:
     return Path(str(value)).expanduser().resolve() if value else Path.cwd()
 
 
+def has_nearest_anchor(cwd: Path) -> bool:
+    current = cwd.resolve()
+    for candidate in (current, *current.parents):
+        if (candidate / ".tep").is_file():
+            return True
+    return False
+
+
+def active_workspace_count(context_root: Path) -> int:
+    workspace_root = context_root / "records" / "workspace"
+    if not workspace_root.is_dir():
+        return 0
+    count = 0
+    for path in workspace_root.glob("WSP-*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if data.get("record_type") == "workspace" and data.get("status") == "active":
+            count += 1
+    return count
+
+
+def mcp_context_root(args: JsonObject) -> Path | None:
+    context = context_path(args) or os.environ.get("TEP_CONTEXT_ROOT")
+    if not context:
+        return None
+    return Path(context).expanduser().resolve()
+
+
+def unsafe_unanchored_fallback(args: JsonObject, cwd: Path) -> str | None:
+    if args.get("cwd") or has_nearest_anchor(cwd):
+        return None
+    context_root = mcp_context_root(args)
+    if context_root is None or active_workspace_count(context_root) <= 1:
+        return None
+    return (
+        "MCP cwd is required: refusing to use the MCP server cwd as TEP focus in a multi-workspace context. "
+        "Pass the active agent workdir via the tool `cwd` argument so `.tep` can select workspace/project/task."
+    )
+
+
 def run_cli(args: JsonObject, cli_args: list[str]) -> tuple[bool, str]:
     command = [sys.executable, str(CLI)]
     context = context_path(args)
@@ -603,6 +648,9 @@ def run_cli(args: JsonObject, cli_args: list[str]) -> tuple[bool, str]:
     cwd = call_cwd(args)
     if not cwd.is_dir():
         return False, f"cwd is not a directory: {cwd}"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return False, unsafe_fallback
     result = subprocess.run(
         command,
         cwd=cwd,
