@@ -1,0 +1,40 @@
+{
+  "description": "TEP Runtime hooks for Claude Code — context hydration, mutation guard, and post-mutation stale tracking.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/claude/user_prompt_hydration_notice.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/claude/pre_tool_use_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/claude/post_tool_use_review.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

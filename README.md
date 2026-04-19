@@ -5,8 +5,8 @@ runtime for coding agents.
 
 The protocol separates source-backed truth from permissions, restrictions,
 guidelines, working context, plans, debt, proposals, generated indexes, and
-agent hypotheses. The current repository contains the TEP runtime, Codex plugin
-adapter, read-only MCP server, hooks, docs, and regression tests.
+agent hypotheses. The current repository contains the TEP runtime, Codex and Claude Code plugin
+adapters, read-only MCP server, hooks, docs, and regression tests.
 
 ## Current Status
 
@@ -76,17 +76,26 @@ uv run pytest -q \
   tests/trust_evidence_protocol/test_mcp_server.py
 ```
 
-Install the local Codex plugin build deterministically:
+Install the local plugin build (Codex + Claude Code) deterministically:
 
 ```bash
 ./scripts/install-local-plugin.sh
 ```
 
 The installer copies `plugins/trust-evidence-protocol/` to
-`~/plugins/trust-evidence-protocol`, installs the active version into Codex's
-local plugin cache, archives older cached versions, and verifies that the
-installed hook guard is present. Use this instead of manual `rsync` when
-publishing a local test build.
+`~/plugins/trust-evidence-protocol`, installs the active version into both
+Codex's (`~/.codex/plugins/cache/home-local-plugins/`) and Claude Code's
+(`~/.claude/plugins/cache/home-local-plugins/`) local plugin caches, archives
+older cached versions, and verifies that the installed hook guards are present.
+Use this instead of manual `rsync` when publishing a local test build.
+
+Override cache destinations with environment variables:
+
+```bash
+TEP_CODEX_PLUGIN_CACHE=~/.codex/plugins/cache/home-local-plugins/trust-evidence-protocol \
+TEP_CLAUDE_PLUGIN_CACHE=~/.claude/plugins/cache/home-local-plugins/trust-evidence-protocol \
+./scripts/install-local-plugin.sh
+```
 
 Live-agent tests use Docker and real `codex exec`; run them deliberately, not
 as part of every local edit loop. They are excluded from the default pytest run.

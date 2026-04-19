@@ -65,10 +65,14 @@ def load_record(context: Path, record_type: str, record_id: str) -> dict:
 def test_install_local_plugin_script_creates_single_active_cache_version(tmp_path: Path) -> None:
     local_source = tmp_path / "plugins" / "trust-evidence-protocol"
     cache = tmp_path / "cache" / "trust-evidence-protocol"
+    claude_cache = tmp_path / "claude-cache" / "trust-evidence-protocol"
     version = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
     old_version = cache / "0.1.1"
     old_version.mkdir(parents=True)
     (old_version / "old.txt").write_text("old", encoding="utf-8")
+    old_claude_version = claude_cache / "0.1.1"
+    old_claude_version.mkdir(parents=True)
+    (old_claude_version / "old.txt").write_text("old", encoding="utf-8")
     stale_local_bytecode = local_source / "tep_runtime" / "__pycache__"
     stale_cache_bytecode = cache / version / "tep_runtime" / "__pycache__"
     stale_local_bytecode.mkdir(parents=True)
@@ -84,6 +88,7 @@ def test_install_local_plugin_script_creates_single_active_cache_version(tmp_pat
             "HOME": str(tmp_path / "home"),
             "TEP_LOCAL_PLUGIN_SOURCE": str(local_source),
             "TEP_CODEX_PLUGIN_CACHE": str(cache),
+            "TEP_CLAUDE_PLUGIN_CACHE": str(claude_cache),
         },
         capture_output=True,
         text=True,
@@ -93,10 +98,22 @@ def test_install_local_plugin_script_creates_single_active_cache_version(tmp_pat
 
     assert (local_source / ".codex-plugin" / "plugin.json").is_file()
     assert (cache / version / ".codex-plugin" / "plugin.json").is_file()
+    assert (claude_cache / version / ".claude-plugin" / "plugin.json").is_file()
+    claude_manifest = json.loads(
+        (claude_cache / version / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+    )
+    assert claude_manifest["version"] == version
+    assert claude_manifest["hooks"] == "./hooks/claude/hooks.json"
+    claude_hooks = json.loads((claude_cache / version / "hooks" / "claude" / "hooks.json").read_text(encoding="utf-8"))
+    user_prompt_command = claude_hooks["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    assert "\"${CLAUDE_PLUGIN_ROOT}/hooks/claude/user_prompt_hydration_notice.py\"" in user_prompt_command
     assert (cache / "_archived-pre-active" / "0.1.1" / "old.txt").read_text(encoding="utf-8") == "old"
+    assert (claude_cache / "_archived-pre-active" / "0.1.1" / "old.txt").read_text(encoding="utf-8") == "old"
     active_dirs = sorted(path.name for path in cache.iterdir() if path.is_dir())
     assert active_dirs == [version, "_archived-pre-active"]
-    installed_roots = [local_source, cache / version]
+    active_claude_dirs = sorted(path.name for path in claude_cache.iterdir() if path.is_dir())
+    assert active_claude_dirs == [version, "_archived-pre-active"]
+    installed_roots = [local_source, cache / version, claude_cache / version]
     for root in installed_roots:
         assert not list(root.rglob("__pycache__")), root
         assert not list(root.rglob("*.pyc")), root
