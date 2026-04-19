@@ -101,7 +101,7 @@ def record_ids(context: Path, record_type: str) -> list[str]:
 
 
 def recorded_id(result: subprocess.CompletedProcess[str], record_type: str) -> str:
-    match = re.search(rf"Recorded {record_type} ([A-Z]+-\d{{8}}-[0-9a-f]{{8}})", result.stdout)
+    match = re.search(rf"(?:Recorded {record_type}|Started {record_type}) ([A-Z]+-\d{{8}}-[0-9a-f]{{8}})", result.stdout)
     assert match, result.stdout
     return match.group(1)
 
@@ -565,6 +565,23 @@ def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_
     )
     global_project_id = record_ids(context, "project")[0]
     run_cli(context, "set-current-project", "--project", global_project_id)
+    global_task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "global.task",
+            "--title",
+            "Global task",
+            "--type",
+            "implementation",
+            "--project",
+            global_project_id,
+            "--note",
+            "global task",
+        ),
+        "task",
+    )
 
     workdir = tmp_path / "anchored-workdir"
     workdir.mkdir()
@@ -596,6 +613,25 @@ def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_
         "anchor project",
     )
     anchor_project_id = [record_id for record_id in record_ids(context, "project") if record_id != global_project_id][0]
+    run_cli(context, "pause-task", "--task", global_task_id, "--note", "pause global task before anchor task")
+    anchor_task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "anchor.task",
+            "--title",
+            "Anchor task",
+            "--type",
+            "implementation",
+            "--project",
+            anchor_project_id,
+            "--note",
+            "anchor task",
+        ),
+        "task",
+    )
+    run_cli(context, "switch-task", "--task", global_task_id, "--note", "restore global task before anchor check")
     run_runtime(context, "hydrate-context", "--allow-unanchored")
     (workdir / ".tep").write_text(
         json.dumps(
@@ -604,6 +640,7 @@ def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_
                 "context_root": str(context),
                 "workspace_ref": anchor_workspace_id,
                 "project_ref": anchor_project_id,
+                "task_ref": anchor_task_id,
                 "note": "local anchor",
             },
             indent=2,
@@ -619,11 +656,13 @@ def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_
         check=False,
     )
     assert mismatched.returncode == 1
-    assert "snapshot_mismatch=current_workspace,current_project" in mismatched.stdout
+    assert "snapshot_mismatch=current_workspace,current_project,current_task" in mismatched.stdout
     assert f"snapshot_current_workspace={global_workspace_id}" in mismatched.stdout
     assert f"effective_current_workspace={anchor_workspace_id}" in mismatched.stdout
     assert f"snapshot_current_project={global_project_id}" in mismatched.stdout
     assert f"effective_current_project={anchor_project_id}" in mismatched.stdout
+    assert f"snapshot_current_task={global_task_id}" in mismatched.stdout
+    assert f"effective_current_task={anchor_task_id}" in mismatched.stdout
     assert "action=run hydrate-context" in mismatched.stdout
 
     hydrated = subprocess.run(
@@ -644,9 +683,10 @@ def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_
     assert aligned.returncode == 0
     assert "snapshot_mismatch=" not in aligned.stdout
     assert f"current_workspace={anchor_workspace_id}" in aligned.stdout
+    assert f"current_task={anchor_task_id}" in aligned.stdout
 
 
-def test_hooks_preserve_anchored_hydration_from_unanchored_cwd(tmp_path: Path) -> None:
+def test_hooks_require_anchor_in_unanchored_cwd_when_multiple_workspaces_are_active(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
     run_cli(
@@ -706,11 +746,12 @@ def test_hooks_preserve_anchored_hydration_from_unanchored_cwd(tmp_path: Path) -
     env = {"TEP_CONTEXT_ROOT": str(context)}
 
     prompt_output = hook_json_with_env(HOOK_DIR / "user_prompt_hydration_notice.py", payload, env)
-    assert prompt_output["systemMessage"] == "🛡️ Anchored context preserved."
-    assert f"Preserved workspace: {anchor_workspace_id}" in prompt_output["hookSpecificOutput"]["additionalContext"]
+    assert prompt_output["systemMessage"] == "🛡️ Explicit TEP anchor required."
+    assert "multiple active workspaces" in prompt_output["hookSpecificOutput"]["additionalContext"]
+    assert "anchor-workspace" in prompt_output["hookSpecificOutput"]["additionalContext"]
 
     session_output = hook_json_with_env(HOOK_DIR / "session_start_hydrate.py", {"cwd": str(unanchored)}, env)
-    assert session_output["systemMessage"] == "🛡️ Anchored context preserved."
+    assert session_output["systemMessage"] == "🛡️ Explicit TEP anchor required."
 
     aligned = subprocess.run(
         [sys.executable, str(RUNTIME_GATE), "--context", str(context), "show-hydration"],

@@ -192,6 +192,8 @@ def has_context_anchor(context_root: Path, cwd: str | Path | None) -> bool:
 def should_preserve_anchored_hydration(context_root: Path, cwd: str | Path | None) -> bool:
     if has_context_anchor(context_root, cwd):
         return False
+    if len(active_workspace_records(context_root)) > 1:
+        return False
     state = load_hydration_state(context_root)
     return bool(str(state.get("anchor_path") or "").strip())
 

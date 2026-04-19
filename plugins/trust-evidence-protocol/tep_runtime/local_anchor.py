@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .ids import PROJECT_ID_PATTERN, WORKSPACE_ID_PATTERN
+from .ids import PROJECT_ID_PATTERN, TASK_ID_PATTERN, WORKSPACE_ID_PATTERN
 
 ANCHOR_FILENAME = ".tep"
 
@@ -73,6 +73,11 @@ def anchor_workspace_ref(anchor: dict) -> str:
 def anchor_project_ref(anchor: dict) -> str:
     ref = str(anchor.get("project_ref") or "").strip()
     return ref if PROJECT_ID_PATTERN.match(ref) else ""
+
+
+def anchor_task_ref(anchor: dict) -> str:
+    ref = str(anchor.get("task_ref") or "").strip()
+    return ref if TASK_ID_PATTERN.match(ref) else ""
 
 
 def anchor_settings(anchor: dict) -> dict:

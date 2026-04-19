@@ -201,6 +201,7 @@ from context_lib import (
     active_permissions_for,
     ANCHOR_FILENAME,
     anchor_context_root,
+    anchor_task_ref,
     assign_project_payload,
     assign_workspace_payload,
     assign_task_payload,
@@ -581,6 +582,7 @@ def cmd_init_anchor(
     directory: str | None,
     workspace_ref: str,
     project_ref: str | None,
+    task_ref: str | None,
     allowed_freedom: str | None,
     hook_verbosity: str | None,
     force: bool,
@@ -600,6 +602,18 @@ def cmd_init_anchor(
         if project_ref not in workspace_projects:
             print(f"{project_ref} is not listed in {workspace_ref}.project_refs")
             return 1
+    if task_ref:
+        if task_ref not in records or records[task_ref].get("record_type") != "task":
+            print(f"{task_ref} must reference a task record")
+            return 1
+        task_workspaces = records[task_ref].get("workspace_refs", [])
+        if task_workspaces and workspace_ref not in task_workspaces:
+            print(f"{task_ref} is not scoped to {workspace_ref}")
+            return 1
+        task_projects = records[task_ref].get("project_refs", [])
+        if project_ref and task_projects and project_ref not in task_projects:
+            print(f"{task_ref} is not scoped to {project_ref}")
+            return 1
 
     path = anchor_path_for(directory)
     if path.exists() and not force:
@@ -610,6 +624,7 @@ def cmd_init_anchor(
         "context_root": str(root),
         "workspace_ref": workspace_ref,
         "project_ref": project_ref,
+        "task_ref": task_ref,
         "settings": {},
         "note": note,
     }
@@ -634,6 +649,7 @@ def cmd_show_anchor(start: str | None) -> int:
     print(f"context_root={anchor_context_root(anchor) or ''}")
     print(f"workspace_ref={anchor.get('workspace_ref') or ''}")
     print(f"project_ref={anchor.get('project_ref') or ''}")
+    print(f"task_ref={anchor_task_ref(anchor)}")
     settings = anchor.get("settings", {})
     if isinstance(settings, dict) and settings:
         print(f"settings={json.dumps(settings, sort_keys=True)}")
@@ -656,6 +672,7 @@ def cmd_validate_anchor(root: Path, start: str | None) -> int:
         return exit_code
     workspace_ref = str(anchor.get("workspace_ref") or "").strip()
     project_ref = str(anchor.get("project_ref") or "").strip()
+    task_ref = str(anchor.get("task_ref") or "").strip()
     if workspace_ref not in records or records[workspace_ref].get("record_type") != "workspace":
         print(f"{anchor_path}: workspace_ref must reference a workspace record")
         return 1
@@ -665,6 +682,18 @@ def cmd_validate_anchor(root: Path, start: str | None) -> int:
             return 1
         if project_ref not in records[workspace_ref].get("project_refs", []):
             print(f"{anchor_path}: project_ref is not listed in workspace.project_refs")
+            return 1
+    if task_ref:
+        if task_ref not in records or records[task_ref].get("record_type") != "task":
+            print(f"{anchor_path}: task_ref must reference a task record")
+            return 1
+        task_workspaces = records[task_ref].get("workspace_refs", [])
+        if task_workspaces and workspace_ref not in task_workspaces:
+            print(f"{anchor_path}: task_ref is not scoped to workspace_ref")
+            return 1
+        task_projects = records[task_ref].get("project_refs", [])
+        if project_ref and task_projects and project_ref not in task_projects:
+            print(f"{anchor_path}: task_ref is not scoped to project_ref")
             return 1
     print(f"Validated local TEP anchor: {anchor_path}")
     return 0
@@ -6061,6 +6090,7 @@ def parse_args() -> argparse.Namespace:
     init_anchor.add_argument("--directory", help="Directory where .tep should be written. Defaults to cwd.")
     init_anchor.add_argument("--workspace", dest="workspace_ref", required=True)
     init_anchor.add_argument("--project", dest="project_ref")
+    init_anchor.add_argument("--task", dest="task_ref")
     init_anchor.add_argument("--allowed-freedom", choices=sorted(ALLOWED_FREEDOM))
     init_anchor.add_argument("--hook-verbosity", choices=("quiet", "normal", "debug"))
     init_anchor.add_argument("--force", action="store_true")
@@ -7216,6 +7246,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 directory=args.directory,
                 workspace_ref=args.workspace_ref,
                 project_ref=args.project_ref,
+                task_ref=args.task_ref,
                 allowed_freedom=args.allowed_freedom,
                 hook_verbosity=args.hook_verbosity,
                 force=args.force,

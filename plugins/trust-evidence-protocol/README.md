@@ -63,10 +63,13 @@ It lets one global context hold multiple workspaces/projects while each checkout
 - `context_root`: canonical context root, usually `~/.tep_context`
 - `workspace_ref`: active `WSP-*` memory boundary for this workdir
 - `project_ref`: optional active `PRJ-*` focus inside the workspace
+- `task_ref`: optional active `TASK-*` focus for this checkout/session family
 - `settings`: local hook/context-budget preferences and optional `allowed_freedom`
 
 Local `.tep.settings.allowed_freedom` can only keep or lower the effective freedom.
 It cannot raise a workspace from `proof-only` to `evidence-authorized` or `implementation-choice`; escalation still goes through canonical strictness requests and approvals.
+In a multi-workspace context, an unanchored workdir must not silently inherit the global `current_task_ref`.
+Create or validate a local `.tep` anchor before relying on workspace, project, or task facts.
 
 Context-root resolution order is:
 
@@ -747,8 +750,8 @@ Guideline disclosure for code edits:
   - causes new canonical records to inherit `workspace_refs` automatically
   - hydration and session-start hooks show the current workspace explicitly
 
-- `init-anchor --directory . --workspace WSP-* [--project PRJ-*]`
-  - writes a local `.tep` anchor that selects context root plus workdir-specific workspace/project focus
+- `init-anchor --directory . --workspace WSP-* [--project PRJ-*] [--task TASK-*]`
+  - writes a local `.tep` anchor that selects context root plus workdir-specific workspace/project/task focus
   - `.tep` is local configuration, not canonical memory and not proof
   - local `allowed_freedom` can only keep or lower effective strictness
 
@@ -1032,6 +1035,7 @@ Current prioritization behavior:
 - records should link to workspaces through `workspace_refs`
 - `settings.json.current_workspace_ref` selects the default workspace boundary
 - local `.tep.workspace_ref` may select a workdir-specific workspace boundary over the same global context
+- local `.tep.task_ref` prevents a checkout from inheriting an unrelated global current task
 - hydration and session-start hook output must show the current workspace when one is set
 - new canonical records automatically inherit the current workspace
 - legacy records can be migrated safely with `assign-workspace --all-unassigned` or `assign-workspace --records-file`; this does not guess project ownership

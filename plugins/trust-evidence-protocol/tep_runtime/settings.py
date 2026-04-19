@@ -12,6 +12,7 @@ from .local_anchor import (
     anchor_applies_to_context,
     anchor_project_ref,
     anchor_settings,
+    anchor_task_ref,
     anchor_workspace_ref,
     find_anchor,
 )
@@ -671,6 +672,9 @@ def load_effective_settings(root: Path, start: str | Path | None = None) -> dict
     project_ref = anchor_project_ref(anchor)
     if project_ref:
         payload["current_project_ref"] = project_ref
+    task_ref = anchor_task_ref(anchor)
+    if task_ref:
+        payload["current_task_ref"] = task_ref
 
     local_settings = anchor_settings(anchor)
     hooks = local_settings.get("hooks")

@@ -14,8 +14,9 @@ Codex hooks are not a complete boundary for every tool, so the agent must still 
 
 Treat the resolved TEP context root as durable agent memory.
 The preferred live root is global `~/.tep_context`; legacy repo-local `.codex_context` remains valid as a migration source, fallback, or test fixture.
-If a workdir contains a `.tep` file, treat it as a local anchor that selects the resolved context root plus current `WSP-*` workspace and optional `PRJ-*` project for that checkout.
+If a workdir contains a `.tep` file, treat it as a local anchor that selects the resolved context root plus current `WSP-*` workspace, optional `PRJ-*` project, and optional `TASK-*` task for that checkout.
 `.tep` is local configuration, not canonical memory and not proof.
+In a multi-workspace context, do not silently inherit global current focus from an unanchored workdir; create or validate a local `.tep` anchor first.
 If no TEP context root is available, follow the same reasoning rules manually and state that mechanical validation/persistence was unavailable.
 
 ## Core Rule
@@ -53,9 +54,9 @@ Persistence write boundary:
 
 - `<context>/records/` is canonical structured memory and must be written through plugin commands when commands are available.
 - Do not create or edit canonical records with shell redirection, `tee`, ad hoc scripts, or manual JSON edits.
-- Workdir-local `.tep` anchors may select `context_root`, `workspace_ref`, `project_ref`, hook verbosity, context budget, and stricter local `allowed_freedom`; they must not store records, facts, permissions, restrictions, guidelines, or proposals.
+- Workdir-local `.tep` anchors may select `context_root`, `workspace_ref`, `project_ref`, `task_ref`, hook verbosity, context budget, and stricter local `allowed_freedom`; they must not store records, facts, permissions, restrictions, guidelines, or proposals.
 - Local `.tep.settings.allowed_freedom` may only keep or lower effective freedom. It is not a way to raise permission above canonical context policy.
-- If hooks report `Anchored context preserved`, continue using the preserved workspace/project/task unless you are intentionally switching focus; then hydrate from the intended workdir that contains the right `.tep` anchor.
+- If hooks report `Anchored context preserved`, continue using the preserved workspace/project/task only when the context has a single active workspace; otherwise require an explicit `.tep` anchor for the intended workdir.
 - If hooks report `Explicit TEP anchor required`, do not infer workspace/project from global fallback; use or create the intended workdir `.tep` anchor, then hydrate again.
 - `<context>/artifacts/` may receive raw diagnostic payloads directly, such as screenshots, logs, and copied command output.
 - A raw artifact is not proof by itself; create or update a `SRC-*` record that cites the artifact before using it as durable support.
