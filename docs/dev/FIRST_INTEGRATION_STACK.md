@@ -29,7 +29,7 @@ First round stack:
 | Layer | First Backend | Purpose | Status In Round |
 | --- | --- | --- | --- |
 | Backend framework | Builtin adapter interface | Shared status/query/telemetry/fallback contracts | implemented first slice |
-| Fact validation | RDFLib + pySHACL | Validate TEP record graph projections and constraints | fake RDF/SHACL-shaped slice started |
+| Fact validation | RDFLib + pySHACL | Validate TEP record graph projections and constraints | fake RDF/SHACL-shaped slice + RDF export started |
 | Code navigation | Serena MCP | LSP-backed symbol/references/navigation lookup | spike |
 | Semantic code search | CocoIndex / cocoindex-code | Tree-sitter chunks, embeddings, incremental code search | spike after Serena |
 | Dependency closure | Builtin projection + Datalog-shaped interface | Prepare for Soufflé without hard dependency | design + fake backend |

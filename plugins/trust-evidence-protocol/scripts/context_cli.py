@@ -161,6 +161,7 @@ from context_lib import (
     dependency_refs_for_record,
     evidence_chain_report_lines,
     effective_logic_solver,
+    export_rdf_text,
     guideline_detail_lines,
     guideline_summary_line,
     invalidate_hydration_state,
@@ -1973,6 +1974,17 @@ def cmd_validate_facts(root: Path, backend: str, output_format: str) -> int:
     return 0
 
 
+def cmd_export_rdf(root: Path, output_format: str, output: Path | None) -> int:
+    text = export_rdf_text(root, output_format=output_format)
+    append_backend_access_event(root, "export-rdf", "backend_export", backend="rdf")
+    if output:
+        write_text_file(output, text)
+        print(f"Exported RDF projection to {output}")
+    else:
+        print(text, end="")
+    return 0
+
+
 def cmd_help(topic: str) -> int:
     topics = {
         "modes": [
@@ -2015,6 +2027,7 @@ def cmd_help(topic: str) -> int:
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]",
             "validate-facts --backend rdf_shacl [--format json]",
+            "export-rdf --format turtle|jsonld [--output path]",
             "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3 --backend derivation.backend=datalog",
         ],
         "records": [
@@ -5982,6 +5995,13 @@ def parse_args() -> argparse.Namespace:
     validate_facts.add_argument("--backend", default="rdf_shacl", choices=sorted(FACT_VALIDATION_BACKENDS))
     validate_facts.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
 
+    export_rdf = subparsers.add_parser(
+        "export-rdf",
+        help="Export canonical records as an RDF projection. The export is not proof.",
+    )
+    export_rdf.add_argument("--format", dest="output_format", choices=("turtle", "jsonld"), default="turtle")
+    export_rdf.add_argument("--output", type=Path)
+
     start_task = subparsers.add_parser(
         "start-task",
         help="Create a TASK-* record and set it as the current hydrated task focus.",
@@ -7035,6 +7055,9 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(cmd_backend_check(root, backend=args.backend, output_format=args.output_format))
     if args.command == "validate-facts":
         raise SystemExit(cmd_validate_facts(root, backend=args.backend, output_format=args.output_format))
+    if args.command == "export-rdf":
+        output_path = args.output.expanduser().resolve() if args.output else None
+        raise SystemExit(cmd_export_rdf(root, output_format=args.output_format, output=output_path))
     if args.command == "start-task":
         raise SystemExit(
             cmd_start_task(

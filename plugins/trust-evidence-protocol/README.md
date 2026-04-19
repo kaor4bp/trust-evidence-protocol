@@ -408,6 +408,13 @@ Commands:
     - `configure-runtime --backend fact_validation.backend=rdf_shacl --backend fact_validation.rdf_shacl.enabled=true --backend fact_validation.rdf_shacl.mode=fake`
     - `validate-facts --backend rdf_shacl --format json`
 
+- `export-rdf`
+  - exports canonical records to a Turtle or JSON-LD projection for fact-validation backends
+  - the export is not canonical storage and not proof
+  - useful examples:
+    - `export-rdf --format turtle --output /tmp/tep.ttl`
+    - `export-rdf --format jsonld`
+
 - `review-context`
   - checks structural correctness
   - checks source-backed claim/action chains

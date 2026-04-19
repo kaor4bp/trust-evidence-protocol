@@ -117,6 +117,8 @@ from context_lib import build_reasoning_case_payload as compat_build_reasoning_c
 from context_lib import evidence_chain_report_lines as compat_evidence_chain_report_lines  # noqa: E402
 from context_lib import reasoning_case_text_lines as compat_reasoning_case_text_lines  # noqa: E402
 from context_lib import validate_evidence_chain_payload as compat_validate_evidence_chain_payload  # noqa: E402
+from context_lib import export_rdf_text as compat_export_rdf_text  # noqa: E402
+from context_lib import rdf_jsonld_payload as compat_rdf_jsonld_payload  # noqa: E402
 from context_lib import validate_facts_payload as compat_validate_facts_payload  # noqa: E402
 from context_lib import validate_facts_text_lines as compat_validate_facts_text_lines  # noqa: E402
 from context_lib import write_report as compat_write_report  # noqa: E402
@@ -530,7 +532,7 @@ from tep_runtime.reasoning import (  # noqa: E402
 )
 from tep_runtime.reasoning_case import build_reasoning_case_payload, reasoning_case_text_lines  # noqa: E402
 from tep_runtime.backends import backend_status_payload, backend_status_text_lines, select_backend_status  # noqa: E402
-from tep_runtime.fact_validation import validate_facts_payload, validate_facts_text_lines  # noqa: E402
+from tep_runtime.fact_validation import export_rdf_text, rdf_jsonld_payload, validate_facts_payload, validate_facts_text_lines  # noqa: E402
 from tep_runtime.retrieval import (  # noqa: E402
     active_guidelines_for,
     active_permissions_for,
@@ -653,6 +655,8 @@ def test_paths_are_importable_core_services_and_context_lib_facade_reuses_them(t
     assert compat_evidence_chain_report_lines is evidence_chain_report_lines
     assert compat_reasoning_case_text_lines is reasoning_case_text_lines
     assert compat_validate_evidence_chain_payload is validate_evidence_chain_payload
+    assert compat_export_rdf_text is export_rdf_text
+    assert compat_rdf_jsonld_payload is rdf_jsonld_payload
     assert compat_validate_facts_payload is validate_facts_payload
     assert compat_validate_facts_text_lines is validate_facts_text_lines
     assert compat_select_records is select_records
@@ -5617,6 +5621,48 @@ def test_fake_fact_validation_reports_candidates_without_proof(tmp_path: Path) -
     }.issubset(shape_refs)
     assert all(candidate["candidate_is_proof"] is False for candidate in payload["candidates"])
     assert "Validation output is diagnostic/navigation data only" in "\n".join(validate_facts_text_lines(payload))
+
+
+def test_rdf_export_projects_records_without_becoming_proof(tmp_path: Path) -> None:
+    root = tmp_path / ".codex_context"
+    for directory in RECORD_DIRS.values():
+        (root / "records" / directory).mkdir(parents=True)
+    workspace_id = "WSP-20260419-abcdef12"
+    source_id = "SRC-20260419-abcdef12"
+    claim_id = "CLM-20260419-abcdef12"
+    write_json_file(
+        record_path(root, "workspace", workspace_id),
+        {"id": workspace_id, "record_type": "workspace", "status": "active", "title": "Unit workspace"},
+    )
+    write_json_file(
+        record_path(root, "source", source_id),
+        {"id": source_id, "record_type": "source", "quote": "unit runtime source"},
+    )
+    write_json_file(
+        record_path(root, "claim", claim_id),
+        {
+            "id": claim_id,
+            "record_type": "claim",
+            "status": "supported",
+            "plane": "runtime",
+            "statement": "Runtime claim is projected.",
+            "source_refs": [source_id],
+            "workspace_refs": [workspace_id],
+        },
+    )
+
+    payload = rdf_jsonld_payload(root)
+    claim_node = next(node for node in payload["@graph"] if node["id"].endswith(claim_id))
+    assert payload["export_is_proof"] is False
+    assert claim_node["type"] == "tep:Claim"
+    assert claim_node["supportedBy"] == [f"urn:tep:record:{source_id}"]
+    assert claim_node["scopedTo"] == [f"urn:tep:record:{workspace_id}"]
+    turtle = export_rdf_text(root, output_format="turtle")
+    assert "# export_is_proof=false" in turtle
+    assert f"<urn:tep:record:{claim_id}>" in turtle
+    assert "tep:supportedBy" in turtle
+    jsonld = json.loads(export_rdf_text(root, output_format="jsonld"))
+    assert jsonld["export_is_proof"] is False
 
 
 def test_hydration_core_tracks_state_and_context_fingerprint(tmp_path: Path) -> None:

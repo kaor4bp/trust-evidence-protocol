@@ -778,6 +778,7 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]" in commands_help
     assert "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]" in commands_help
     assert "validate-facts --backend rdf_shacl [--format json]" in commands_help
+    assert "export-rdf --format turtle|jsonld [--output path]" in commands_help
 
     configured = run_cli(
         context,
@@ -987,6 +988,18 @@ def test_validate_facts_fake_backend_reports_candidates_and_telemetry(tmp_path: 
     telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
     assert telemetry["by_tool"]["validate-facts"] >= 2
     assert telemetry["by_access_kind"]["backend_validation"] >= 2
+
+    turtle_output = tmp_path / "tep.ttl"
+    exported = run_cli(context, "export-rdf", "--format", "turtle", "--output", str(turtle_output)).stdout
+    assert "Exported RDF projection" in exported
+    turtle = turtle_output.read_text(encoding="utf-8")
+    assert "# export_is_proof=false" in turtle
+    assert f"<urn:tep:record:{claim_id}>" in turtle
+    jsonld_payload = json.loads(run_cli(context, "export-rdf", "--format", "jsonld").stdout)
+    assert jsonld_payload["export_is_proof"] is False
+    telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
+    assert telemetry["by_tool"]["export-rdf"] >= 2
+    assert telemetry["by_access_kind"]["backend_export"] >= 2
 
 
 def test_search_records_finds_keywords_before_expanding_links(tmp_path: Path) -> None:

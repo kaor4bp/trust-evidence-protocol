@@ -92,6 +92,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context backend-status --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context backend-check --backend derivation.datalog --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-facts --backend rdf_shacl --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context export-rdf --format turtle --output /tmp/tep.ttl
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-index build
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-map --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-diagram --scope current --limit 8 --detail compact
@@ -126,6 +127,7 @@ Use `backend-status` and `backend-check` to inspect optional helper availability
 Backend status is diagnostic/navigation data only; it is not proof and does not replace canonical `SRC-*` or `CLM-*` support.
 Use `validate-facts` to get backend-produced validation candidates over canonical records.
 Validation candidates are not proof, do not support claims, and should be followed by `record-detail` / source inspection before changing records.
+Use `export-rdf` only as a backend projection for validation/debugging; it is not canonical storage and must not be cited as proof.
 Use `attention-map` and `curiosity-probes` to reduce token-heavy context exploration by asking the runtime for cold zones and bounded inspection questions.
 Use `attention-diagram` when a Mermaid cluster/link map is a cheaper orientation aid than reading several textual reports.
 Use `attention-diagram --detail full` only when compact node labels are not enough.

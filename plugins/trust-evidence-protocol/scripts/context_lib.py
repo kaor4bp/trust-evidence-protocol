@@ -82,7 +82,7 @@ from tep_runtime.attention import (
     write_attention_index_reports,
 )
 from tep_runtime.backends import backend_status_payload, backend_status_text_lines, select_backend_status
-from tep_runtime.fact_validation import validate_facts_payload, validate_facts_text_lines
+from tep_runtime.fact_validation import export_rdf_text, rdf_jsonld_payload, validate_facts_payload, validate_facts_text_lines
 from tep_runtime.conflicts import (
     CLAIM_COMPARATORS,
     CLAIM_POLARITIES,
