@@ -378,6 +378,7 @@ def build_attention_index(
         "generated_at": generated_at,
         "tap_count": len(taps),
         "access_event_count": len(access_events or []),
+        "record_access_count": sum(access_counts.values()),
         "record_count": len(record_items),
         "cluster_count": len(clusters),
         "records": record_items,
@@ -467,7 +468,8 @@ def filter_attention_payload(
         "record_count": len(kept_records),
         "cluster_count": len(clusters),
         "tap_count": sum(int(record.get("tap_count", 0)) for record in kept_records.values()),
-        "access_event_count": sum(int(record.get("access_count", 0)) for record in kept_records.values()),
+        "access_event_count": payload.get("access_event_count", 0),
+        "record_access_count": sum(int(record.get("access_count", 0)) for record in kept_records.values()),
         "bridges": bridges,
         "established_pairs": payload.get("established_pairs", []),
         "cold_zones": cold_zones,
@@ -483,6 +485,8 @@ def write_attention_index_reports(root: Path, payload: dict) -> None:
         paths["bridges"],
         {
             "attention_index_is_proof": False,
+            "access_event_count": payload.get("access_event_count", 0),
+            "record_access_count": payload.get("record_access_count", 0),
             "bridges": payload["bridges"],
             "established_pairs": payload.get("established_pairs", []),
         },
@@ -515,7 +519,8 @@ def load_attention_payload(root: Path) -> dict:
         "tap_count": sum(int(item.get("tap_count", 0)) for item in records.values() if isinstance(item, dict))
         if isinstance(records, dict)
         else 0,
-        "access_event_count": sum(int(item.get("access_count", 0)) for item in records.values() if isinstance(item, dict))
+        "access_event_count": int(bridge_payload.get("access_event_count", 0) or 0),
+        "record_access_count": sum(int(item.get("access_count", 0)) for item in records.values() if isinstance(item, dict))
         if isinstance(records, dict)
         else 0,
         "bridges": bridges if isinstance(bridges, list) else [],
@@ -533,7 +538,7 @@ def attention_map_text_lines(payload: dict, *, limit: int) -> list[str]:
         "",
         "Mode: generated attention/navigation map. Not proof.",
         f"scope: `{payload.get('scope', 'all')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
-        f"records: `{payload.get('record_count', len(payload.get('records', {})))}` clusters: `{payload.get('cluster_count', len(payload.get('clusters', {})))}` taps: `{payload.get('tap_count', 0)}` access_events: `{payload.get('access_event_count', 0)}`",
+        f"records: `{payload.get('record_count', len(payload.get('records', {})))}` clusters: `{payload.get('cluster_count', len(payload.get('clusters', {})))}` taps: `{payload.get('tap_count', 0)}` access_events: `{payload.get('access_event_count', 0)}` record_accesses: `{payload.get('record_access_count', 0)}`",
         "",
         "## Active Clusters",
     ]
