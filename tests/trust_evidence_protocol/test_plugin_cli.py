@@ -2453,9 +2453,57 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     assert backend["results"][0]["link_suggestions"][0]["command"].startswith("link-code --entry CIX-")
     assert "index_suggestion" not in backend["results"][0]
 
+    feedback = json.loads(
+        run_cli(
+            context,
+            "code-feedback",
+            "--root",
+            str(repo),
+            "--query",
+            "backend choice",
+            "--path",
+            "src/*.py",
+            "--link-candidate",
+            claim_id,
+            "--format",
+            "json",
+        ).stdout
+    )
+    feedback_entry_id = feedback["items"][0]["cix_candidates"][0]["id"]
+    assert feedback["feedback_is_proof"] is False
+    assert feedback["items"][0]["link_suggestions"][0]["ref"] == claim_id
+
+    run_cli(
+        context,
+        "code-feedback",
+        "--apply",
+        "--entry",
+        feedback_entry_id,
+        "--link-candidate",
+        claim_id,
+        "--note",
+        "reviewed backend hit links this claim to the implementation area",
+    )
+    linked = json.loads(
+        run_cli(
+            context,
+            "code-search",
+            "--root",
+            str(repo),
+            "--ref",
+            claim_id,
+            "--fields",
+            "target,links",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert linked["results"][0]["id"] == feedback_entry_id
+
     telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
     assert telemetry["by_tool"]["code-search"] >= 2
     assert telemetry["by_access_kind"]["backend_code_search"] >= 1
+    assert telemetry["by_access_kind"]["backend_code_feedback"] >= 1
 
 
 def test_code_index_supports_ast_search_refresh_annotations_and_links(tmp_path: Path) -> None:

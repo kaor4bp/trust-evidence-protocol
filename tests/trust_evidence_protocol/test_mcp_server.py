@@ -440,6 +440,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "linked_records",
         "telemetry_report",
         "code_search",
+        "code_feedback",
         "code_smell_report",
         "cleanup_candidates",
         "cleanup_archives",

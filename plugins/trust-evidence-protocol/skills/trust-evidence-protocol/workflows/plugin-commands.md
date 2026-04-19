@@ -21,6 +21,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `linked_records`: equivalent to `linked-records --record ID`
 - `guidelines_for`: equivalent to `guidelines-for --task "..."`
 - `code_search`: equivalent to `code-search`; optional semantic `query` is proxied through TEP-managed backends such as CocoIndex
+- `code_feedback`: equivalent to read-only `code-feedback`; use CLI apply mode for reviewed CIX-to-record links
 - `code_smell_report`: equivalent to `code-smell-report`
 - `code_info`: equivalent to `code-info`
 - `cleanup_candidates`: equivalent to `cleanup-candidates`
@@ -189,6 +190,8 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --import pytest --fields target,imports,features --limit 20
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --query "prompt choice backend" --fields target --limit 8
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --query "prompt choice backend" --link-candidate CLM-* --fields target --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-feedback --query "prompt choice backend" --link-candidate CLM-* --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-feedback --apply --entry CIX-* --link-candidate CLM-* --note "reviewed backend hit links this claim to this code area"
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --annotation-kind smell --annotation-category mixed-responsibility --fields target,annotations
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-smell-report --category mixed-responsibility
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-entry create --target-kind directory --path tests/e2e --summary "E2E tests" --note "manual code area"
@@ -202,6 +205,7 @@ Treat `CIX-*` as navigation/scope/impact only.
 Do not use CIX entries as proof, claim support, source support, action justification, or evidence-chain nodes.
 Backend hits may include `cix_candidates`, `index_suggestion`, and `link_suggestions`.
 Apply a suggested CIX-to-record link with `link-code` only after inspecting the code hit and verifying that the relationship is useful.
+Use `code-feedback` when you want a dedicated review/apply loop for backend hits.
 Read the code or cite a `SRC-*` before making truth claims about behavior or compliance.
 Use smell annotations as local critique/search signals, not hard rules.
 When a smell repeats and has support, create a `PRP-*` for options or a `GLD-*` through normal guideline recording; do not auto-promote smells.

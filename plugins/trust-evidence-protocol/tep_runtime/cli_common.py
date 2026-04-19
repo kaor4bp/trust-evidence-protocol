@@ -219,6 +219,8 @@ def command_requires_write_lock(args) -> bool:
         return bool(getattr(args, "apply", False))
     if args.command == "cleanup-restore":
         return bool(getattr(args, "apply", False))
+    if args.command == "code-feedback":
+        return bool(getattr(args, "apply", False))
     if args.command in MUTATING_COMMANDS:
         return True
     if args.command == "hypothesis" and args.hypothesis_command in MUTATING_HYPOTHESIS_COMMANDS:

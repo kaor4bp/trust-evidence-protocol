@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.63"
+SERVER_VERSION = "0.1.64"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -258,6 +258,30 @@ TOOLS: list[JsonObject] = [
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
+        ),
+    },
+    {
+        "name": "code_feedback",
+        "description": (
+            "Review backend code-search hits as TEP feedback: CIX candidates, index suggestions, and link "
+            "suggestions. Read-only; apply reviewed links with CLI code-feedback --apply or link-code."
+        ),
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "root": {"type": "string", "description": "Repository root for backend search. Defaults to current directory."},
+                "query": {"type": "string", "description": "Semantic code query to review through the configured TEP code backend."},
+                "paths": {"type": "array", "items": {"type": "string"}},
+                "language": {"type": "string"},
+                "link_candidate_refs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Canonical refs to turn backend hits into CIX link suggestions without mutating records.",
+                },
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["query"],
         ),
     },
     {
@@ -793,6 +817,25 @@ def tool_code_smell_report(args: JsonObject) -> tuple[bool, str]:
     return run_cli(args, cli_args)
 
 
+def tool_code_feedback(args: JsonObject) -> tuple[bool, str]:
+    cli_args = [
+        "code-feedback",
+        "--root",
+        str(args.get("root") or "."),
+        "--query",
+        str(args.get("query") or ""),
+        "--limit",
+        str(as_int(args.get("limit"), 20, 1, 100)),
+        "--format",
+        as_format(args.get("format")),
+    ]
+    add_repeated(cli_args, "--path", as_list(args.get("paths")))
+    add_repeated(cli_args, "--link-candidate", as_list(args.get("link_candidate_refs")))
+    if args.get("language"):
+        cli_args.extend(["--language", str(args["language"])])
+    return run_cli(args, cli_args)
+
+
 def tool_code_info(args: JsonObject) -> tuple[bool, str]:
     cli_args = [
         "code-info",
@@ -1105,6 +1148,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "telemetry_report": tool_telemetry_report,
     "guidelines_for": tool_guidelines_for,
     "code_search": tool_code_search,
+    "code_feedback": tool_code_feedback,
     "code_smell_report": tool_code_smell_report,
     "code_info": tool_code_info,
     "cleanup_candidates": tool_cleanup_candidates,

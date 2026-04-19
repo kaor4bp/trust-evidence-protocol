@@ -4457,6 +4457,164 @@ def cmd_code_search(
     return 0
 
 
+def code_link_candidates_for_refs(root: Path, refs: list[str]) -> tuple[dict[str, list[str]] | None, int]:
+    if not refs:
+        return {}, 0
+    records, record_errors = load_records(root)
+    if record_errors:
+        print_errors(record_errors)
+        return None, 1
+    record_type_to_link_key = {record_type: key for key, record_type in CODE_INDEX_LINK_KEYS.items()}
+    link_candidates: dict[str, list[str]] = {}
+    for ref in refs:
+        record = records.get(ref)
+        if not record:
+            print(f"missing link candidate ref: {ref}")
+            return None, 1
+        ref_key = record_type_to_link_key.get(str(record.get("record_type", "")))
+        if not ref_key:
+            print(f"{ref} cannot be linked from CIX entries")
+            return None, 1
+        link_candidates.setdefault(ref_key, [])
+        if ref not in link_candidates[ref_key]:
+            link_candidates[ref_key].append(ref)
+    return link_candidates, 0
+
+
+def code_feedback_review_payload(
+    root: Path,
+    repo_root: Path,
+    *,
+    query: str,
+    path_patterns: list[str],
+    language: str | None,
+    link_candidate_refs: list[str],
+    limit: int,
+) -> tuple[dict | None, int]:
+    entries, errors = load_code_index_entries(root)
+    if errors:
+        print_errors(errors)
+        return None, 1
+    link_candidates, exit_code = code_link_candidates_for_refs(root, link_candidate_refs)
+    if exit_code or link_candidates is None:
+        return None, 1
+    backend_payload = cocoindex_search_payload(
+        root,
+        repo_root,
+        query=query,
+        language=language,
+        path_patterns=path_patterns,
+        limit=limit,
+    )
+    backend_payload = enrich_backend_results_with_cix(
+        backend_payload,
+        entries,
+        repo_root,
+        link_candidates=link_candidates,
+    )
+    items = []
+    for result in backend_payload.get("results") or []:
+        if not isinstance(result, dict):
+            continue
+        target = result.get("target") if isinstance(result.get("target"), dict) else {}
+        items.append(
+            {
+                "rank": result.get("rank"),
+                "score": result.get("score"),
+                "target": target,
+                "cix_candidates": result.get("cix_candidates", []),
+                "link_suggestions": result.get("link_suggestions", []),
+                "index_suggestion": result.get("index_suggestion"),
+                "snippet": result.get("snippet", ""),
+                "feedback_is_proof": False,
+            }
+        )
+    append_backend_access_event(root, "code-feedback", "backend_code_feedback", backend="cocoindex")
+    return {
+        "feedback_is_proof": False,
+        "mode": "review",
+        "query": query,
+        "backend_results": backend_payload,
+        "items": items,
+    }, 0
+
+
+def code_feedback_text_lines(payload: dict) -> list[str]:
+    lines = [
+        "# Code Backend Feedback",
+        "",
+        "Mode: review. Backend feedback is navigation only, not proof.",
+        f"Query: `{payload.get('query', '')}`",
+        "",
+    ]
+    for item in payload.get("items") or []:
+        target = item.get("target") if isinstance(item.get("target"), dict) else {}
+        location = str(target.get("path", ""))
+        if target.get("line_start"):
+            location = f"{location}:{target.get('line_start')}-{target.get('line_end', target.get('line_start'))}"
+        lines.append(f"- rank={item.get('rank')} score={item.get('score')} target=`{location}`")
+        cix_candidates = item.get("cix_candidates") or []
+        if cix_candidates:
+            lines.append("  cix_candidates: " + ", ".join(str(candidate.get("id")) for candidate in cix_candidates))
+        index_suggestion = item.get("index_suggestion")
+        if isinstance(index_suggestion, dict):
+            lines.append(f"  index_suggestion: {index_suggestion.get('command')}")
+        for suggestion in item.get("link_suggestions") or []:
+            lines.append(f"  link_suggestion: {suggestion.get('command')}")
+    return lines
+
+
+def cmd_code_feedback(
+    root: Path,
+    repo_root: Path,
+    query: str | None,
+    path_patterns: list[str],
+    language: str | None,
+    link_candidate_refs: list[str],
+    entry_ref: str | None,
+    path: str | None,
+    apply: bool,
+    note: str | None,
+    limit: int,
+    output_format: str,
+) -> int:
+    if apply:
+        if not link_candidate_refs:
+            print("--apply requires at least one --link-candidate")
+            return 1
+        if not (entry_ref or path):
+            print("--apply requires --entry or --path")
+            return 1
+        if not note:
+            print("--apply requires --note")
+            return 1
+        link_candidates, exit_code = code_link_candidates_for_refs(root, link_candidate_refs)
+        if exit_code or link_candidates is None:
+            return 1
+        return cmd_link_code(root, entry_ref=entry_ref, path=path, link_refs=link_candidates, note=note)
+
+    if not query:
+        print("review mode requires --query")
+        return 1
+    payload, exit_code = code_feedback_review_payload(
+        root,
+        repo_root,
+        query=query,
+        path_patterns=path_patterns,
+        language=language,
+        link_candidate_refs=link_candidate_refs,
+        limit=limit,
+    )
+    if exit_code or payload is None:
+        return 1
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        for line in code_feedback_text_lines(payload):
+            print(line)
+    return 0
+
+
 def cmd_code_smell_report(
     root: Path,
     repo_root: Path,
@@ -5747,6 +5905,27 @@ def parse_args() -> argparse.Namespace:
     code_search.add_argument("--fields")
     code_search.add_argument("--limit", type=int, default=20)
     code_search.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    code_feedback = subparsers.add_parser(
+        "code-feedback",
+        help="Review or apply backend-hit feedback links through TEP CIX records.",
+    )
+    code_feedback.add_argument("--root", default=".")
+    code_feedback.add_argument("--query", help="Semantic code query to review through the configured TEP code backend.")
+    code_feedback.add_argument("--path", dest="path_patterns", action="append", default=[])
+    code_feedback.add_argument("--language")
+    code_feedback.add_argument(
+        "--link-candidate",
+        dest="link_candidate_refs",
+        action="append",
+        default=[],
+        help="Canonical record ref to include in review suggestions or apply as a CIX link.",
+    )
+    code_feedback.add_argument("--entry", dest="entry_ref")
+    code_feedback.add_argument("--target-path", dest="target_path", help="CIX target path to apply feedback when --entry is not used.")
+    code_feedback.add_argument("--apply", action="store_true", help="Apply reviewed CIX links. Requires --entry/--target-path, --link-candidate, and --note.")
+    code_feedback.add_argument("--note")
+    code_feedback.add_argument("--limit", type=int, default=20)
+    code_feedback.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     code_smell_report = subparsers.add_parser(
         "code-smell-report",
         help="Read-only report of active CIX smell annotations.",
@@ -6871,6 +7050,23 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 include_superseded=args.include_superseded,
                 include_archived=args.include_archived,
                 fields_value=args.fields,
+                limit=args.limit,
+                output_format=args.output_format,
+            )
+        )
+    if args.command == "code-feedback":
+        raise SystemExit(
+            cmd_code_feedback(
+                root,
+                repo_root=Path(args.root).expanduser().resolve(),
+                query=args.query,
+                path_patterns=args.path_patterns,
+                language=args.language,
+                link_candidate_refs=args.link_candidate_refs,
+                entry_ref=args.entry_ref,
+                path=args.target_path,
+                apply=args.apply,
+                note=args.note,
                 limit=args.limit,
                 output_format=args.output_format,
             )

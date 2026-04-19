@@ -322,6 +322,7 @@ Exposed tools:
 - `linked_records`: graph expansion around one record
 - `guidelines_for`: scoped active guidelines for a task
 - `code_search`: CIX navigation search plus optional TEP-proxied semantic backend query
+- `code_feedback`: read-only backend-hit feedback review with CIX candidates and link suggestions
 - `code_smell_report`: read-only CIX smell annotation report
 - `code_info`: one CIX entry/path projection
 - `cleanup_candidates`: read-only stale/noise triage
@@ -617,6 +618,12 @@ Commands:
   - returns only requested projection fields and defaults to a small limit
   - hides missing, superseded, and archived entries unless explicitly requested
   - code search is navigation only; read files or create `SRC-*` support before making truth claims
+
+- `code-feedback`
+  - read-only by default: reviews backend hits as feedback items with `cix_candidates`, `index_suggestion`, and `link_suggestions`
+  - use `--query`, optional `--path`, and optional `--link-candidate <REF>` to generate reviewable feedback
+  - `--apply --entry CIX-* --link-candidate <REF> --note "..."` applies one reviewed CIX-to-record link through normal TEP validation
+  - apply mode is mutation; do not use it until the backend hit has been inspected and the relationship is useful
 
 - `code-smell-report [--category ...] [--severity low|medium|high|critical] [--include-stale] [--format text|json]`
   - read-only report of active CIX `smell` annotations
