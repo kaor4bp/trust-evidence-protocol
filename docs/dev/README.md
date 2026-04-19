@@ -11,6 +11,7 @@ Move stable data contracts to `docs/reference/`. Move exploratory material to
 
 - [Repository Organization](REPOSITORY_ORGANIZATION.md)
 - [Anti-NIH Tooling Round](ANTI_NIH_TOOLING_ROUND.md)
+- [First Integration Stack](FIRST_INTEGRATION_STACK.md)
 - [TEP Developer Reference](TEP_DEVELOPER_REFERENCE.md)
 - [TEP Core Rewrite Working Context](TEP_CORE_REWRITE_CONTEXT.md)
 - [TEP Core Baseline](TEP_CORE_BASELINE.md)
