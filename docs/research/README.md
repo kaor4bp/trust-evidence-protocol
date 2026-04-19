@@ -13,6 +13,7 @@ contracts until a decision is promoted into `docs/reference/` or
 - [TEP Research Map](TEP_RESEARCH_MAP.md)
 - [TEP Reasoning Research](TEP_REASONING_RESEARCH.md)
 - [TEP Planning And Curiosity Research](TEP_PLANNING_CURIOSITY_RESEARCH.md)
+- [TEP And CocoIndex Integration Research](TEP_COCOINDEX_INTEGRATION_RESEARCH.md)
 
 ## Maintenance Rules
 

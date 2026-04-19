@@ -582,6 +582,12 @@ Code intelligence should progress from cheap to heavy:
 5. CodeQL-like database/query workflows for deeper static analysis when justified
 
 TEP should not require heavyweight code-analysis dependencies for baseline use.
+Before expanding TEP's own AST/parser stack, review
+[`TEP_COCOINDEX_INTEGRATION_RESEARCH.md`](../research/TEP_COCOINDEX_INTEGRATION_RESEARCH.md).
+CocoIndex is a candidate optional backend for Tree-sitter chunking, semantic
+search, and incremental refresh, while TEP should continue to own `CIX-*`
+records, annotations, links, freshness, and the rule that code-index output is
+navigation only.
 
 ## Documentation Contract
 
