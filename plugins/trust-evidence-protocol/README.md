@@ -229,6 +229,8 @@ Default external backend registry:
 `backends` is an adapter registry, not proof.
 Use `backend-status` or `backend-check` to inspect dependency availability before relying on a helper.
 Backend output may guide lookup, indexing, validation, and candidate generation, but a user-facing proof chain must still cite canonical `SRC-*` and `CLM-*` records.
+The first fact-validation backend exposes fake RDF/SHACL-shaped checks so agents can debug the flow without installing pySHACL.
+Validation candidates are not proof and do not make a claim supported.
 
 Prompt capture mechanics:
 
@@ -397,6 +399,14 @@ Commands:
   - useful examples:
     - `backend-check --backend code_intelligence`
     - `backend-check --backend derivation.datalog --format json`
+
+- `validate-facts`
+  - runs backend-produced validation candidates over canonical records
+  - currently supports deterministic fake RDF/SHACL-shaped checks through `--backend rdf_shacl`
+  - returns diagnostic/navigation output only; it does not create proof
+  - useful examples:
+    - `configure-runtime --backend fact_validation.backend=rdf_shacl --backend fact_validation.rdf_shacl.enabled=true --backend fact_validation.rdf_shacl.mode=fake`
+    - `validate-facts --backend rdf_shacl --format json`
 
 - `review-context`
   - checks structural correctness

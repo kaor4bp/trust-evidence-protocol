@@ -78,7 +78,23 @@ def backend_status_payload(root: Path) -> dict:
     rdf_settings = fact.get("rdf_shacl", {}) if isinstance(fact, dict) else {}
     rdf_enabled = bool(rdf_settings.get("enabled"))
     rdf_mode = str(rdf_settings.get("mode") or "local")
-    if rdf_enabled:
+    if rdf_enabled and rdf_mode == "fake":
+        fact_entries.append(
+            {
+                "id": "rdf_shacl",
+                "group": "fact_validation",
+                "enabled": True,
+                "selected": fact_selected == "rdf_shacl",
+                "available": True,
+                "version": "fake",
+                "mode": "fake",
+                "freshness": "fresh",
+                "warnings": ["fake backend returns deterministic validation candidates only"],
+                "setup_hint": "",
+                "backend_output_is_proof": BACKEND_IS_PROOF,
+            }
+        )
+    elif rdf_enabled:
         available, version = _python_package_status("pyshacl")
         fact_entries.append(
             {

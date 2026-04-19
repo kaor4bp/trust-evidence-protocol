@@ -91,6 +91,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context telemetry-report --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context backend-status --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context backend-check --backend derivation.datalog --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-facts --backend rdf_shacl --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-index build
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-map --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-diagram --scope current --limit 8 --detail compact
@@ -123,6 +124,8 @@ Use `tap-record` to record non-proof activity when a record was retrieved, opene
 Use `telemetry-report` to inspect non-proof lookup telemetry, including whether agents are using MCP/CLI compact views or reading raw claim files.
 Use `backend-status` and `backend-check` to inspect optional helper availability before relying on external fact-validation, code-intelligence, or derivation backends.
 Backend status is diagnostic/navigation data only; it is not proof and does not replace canonical `SRC-*` or `CLM-*` support.
+Use `validate-facts` to get backend-produced validation candidates over canonical records.
+Validation candidates are not proof, do not support claims, and should be followed by `record-detail` / source inspection before changing records.
 Use `attention-map` and `curiosity-probes` to reduce token-heavy context exploration by asking the runtime for cold zones and bounded inspection questions.
 Use `attention-diagram` when a Mermaid cluster/link map is a cheaper orientation aid than reading several textual reports.
 Use `attention-diagram --detail full` only when compact node labels are not enough.
@@ -151,6 +154,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis logic_solver.backend=z3 --analysis logic_solver.install_policy=ask
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis topic_prefilter.backend=nmf --analysis topic_prefilter.missing_dependency=warn
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend derivation.backend=datalog --backend derivation.datalog.enabled=true --backend derivation.datalog.mode=fake
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend fact_validation.backend=rdf_shacl --backend fact_validation.rdf_shacl.enabled=true --backend fact_validation.rdf_shacl.mode=fake
 ```
 
 Use `hooks.verbosity=quiet` to reduce routine hook chatter while preserving stale/conflict/blocking messages.

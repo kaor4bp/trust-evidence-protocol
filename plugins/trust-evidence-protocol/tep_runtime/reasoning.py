@@ -31,6 +31,8 @@ VALID_CHAIN_ROLES = {
 CONTROL_CHAIN_ROLES = {"permission", "requested_permission", "restriction", "guideline", "proposal"}
 CONTEXT_CHAIN_ROLES = {"exploration_context", "project", "working_context"}
 TRUTH_CHAIN_ROLES = {"fact", "observation", "hypothesis"}
+NON_PROOF_REF_PREFIXES = ("BCK-", "BACKEND-", "CIX-")
+NON_PROOF_REF_SCHEMES = ("backend:", "candidate:", "generated:", "topic_index:", "logic_index:", "attention_index:")
 
 
 def _default_chain_quote(record: dict) -> str:
@@ -128,6 +130,9 @@ def validate_chain_node(
     if not ref:
         errors.append(f"node[{index}] missing ref")
         return None, errors, warnings
+    if ref.startswith(NON_PROOF_REF_PREFIXES) or ref.startswith(NON_PROOF_REF_SCHEMES):
+        errors.append(f"node[{index}] `{ref}` is generated/backend/navigation output and cannot be used as proof")
+        return ref, errors, warnings
     if role == "requested_permission":
         if not quote:
             errors.append(f"node[{index}] requested_permission `{ref}` missing requested grant quote")

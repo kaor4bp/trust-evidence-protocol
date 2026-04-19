@@ -92,6 +92,7 @@ Persistence write boundary:
 - `<context>/settings.json.backends` controls optional external adapters for fact validation, code intelligence, and derivation.
 - Backend status and backend output are navigation/diagnostic data only; cite canonical `SRC-*` and `CLM-*` records before using a backend result as proof.
 - Use `backend-status` / `backend-check` before relying on an optional backend, and degrade cleanly when dependencies are missing.
+- Use `validate-facts` for backend-produced validation candidates; candidates can guide review but cannot support claims or appear as proof-chain facts.
 - Z3 `unsat` results identify claims participating in an inconsistent formal snapshot; they do not prove each listed claim is false.
 - Before resolving a Z3 candidate, inspect the reported `CLM-*` refs, logic refs, derived atoms, scopes, lifecycle state, and underlying `SRC-*` quotes.
 - MCP lookup tools are read-only accelerators over the same records and indexes; MCP output is not a new source of truth.

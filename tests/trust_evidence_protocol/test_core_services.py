@@ -117,6 +117,8 @@ from context_lib import build_reasoning_case_payload as compat_build_reasoning_c
 from context_lib import evidence_chain_report_lines as compat_evidence_chain_report_lines  # noqa: E402
 from context_lib import reasoning_case_text_lines as compat_reasoning_case_text_lines  # noqa: E402
 from context_lib import validate_evidence_chain_payload as compat_validate_evidence_chain_payload  # noqa: E402
+from context_lib import validate_facts_payload as compat_validate_facts_payload  # noqa: E402
+from context_lib import validate_facts_text_lines as compat_validate_facts_text_lines  # noqa: E402
 from context_lib import write_report as compat_write_report  # noqa: E402
 from context_lib import write_validation_report as compat_write_validation_report  # noqa: E402
 from context_lib import concise as compat_concise  # noqa: E402
@@ -528,6 +530,7 @@ from tep_runtime.reasoning import (  # noqa: E402
 )
 from tep_runtime.reasoning_case import build_reasoning_case_payload, reasoning_case_text_lines  # noqa: E402
 from tep_runtime.backends import backend_status_payload, backend_status_text_lines, select_backend_status  # noqa: E402
+from tep_runtime.fact_validation import validate_facts_payload, validate_facts_text_lines  # noqa: E402
 from tep_runtime.retrieval import (  # noqa: E402
     active_guidelines_for,
     active_permissions_for,
@@ -650,6 +653,8 @@ def test_paths_are_importable_core_services_and_context_lib_facade_reuses_them(t
     assert compat_evidence_chain_report_lines is evidence_chain_report_lines
     assert compat_reasoning_case_text_lines is reasoning_case_text_lines
     assert compat_validate_evidence_chain_payload is validate_evidence_chain_payload
+    assert compat_validate_facts_payload is validate_facts_payload
+    assert compat_validate_facts_text_lines is validate_facts_text_lines
     assert compat_select_records is select_records
     assert compat_select_fallback_claims is select_fallback_claims
     assert compat_stale_knowledge_target_ids is stale_knowledge_target_ids
@@ -5441,6 +5446,15 @@ def test_reasoning_core_reports_invalid_chain_roles_edges_and_lifecycle() -> Non
     assert missing_ref == "CLM-20260418-missing"
     assert any("missing record" in error for error in missing_errors)
 
+    backend_ref, backend_errors, _ = validate_chain_node(
+        records,
+        {},
+        {"role": "fact", "ref": "backend:rdf_shacl:validation-candidate", "quote": "candidate"},
+        3,
+    )
+    assert backend_ref == "backend:rdf_shacl:validation-candidate"
+    assert any("generated/backend/navigation output" in error for error in backend_errors)
+
     role_cases = [
         ("fact", permission_id, "mutating edits allowed", "must reference claim"),
         ("fact", tentative_id, "Retry may be flaky.", "must be supported/corroborated"),
@@ -5512,6 +5526,97 @@ def test_reasoning_core_reports_invalid_chain_roles_edges_and_lifecycle() -> Non
     assert any("references unknown to" in error for error in edge_errors.errors)
     assert any("uses task" in error for error in edge_errors.errors)
     assert any("uses context" in error for error in edge_errors.errors)
+
+
+def test_fake_fact_validation_reports_candidates_without_proof(tmp_path: Path) -> None:
+    root = tmp_path / ".codex_context"
+    for directory in RECORD_DIRS.values():
+        (root / "records" / directory).mkdir(parents=True)
+    workspace_id = "WSP-20260419-abcdef12"
+    source_id = "SRC-20260419-abcdef12"
+    missing_source_claim = "CLM-20260419-11111111"
+    contradiction_claim = "CLM-20260419-22222222"
+    logic_claim = "CLM-20260419-33333333"
+    missing_workspace_claim = "CLM-20260419-44444444"
+
+    write_json_file(
+        record_path(root, "workspace", workspace_id),
+        {"id": workspace_id, "record_type": "workspace", "status": "active", "title": "Unit workspace"},
+    )
+    write_json_file(
+        record_path(root, "source", source_id),
+        {"id": source_id, "record_type": "source", "quote": "unit runtime source"},
+    )
+    write_json_file(
+        record_path(root, "claim", missing_source_claim),
+        {
+            "id": missing_source_claim,
+            "record_type": "claim",
+            "status": "supported",
+            "plane": "runtime",
+            "statement": "Supported claim is missing source refs.",
+        },
+    )
+    write_json_file(
+        record_path(root, "claim", contradiction_claim),
+        {
+            "id": contradiction_claim,
+            "record_type": "claim",
+            "status": "corroborated",
+            "plane": "runtime",
+            "statement": "Corroborated claim still has contradictions.",
+            "source_refs": [source_id],
+            "contradiction_refs": [missing_source_claim],
+        },
+    )
+    write_json_file(
+        record_path(root, "claim", logic_claim),
+        {
+            "id": logic_claim,
+            "record_type": "claim",
+            "status": "supported",
+            "plane": "theory",
+            "statement": "Logic symbol lacks meaning.",
+            "source_refs": [source_id],
+            "logic": {"symbols": [{"symbol": "system:gateway", "kind": "system"}]},
+        },
+    )
+    write_json_file(
+        record_path(root, "claim", missing_workspace_claim),
+        {
+            "id": missing_workspace_claim,
+            "record_type": "claim",
+            "status": "supported",
+            "plane": "runtime",
+            "statement": "Workspace ref is missing.",
+            "source_refs": [source_id],
+            "workspace_refs": ["WSP-20260419-deadbeef"],
+        },
+    )
+    write_settings(
+        root,
+        backends={
+            "fact_validation": {
+                "backend": "rdf_shacl",
+                "rdf_shacl": {"enabled": True, "mode": "fake", "strict": False},
+            }
+        },
+    )
+
+    payload = validate_facts_payload(root, backend="rdf_shacl")
+    assert payload["validation_is_proof"] is False
+    assert payload["backend_output_is_proof"] is False
+    assert payload["available"] is True
+    assert payload["mode"] == "fake"
+    shape_refs = {candidate["shape_ref"] for candidate in payload["candidates"]}
+    assert {
+        "tep:SupportedClaimHasSource",
+        "tep:CorroboratedClaimHasNoContradictions",
+        "tep:LogicSymbolHasMeaning",
+        "tep:WorkspaceRefExists",
+    }.issubset(shape_refs)
+    assert all(candidate["candidate_is_proof"] is False for candidate in payload["candidates"])
+    assert "Validation output is diagnostic/navigation data only" in "\n".join(validate_facts_text_lines(payload))
 
 
 def test_hydration_core_tracks_state_and_context_fingerprint(tmp_path: Path) -> None:

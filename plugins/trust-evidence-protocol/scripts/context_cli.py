@@ -240,6 +240,8 @@ from context_lib import (
     remove_hypothesis_entries,
     reopen_hypothesis_entry,
     sync_hypothesis_entries,
+    validate_facts_payload,
+    validate_facts_text_lines,
     validate_hypothesis_claim,
     write_json_file,
     write_text_file,
@@ -1960,6 +1962,17 @@ def cmd_backend_check(root: Path, backend: str, output_format: str) -> int:
     return 0
 
 
+def cmd_validate_facts(root: Path, backend: str, output_format: str) -> int:
+    payload = validate_facts_payload(root, backend=backend)
+    append_backend_access_event(root, "validate-facts", "backend_validation", backend=backend)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        for line in validate_facts_text_lines(payload):
+            print(line)
+    return 0
+
+
 def cmd_help(topic: str) -> int:
     topics = {
         "modes": [
@@ -1981,6 +1994,7 @@ def cmd_help(topic: str) -> int:
             "logic index: generated predicate atom/rule projection over CLM.logic blocks",
             "code index: index files/symbols/areas and attach navigation-only CIX annotations",
             "backend registry: inspect optional helper availability without treating helper output as proof",
+            "fact validation: backend-produced validation candidates over canonical records; navigation only",
             "strictness: inspect or change allowed_freedom through user-backed requests",
             "runtime budget: tune hook verbosity, context budget, optional analysis policy, and external backend policy through settings",
         ],
@@ -2000,6 +2014,7 @@ def cmd_help(topic: str) -> int:
             "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | attention-map | curiosity-probes --budget 5 | probe-inspect --index 1 | probe-chain-draft --index 1 | probe-pack --budget 3",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]",
+            "validate-facts --backend rdf_shacl [--format json]",
             "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3 --backend derivation.backend=datalog",
         ],
         "records": [
@@ -5960,6 +5975,13 @@ def parse_args() -> argparse.Namespace:
     backend_check.add_argument("--backend", required=True)
     backend_check.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
 
+    validate_facts = subparsers.add_parser(
+        "validate-facts",
+        help="Run backend fact-validation candidates. Backend output is not proof.",
+    )
+    validate_facts.add_argument("--backend", default="rdf_shacl", choices=sorted(FACT_VALIDATION_BACKENDS))
+    validate_facts.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+
     start_task = subparsers.add_parser(
         "start-task",
         help="Create a TASK-* record and set it as the current hydrated task focus.",
@@ -7011,6 +7033,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(cmd_backend_status(root, output_format=args.output_format))
     if args.command == "backend-check":
         raise SystemExit(cmd_backend_check(root, backend=args.backend, output_format=args.output_format))
+    if args.command == "validate-facts":
+        raise SystemExit(cmd_validate_facts(root, backend=args.backend, output_format=args.output_format))
     if args.command == "start-task":
         raise SystemExit(
             cmd_start_task(

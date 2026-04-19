@@ -777,6 +777,7 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     commands_help = run_cli(context, "help", "commands").stdout
     assert "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]" in commands_help
     assert "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]" in commands_help
+    assert "validate-facts --backend rdf_shacl [--format json]" in commands_help
 
     configured = run_cli(
         context,
@@ -916,6 +917,76 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert f"Switched current task to {second_id}" in switched
     assert load_record(context, "task", third_id)["status"] == "paused"
     assert load_record(context, "task", second_id)["status"] == "active"
+
+
+def test_validate_facts_fake_backend_reports_candidates_and_telemetry(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    run_cli(
+        context,
+        "configure-runtime",
+        "--backend",
+        "fact_validation.backend=rdf_shacl",
+        "--backend",
+        "fact_validation.rdf_shacl.enabled=true",
+        "--backend",
+        "fact_validation.rdf_shacl.mode=fake",
+    )
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.fact-validation",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "unit",
+            "--quote",
+            "runtime fact source",
+            "--note",
+            "runtime source",
+        ),
+        "source",
+    )
+    claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.fact-validation",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Supported claim initially has a source.",
+            "--source",
+            source_id,
+            "--note",
+            "supported claim",
+        ),
+        "claim",
+    )
+    claim_path = context / "records" / "claim" / f"{claim_id}.json"
+    claim = json.loads(claim_path.read_text(encoding="utf-8"))
+    claim["source_refs"] = []
+    claim_path.write_text(json.dumps(claim, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    payload = json.loads(run_cli(context, "validate-facts", "--backend", "rdf_shacl", "--format", "json").stdout)
+    assert payload["validation_is_proof"] is False
+    assert payload["backend_output_is_proof"] is False
+    assert payload["candidate_count"] >= 1
+    assert payload["candidates"][0]["candidate_is_proof"] is False
+    assert any(candidate["shape_ref"] == "tep:SupportedClaimHasSource" for candidate in payload["candidates"])
+    text = run_cli(context, "validate-facts", "--backend", "rdf_shacl").stdout
+    assert "Validation output is diagnostic/navigation data only" in text
+    telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
+    assert telemetry["by_tool"]["validate-facts"] >= 2
+    assert telemetry["by_access_kind"]["backend_validation"] >= 2
 
 
 def test_search_records_finds_keywords_before_expanding_links(tmp_path: Path) -> None:

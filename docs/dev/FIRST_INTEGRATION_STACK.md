@@ -28,8 +28,8 @@ First round stack:
 
 | Layer | First Backend | Purpose | Status In Round |
 | --- | --- | --- | --- |
-| Backend framework | Builtin adapter interface | Shared status/query/telemetry/fallback contracts | implement |
-| Fact validation | RDFLib + pySHACL | Validate TEP record graph projections and constraints | spike |
+| Backend framework | Builtin adapter interface | Shared status/query/telemetry/fallback contracts | implemented first slice |
+| Fact validation | RDFLib + pySHACL | Validate TEP record graph projections and constraints | fake RDF/SHACL-shaped slice started |
 | Code navigation | Serena MCP | LSP-backed symbol/references/navigation lookup | spike |
 | Semantic code search | CocoIndex / cocoindex-code | Tree-sitter chunks, embeddings, incremental code search | spike after Serena |
 | Dependency closure | Builtin projection + Datalog-shaped interface | Prepare for Soufflé without hard dependency | design + fake backend |
@@ -158,6 +158,12 @@ Commands:
 ```text
 validate-facts --backend rdf-shacl [--format text|json]
 export-rdf --format turtle|jsonld --output <path>
+```
+
+Current command spelling uses the settings id `rdf_shacl`:
+
+```text
+validate-facts --backend rdf_shacl [--format text|json]
 ```
 
 Output:
@@ -433,4 +439,3 @@ Round 1 is complete when:
 
 This sequence keeps the core stable while creating clear seams for external
 tools.
-
