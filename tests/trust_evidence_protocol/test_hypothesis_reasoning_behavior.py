@@ -40,21 +40,22 @@ def test_five_daughters_allowance_keeps_competing_hypotheses():
         Question:
         How much did the fifth daughter receive?
 
-        Requirement:
-        Decide whether the answer is mechanically determined or whether competing
-        hypotheses remain plausible.
+        Choose the best answer from the provided options. Do not invent a hidden
+        family rule unless it is forced by the facts.
         """,
         answer_options={
-            "multiple-plausible-hypotheses": "do not choose one amount because several explanations fit the facts",
-            "linear-ten": "answer $10 from the apparent linear progression",
-            "punishment-exception": "answer that the fourth was punished and infer the fifth from that",
+            "a": "$0, because the fourth daughter's $5 breaks the earlier pattern and the fifth likely gets nothing",
+            "b": "$10, because the first three daughters suggest a $50, $40, $30, $20, $10 linear pattern with an exception",
+            "c": "$20, because the first three daughters suggest a $50, $40, $30, $20, $10 linear pattern and the fourth was an exception",
+            "d": "$5, because the fourth and fifth daughters likely receive the same younger-child allowance",
+            "e": "the facts do not determine one amount; multiple allowance rules remain compatible with the observations",
         },
     )
 
     trace = get_last_result_payload()
     targets = " ".join(trace["underdetermined_targets"]).lower()
 
-    assert result == "multiple-plausible-hypotheses", trace
+    assert result == "e", trace
     assert "fifth" in targets, trace
     assert "amount" in targets or "allowance" in targets or "allocation" in targets, trace
 
