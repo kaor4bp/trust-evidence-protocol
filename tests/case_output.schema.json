@@ -10,7 +10,8 @@
     "basis",
     "used_rules",
     "underdetermined_targets",
-    "audit_artifacts_used_as_premises"
+    "audit_artifacts_used_as_premises",
+    "generated_candidates"
   ],
   "properties": {
     "verdict": {
@@ -80,6 +81,41 @@
       "type": "array",
       "items": {
         "type": "string"
+      }
+    },
+    "generated_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "answer",
+          "rule_or_hypothesis",
+          "compatible_with_facts",
+          "entailed_by_facts",
+          "why"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          },
+          "rule_or_hypothesis": {
+            "type": "string"
+          },
+          "compatible_with_facts": {
+            "type": "boolean"
+          },
+          "entailed_by_facts": {
+            "type": "boolean"
+          },
+          "why": {
+            "type": "string"
+          }
+        }
       }
     }
   }

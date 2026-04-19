@@ -43,6 +43,7 @@ def test_five_daughters_allowance_keeps_competing_hypotheses():
         Construct the candidate answer variants yourself. Your reason must name
         multiple distinct fact-compatible candidate amounts or allowance rules
         for the fifth daughter, then decide whether any one amount is forced.
+        Return those variants in `generated_candidates`.
         """,
         answer_options={
             "candidate-set-underdetermined": "generate a set of fact-compatible candidate answers and conclude that no one amount is entailed",
@@ -53,21 +54,21 @@ def test_five_daughters_allowance_keeps_competing_hypotheses():
     )
 
     trace = get_last_result_payload()
-    reason = trace["reason"].lower()
+    candidates = trace.get("generated_candidates", [])
     targets = " ".join(trace["underdetermined_targets"]).lower()
+    candidate_text = " ".join(
+        f"{candidate['answer']} {candidate['rule_or_hypothesis']} {candidate['why']}"
+        for candidate in candidates
+    ).lower()
     generated_amounts = {
-        amount
-        for amount in ("$0", "$5", "$10", "$20", "zero", "five", "ten", "twenty")
-        if amount in reason
-    }
-    generated_rule_terms = {
-        term
-        for term in ("linear", "exception", "same", "younger", "punished", "breaks")
-        if term in reason
+        amount for amount in ("$0", "$5", "$10", "$20", "zero", "five", "ten", "twenty") if amount in candidate_text
     }
 
     assert result == "candidate-set-underdetermined", trace
-    assert len(generated_amounts) >= 2 or len(generated_rule_terms) >= 3, trace
+    assert len(candidates) >= 3, trace
+    assert len(generated_amounts) >= 2, trace
+    assert all(candidate["compatible_with_facts"] is True for candidate in candidates), trace
+    assert all(candidate["entailed_by_facts"] is False for candidate in candidates), trace
     assert "fifth" in targets, trace
     assert "amount" in targets or "allowance" in targets or "allocation" in targets, trace
 

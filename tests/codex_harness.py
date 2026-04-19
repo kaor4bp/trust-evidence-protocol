@@ -79,6 +79,9 @@ Use `basis` to declare which source surfaces you relied on.
 Use `used_rules` for the main inference rules you applied.
 List any still-underdetermined targets in `underdetermined_targets`.
 List any under-audit artifacts used as premises in `audit_artifacts_used_as_premises`.
+Always return `generated_candidates`; use an empty array when no candidate-answer generation was requested.
+When the user asks you to construct candidate answers or hypotheses, return those candidates in `generated_candidates`.
+Each generated candidate must include `id`, `answer`, `rule_or_hypothesis`, `compatible_with_facts`, `entailed_by_facts`, and `why`.
 """
 
 
@@ -193,6 +196,7 @@ def run_case(
         used_rules = payload["used_rules"]
         underdetermined_targets = payload["underdetermined_targets"]
         audit_artifacts_used_as_premises = payload["audit_artifacts_used_as_premises"]
+        generated_candidates = payload["generated_candidates"]
         for event in score_events:
             if not isinstance(event, dict):
                 raise TypeError(f"Unexpected score event type: {type(event)!r}")
@@ -232,6 +236,27 @@ def run_case(
                 "Unexpected audit_artifacts_used_as_premises type: "
                 f"{type(audit_artifacts_used_as_premises)!r}"
             )
+        if not isinstance(generated_candidates, list):
+            raise TypeError(f"Unexpected generated_candidates type: {type(generated_candidates)!r}")
+        for candidate in generated_candidates:
+            if not isinstance(candidate, dict):
+                raise TypeError(f"Unexpected generated candidate type: {type(candidate)!r}")
+            expected_keys = {
+                "id",
+                "answer",
+                "rule_or_hypothesis",
+                "compatible_with_facts",
+                "entailed_by_facts",
+                "why",
+            }
+            if set(candidate) != expected_keys:
+                raise TypeError(f"Unexpected generated candidate keys: {sorted(candidate)}")
+            for key in ("id", "answer", "rule_or_hypothesis", "why"):
+                if not isinstance(candidate[key], str):
+                    raise TypeError(f"Unexpected generated candidate {key} type: {type(candidate[key])!r}")
+            for key in ("compatible_with_facts", "entailed_by_facts"):
+                if not isinstance(candidate[key], bool):
+                    raise TypeError(f"Unexpected generated candidate {key} type: {type(candidate[key])!r}")
         if verdict not in normalized_answer_options:
             raise RuntimeError(
                 "Model returned a verdict outside the declared answer_options.\n"
