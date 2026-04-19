@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.61"
+SERVER_VERSION = "0.1.62"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -196,13 +196,17 @@ TOOLS: list[JsonObject] = [
     {
         "name": "code_search",
         "description": (
-            "Search CIX-* code-index entries by explicit filters and projected fields. CIX is navigation only, "
-            "not proof."
+            "Search CIX-* code-index entries by explicit filters and projected fields. Optional semantic query "
+            "is proxied through TEP-managed code backends such as CocoIndex. Output is navigation only, not proof."
         ),
         "inputSchema": schema(
             {
                 "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
                 "root": {"type": "string", "description": "Repository root for freshness checks. Defaults to current directory."},
+                "query": {
+                    "type": "string",
+                    "description": "Optional semantic code query proxied through the configured TEP code backend.",
+                },
                 "paths": {"type": "array", "items": {"type": "string"}},
                 "language": {"type": "string"},
                 "code_kind": {"type": "string"},
@@ -738,6 +742,8 @@ def tool_code_search(args: JsonObject) -> tuple[bool, str]:
         "--format",
         as_format(args.get("format")),
     ]
+    if args.get("query"):
+        cli_args.extend(["--query", str(args["query"])])
     add_repeated(cli_args, "--path", as_list(args.get("paths")))
     for key, flag in (
         ("imports", "--import"),

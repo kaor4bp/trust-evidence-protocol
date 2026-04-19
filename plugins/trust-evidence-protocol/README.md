@@ -229,6 +229,8 @@ Default external backend registry:
 `backends` is an adapter registry, not proof.
 Use `backend-status` or `backend-check` to inspect dependency availability before relying on a helper.
 Backend output may guide lookup, indexing, validation, and candidate generation, but a user-facing proof chain must still cite canonical `SRC-*` and `CLM-*` records.
+External code-intelligence backends such as CocoIndex should be accessed through TEP `code-search` / MCP `code_search`, not as parallel direct MCP entrypoints in normal operation.
+TEP normalizes backend output into navigation-only projections, records telemetry, and keeps `WSP-*` / `PRJ-*` / `TASK-*` scope visible.
 The first fact-validation backend exposes fake RDF/SHACL-shaped checks so agents can debug the flow without installing pySHACL.
 Validation candidates are not proof and do not make a claim supported.
 
@@ -319,7 +321,7 @@ Exposed tools:
 - `record_detail`: one record with source quotes and direct links
 - `linked_records`: graph expansion around one record
 - `guidelines_for`: scoped active guidelines for a task
-- `code_search`: CIX navigation search
+- `code_search`: CIX navigation search plus optional TEP-proxied semantic backend query
 - `code_smell_report`: read-only CIX smell annotation report
 - `code_info`: one CIX entry/path projection
 - `cleanup_candidates`: read-only stale/noise triage
@@ -608,6 +610,7 @@ Commands:
 - `code-search`
   - searches CIX entries by path, language, code kind, import, symbol, feature, linked ref, or stale state
   - can filter annotations with `--annotation-kind smell` and `--annotation-category ...`
+  - can use `--query "..."` to proxy a semantic code search through the configured TEP backend, such as CocoIndex, while returning navigation-only TEP-normalized `backend_results`
   - returns only requested projection fields and defaults to a small limit
   - hides missing, superseded, and archived entries unless explicitly requested
   - code search is navigation only; read files or create `SRC-*` support before making truth claims

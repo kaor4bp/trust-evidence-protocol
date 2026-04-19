@@ -64,6 +64,11 @@ from tep_runtime.code_index import (
     validate_code_index_state,
     write_code_index_views,
 )
+from tep_runtime.code_backends import (
+    cocoindex_search_payload,
+    cocoindex_search_text_lines,
+    parse_cocoindex_search_output,
+)
 from tep_runtime.actions import build_action_payload
 from tep_runtime.attention import (
     ATTENTION_SCOPES,

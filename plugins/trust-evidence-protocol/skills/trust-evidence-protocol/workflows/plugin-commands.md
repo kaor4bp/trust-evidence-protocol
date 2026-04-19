@@ -20,7 +20,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `record_detail`: equivalent to `record-detail --record ID`
 - `linked_records`: equivalent to `linked-records --record ID`
 - `guidelines_for`: equivalent to `guidelines-for --task "..."`
-- `code_search`: equivalent to `code-search`
+- `code_search`: equivalent to `code-search`; optional semantic `query` is proxied through TEP-managed backends such as CocoIndex
 - `code_smell_report`: equivalent to `code-smell-report`
 - `code_info`: equivalent to `code-info`
 - `cleanup_candidates`: equivalent to `cleanup-candidates`
@@ -187,6 +187,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-refresh --root . --path "tests/**/*.py"
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-info --path tests/unit/test_example.py --fields target,imports,symbols,features,freshness
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --import pytest --fields target,imports,features --limit 20
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --query "prompt choice backend" --fields target --limit 8
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --annotation-kind smell --annotation-category mixed-responsibility --fields target,annotations
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-smell-report --category mixed-responsibility
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-entry create --target-kind directory --path tests/e2e --summary "E2E tests" --note "manual code area"

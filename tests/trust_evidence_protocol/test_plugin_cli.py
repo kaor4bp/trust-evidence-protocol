@@ -2342,6 +2342,67 @@ def test_cleanup_candidates_reports_read_only_attention_mismatches(tmp_path: Pat
     assert json.loads(input_path.read_text(encoding="utf-8")) == {"different": True}
 
 
+def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: Path, monkeypatch) -> None:
+    context = bootstrap_context(tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    ccc = fake_bin / "ccc"
+    ccc.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "assert sys.argv[1] == 'search'\n"
+        "print('--- Result 1 (score: 0.812) ---')\n"
+        "print('File: src/app.py:10-12 [python]')\n"
+        "print('def choose_backend():')\n"
+        "print('    return \\'cocoindex\\'')\n",
+        encoding="utf-8",
+    )
+    ccc.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}")
+
+    run_cli(
+        context,
+        "configure-runtime",
+        "--backend",
+        "code_intelligence.cocoindex.enabled=true",
+        "--backend",
+        "code_intelligence.cocoindex.mode=cli",
+        "--backend",
+        "code_intelligence.cocoindex.max_results=4",
+    )
+    payload = json.loads(
+        run_cli(
+            context,
+            "code-search",
+            "--root",
+            str(repo),
+            "--query",
+            "backend choice",
+            "--path",
+            "src/*.py",
+            "--fields",
+            "target",
+            "--format",
+            "json",
+        ).stdout
+    )
+
+    assert payload["results"] == []
+    backend = payload["backend_results"]
+    assert backend["backend"] == "cocoindex"
+    assert backend["backend_output_is_proof"] is False
+    assert backend["enabled"] is True
+    assert backend["available"] is True
+    assert backend["results"][0]["target"] == {"path": "src/app.py", "line_start": 10, "line_end": 12}
+    assert backend["results"][0]["snippet"] == "def choose_backend():\n    return 'cocoindex'"
+
+    telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
+    assert telemetry["by_tool"]["code-search"] >= 2
+    assert telemetry["by_access_kind"]["backend_code_search"] >= 1
+
+
 def test_code_index_supports_ast_search_refresh_annotations_and_links(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     repo = tmp_path / "repo"

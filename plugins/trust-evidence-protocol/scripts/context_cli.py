@@ -147,6 +147,8 @@ from context_lib import (
     next_step_text_lines,
     code_index_entries_root,
     code_index_entry_path,
+    cocoindex_search_payload,
+    cocoindex_search_text_lines,
     active_restrictions_for,
     attention_diagram_mermaid_lines,
     attention_diagram_metrics,
@@ -4294,6 +4296,7 @@ def cmd_code_info(root: Path, repo_root: Path, entry_ref: str | None, path: str 
 def cmd_code_search(
     root: Path,
     repo_root: Path,
+    query: str | None,
     path_patterns: list[str],
     language: str | None,
     code_kind: str | None,
@@ -4322,62 +4325,108 @@ def cmd_code_search(
     except ValueError as exc:
         print(str(exc))
         return 1
+    cix_filter_present = any(
+        [
+            path_patterns,
+            language,
+            code_kind,
+            imports,
+            symbols,
+            features,
+            refs,
+            annotation_kind,
+            annotation_categories,
+            annotation_status,
+            stale,
+            include_missing,
+            include_superseded,
+            include_archived,
+        ]
+    )
     results = []
-    for entry in entries.values():
-        status = str(entry.get("status", ""))
-        if status == "missing" and not include_missing:
-            continue
-        if status == "superseded" and not include_superseded:
-            continue
-        if status == "archived" and not include_archived:
-            continue
-        target = entry.get("target", {}) if isinstance(entry.get("target"), dict) else {}
-        target_path = str(target.get("path", ""))
-        if path_patterns and not code_index_path_matches(target_path, path_patterns):
-            continue
-        metadata = entry.get("metadata") or {}
-        if language and str(entry.get("language", "")) != language:
-            continue
-        if code_kind and str(entry.get("code_kind", "")) != code_kind:
-            continue
-        if imports and not set(imports).issubset(set(metadata.get("imports", []))):
-            continue
-        all_symbols = set(metadata.get("classes", []) + metadata.get("functions", []) + metadata.get("tests", []))
-        if symbols and not set(symbols).issubset(all_symbols):
-            continue
-        all_features = set(entry.get("detected_features", []) + entry.get("manual_features", []))
-        if features and not set(features).issubset(all_features):
-            continue
-        entry_refs = set()
-        for ref_values in (entry.get("manual_links") or {}).values():
-            if isinstance(ref_values, list):
-                entry_refs.update(str(ref) for ref in ref_values)
-        for link in entry.get("links", []) if isinstance(entry.get("links"), list) else []:
-            if isinstance(link, dict):
-                entry_refs.add(str(link.get("ref", "")))
-        if refs and not set(refs).issubset(entry_refs):
-            continue
-        if annotation_kind or annotation_categories or annotation_status:
-            if not code_entry_matching_annotations(
-                repo_root,
-                entry,
-                annotation_kind,
-                annotation_categories,
-                annotation_status,
-                include_stale_annotations,
-            ):
+    if not (query and not cix_filter_present):
+        for entry in entries.values():
+            status = str(entry.get("status", ""))
+            if status == "missing" and not include_missing:
                 continue
-        freshness = code_entry_freshness(repo_root, entry)
-        if stale == "true" and not freshness.get("stale"):
-            continue
-        if stale == "false" and freshness.get("stale"):
-            continue
-        results.append(entry)
+            if status == "superseded" and not include_superseded:
+                continue
+            if status == "archived" and not include_archived:
+                continue
+            target = entry.get("target", {}) if isinstance(entry.get("target"), dict) else {}
+            target_path = str(target.get("path", ""))
+            if path_patterns and not code_index_path_matches(target_path, path_patterns):
+                continue
+            metadata = entry.get("metadata") or {}
+            if language and str(entry.get("language", "")) != language:
+                continue
+            if code_kind and str(entry.get("code_kind", "")) != code_kind:
+                continue
+            if imports and not set(imports).issubset(set(metadata.get("imports", []))):
+                continue
+            all_symbols = set(metadata.get("classes", []) + metadata.get("functions", []) + metadata.get("tests", []))
+            if symbols and not set(symbols).issubset(all_symbols):
+                continue
+            all_features = set(entry.get("detected_features", []) + entry.get("manual_features", []))
+            if features and not set(features).issubset(all_features):
+                continue
+            entry_refs = set()
+            for ref_values in (entry.get("manual_links") or {}).values():
+                if isinstance(ref_values, list):
+                    entry_refs.update(str(ref) for ref in ref_values)
+            for link in entry.get("links", []) if isinstance(entry.get("links"), list) else []:
+                if isinstance(link, dict):
+                    entry_refs.add(str(link.get("ref", "")))
+            if refs and not set(refs).issubset(entry_refs):
+                continue
+            if annotation_kind or annotation_categories or annotation_status:
+                if not code_entry_matching_annotations(
+                    repo_root,
+                    entry,
+                    annotation_kind,
+                    annotation_categories,
+                    annotation_status,
+                    include_stale_annotations,
+                ):
+                    continue
+            freshness = code_entry_freshness(repo_root, entry)
+            if stale == "true" and not freshness.get("stale"):
+                continue
+            if stale == "false" and freshness.get("stale"):
+                continue
+            results.append(entry)
     results = sorted(results, key=lambda item: (str(item.get("status", "")), str((item.get("target") or {}).get("path", ""))))[: max(1, limit)]
+    backend_payload = None
+    if query:
+        backend_payload = cocoindex_search_payload(
+            root,
+            repo_root,
+            query=query,
+            language=language,
+            path_patterns=path_patterns,
+            limit=limit,
+        )
+        append_backend_access_event(root, "code-search", "backend_code_search", backend="cocoindex")
+    append_lookup_access_event(
+        root,
+        channel="cli",
+        tool="code-search",
+        access_kind="code_index_search",
+        record_refs=[str(entry.get("id", "")) for entry in results],
+        query=query or " ".join(path_patterns + imports + symbols + features + refs),
+        note="CIX search via TEP entrypoint",
+    )
     if output_format == "json":
-        print(json.dumps({"results": [project_code_entry(entry, fields, repo_root) for entry in results]}, indent=2, ensure_ascii=False))
+        payload = {"results": [project_code_entry(entry, fields, repo_root) for entry in results]}
+        if backend_payload is not None:
+            payload["backend_results"] = backend_payload
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         print_code_entries(results, fields, repo_root)
+        if backend_payload is not None:
+            print()
+            for line in cocoindex_search_text_lines(backend_payload):
+                print(line)
     return 0
 
 
@@ -5645,6 +5694,7 @@ def parse_args() -> argparse.Namespace:
         help="Search CIX-* entries with explicit filters and projection fields.",
     )
     code_search.add_argument("--root", default=".")
+    code_search.add_argument("--query", help="Optional semantic code query proxied through the configured TEP code backend.")
     code_search.add_argument("--path", dest="path_patterns", action="append", default=[])
     code_search.add_argument("--language")
     code_search.add_argument("--code-kind")
@@ -6769,6 +6819,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             cmd_code_search(
                 root,
                 repo_root=Path(args.root).expanduser().resolve(),
+                query=args.query,
                 path_patterns=args.path_patterns,
                 language=args.language,
                 code_kind=args.code_kind,
