@@ -62,7 +62,10 @@ if str(PLUGIN_SCRIPTS) not in sys.path:
 
 from context_lib import (  # noqa: E402
     DEFAULT_HOOK_SETTINGS,
+    append_access_event,
     build_next_step_payload,
+    claim_refs_from_text,
+    command_reads_raw_claims,
     load_effective_settings,
     load_hydration_state,
     load_records,
@@ -388,3 +391,26 @@ def run_context_cli(*args: str, input_text: str | None = None, cwd: str | Path |
         cwd=str(cwd or REPO_ROOT),
         check=False,
     )
+
+
+def append_raw_claim_read_event(context_root: Path, command: str, *, cwd: str | Path | None = None) -> None:
+    if not command_reads_raw_claims(command):
+        return
+    refs = claim_refs_from_text(command)
+    raw_path_count = max(1, command.count("records/claim") + len(refs))
+    try:
+        append_access_event(
+            context_root,
+            {
+                "channel": "hook",
+                "tool": "bash",
+                "access_kind": "raw_claim_read",
+                "record_refs": refs,
+                "raw_path_count": raw_path_count,
+                "cwd": str(cwd or ""),
+                "note": "Bash command referenced raw claim record storage",
+                "access_is_proof": False,
+            },
+        )
+    except OSError:
+        return

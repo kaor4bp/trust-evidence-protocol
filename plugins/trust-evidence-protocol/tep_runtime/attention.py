@@ -27,6 +27,13 @@ TAP_WEIGHTS = {
     "challenged": 2.5,
     "contradicted": 3.0,
 }
+ACCESS_WEIGHTS = {
+    "record_search": 0.2,
+    "claim_graph": 0.6,
+    "record_detail": 1.0,
+    "linked_records": 0.8,
+    "raw_claim_read": 2.0,
+}
 DEFAULT_HALF_LIFE_DAYS = 7.0
 ATTENTION_SCOPES = {"current", "all"}
 PROBE_RECORD_TYPE_WEIGHTS = {
@@ -74,8 +81,14 @@ def parse_timestamp(value: str) -> datetime | None:
         return None
 
 
-def decayed_weight(timestamp: str, kind: str, generated_at: str, half_life_days: float = DEFAULT_HALF_LIFE_DAYS) -> float:
-    base = TAP_WEIGHTS.get(kind, 0.5)
+def decayed_weight(
+    timestamp: str,
+    kind: str,
+    generated_at: str,
+    half_life_days: float = DEFAULT_HALF_LIFE_DAYS,
+    weights: dict[str, float] | None = None,
+) -> float:
+    base = (weights or TAP_WEIGHTS).get(kind, 0.5)
     event_time = parse_timestamp(timestamp)
     current_time = parse_timestamp(generated_at)
     if event_time is None or current_time is None:
@@ -242,7 +255,14 @@ def generate_cluster_probes(
     return candidates[: max(1, probe_limit)]
 
 
-def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: list[dict], *, probe_limit: int = 20) -> dict:
+def build_attention_index(
+    records: dict[str, dict],
+    topic_payload: dict,
+    taps: list[dict],
+    *,
+    access_events: list[dict] | None = None,
+    probe_limit: int = 20,
+) -> dict:
     generated_at = now_timestamp()
     topic_records = topic_payload.get("records", {}) if isinstance(topic_payload.get("records"), dict) else {}
     topics = topic_payload.get("topics", {}) if isinstance(topic_payload.get("topics"), dict) else {}
@@ -258,6 +278,26 @@ def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: l
         tap_scores[record_ref] = tap_scores.get(record_ref, 0.0) + decayed_weight(str(tap.get("tapped_at", "")), kind, generated_at)
         tap_counts[record_ref] = tap_counts.get(record_ref, 0) + 1
 
+    access_scores: dict[str, float] = {}
+    access_counts: dict[str, int] = {}
+    for event in access_events or []:
+        refs = event.get("record_refs", [])
+        if not isinstance(refs, list):
+            refs = []
+        kind = str(event.get("access_kind", "")).strip()
+        accessed_at = str(event.get("accessed_at", ""))
+        base_kind = kind if kind in ACCESS_WEIGHTS else "record_detail"
+        for record_ref in sorted({str(ref).strip() for ref in refs if str(ref).strip()}):
+            if record_ref not in records:
+                continue
+            access_scores[record_ref] = access_scores.get(record_ref, 0.0) + decayed_weight(
+                accessed_at,
+                base_kind,
+                generated_at,
+                weights=ACCESS_WEIGHTS,
+            )
+            access_counts[record_ref] = access_counts.get(record_ref, 0) + 1
+
     record_items = {}
     for record_id, data in records.items():
         topic_item = topic_records.get(record_id, {}) if isinstance(topic_records.get(record_id, {}), dict) else {}
@@ -265,8 +305,9 @@ def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: l
             "id": record_id,
             "record_type": str(data.get("record_type", "")).strip(),
             "summary": public_record_summary(data),
-            "activity_score": round(tap_scores.get(record_id, 0.0), 4),
+            "activity_score": round(tap_scores.get(record_id, 0.0) + access_scores.get(record_id, 0.0), 4),
             "tap_count": tap_counts.get(record_id, 0),
+            "access_count": access_counts.get(record_id, 0),
             "top_topic_id": top_topic_id(topic_item),
             "top_topic_term": top_topic_term(topic_item),
             "workspace_refs": list_refs(data, "workspace_refs"),
@@ -279,12 +320,14 @@ def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: l
     for topic_id, topic in topics.items():
         members = by_topic.get(topic_id, []) if isinstance(by_topic.get(topic_id, []), list) else []
         member_ids = [str(member.get("id", "")) for member in members if isinstance(member, dict) and str(member.get("id", "")) in records]
-        activity = sum(tap_scores.get(record_id, 0.0) for record_id in member_ids)
+        activity = sum(tap_scores.get(record_id, 0.0) + access_scores.get(record_id, 0.0) for record_id in member_ids)
+        access_count = sum(access_counts.get(record_id, 0) for record_id in member_ids)
         clusters[topic_id] = {
             "id": topic_id,
             "term": topic.get("term", ""),
             "record_count": len(member_ids),
             "activity_score": round(activity, 4),
+            "access_count": access_count,
             "record_refs": member_ids,
             "top_records": member_ids[:8],
             "attention_index_is_proof": False,
@@ -334,6 +377,7 @@ def build_attention_index(records: dict[str, dict], topic_payload: dict, taps: l
         "attention_index_is_proof": False,
         "generated_at": generated_at,
         "tap_count": len(taps),
+        "access_event_count": len(access_events or []),
         "record_count": len(record_items),
         "cluster_count": len(clusters),
         "records": record_items,
@@ -423,6 +467,7 @@ def filter_attention_payload(
         "record_count": len(kept_records),
         "cluster_count": len(clusters),
         "tap_count": sum(int(record.get("tap_count", 0)) for record in kept_records.values()),
+        "access_event_count": sum(int(record.get("access_count", 0)) for record in kept_records.values()),
         "bridges": bridges,
         "established_pairs": payload.get("established_pairs", []),
         "cold_zones": cold_zones,
@@ -470,6 +515,9 @@ def load_attention_payload(root: Path) -> dict:
         "tap_count": sum(int(item.get("tap_count", 0)) for item in records.values() if isinstance(item, dict))
         if isinstance(records, dict)
         else 0,
+        "access_event_count": sum(int(item.get("access_count", 0)) for item in records.values() if isinstance(item, dict))
+        if isinstance(records, dict)
+        else 0,
         "bridges": bridges if isinstance(bridges, list) else [],
         "established_pairs": established_pairs if isinstance(established_pairs, list) else [],
         "cold_zones": cold_zones if isinstance(cold_zones, list) else [],
@@ -485,13 +533,13 @@ def attention_map_text_lines(payload: dict, *, limit: int) -> list[str]:
         "",
         "Mode: generated attention/navigation map. Not proof.",
         f"scope: `{payload.get('scope', 'all')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
-        f"records: `{payload.get('record_count', len(payload.get('records', {})))}` clusters: `{payload.get('cluster_count', len(payload.get('clusters', {})))}` taps: `{payload.get('tap_count', 0)}`",
+        f"records: `{payload.get('record_count', len(payload.get('records', {})))}` clusters: `{payload.get('cluster_count', len(payload.get('clusters', {})))}` taps: `{payload.get('tap_count', 0)}` access_events: `{payload.get('access_event_count', 0)}`",
         "",
         "## Active Clusters",
     ]
     for cluster in clusters[: max(1, limit)]:
         lines.append(
-            f"- `{cluster.get('id')}` term=`{cluster.get('term')}` records=`{cluster.get('record_count')}` activity=`{cluster.get('activity_score')}`"
+            f"- `{cluster.get('id')}` term=`{cluster.get('term')}` records=`{cluster.get('record_count')}` activity=`{cluster.get('activity_score')}` access=`{cluster.get('access_count', 0)}`"
         )
     if not clusters:
         lines.append("- none")

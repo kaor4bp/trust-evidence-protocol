@@ -1105,6 +1105,14 @@ def test_pre_tool_hook_does_not_block_read_only_shell_checks_with_stderr_redirec
         result = run_script(HOOK_DIR / "pre_tool_use_guard.py", hook_payload(context, command))
         assert result.stdout.strip() == ""
 
+    raw_claim_read = "sed -n '1,20p' .codex_context/records/claim/CLM-20260419-abcdef12.json"
+    result = run_script(HOOK_DIR / "pre_tool_use_guard.py", hook_payload(context, raw_claim_read))
+    assert result.stdout.strip() == ""
+    telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
+    assert telemetry["raw_event_count"] == 1
+    assert telemetry["raw_path_count"] >= 1
+    assert "CLM-20260419-abcdef12" in [item["record_ref"] for item in telemetry["top_records"]]
+
     artifact_writes = [
         "printf '%s' screenshot > .codex_context/artifacts/screenshot.txt",
         "printf '%s' screenshot >> .codex_context/artifacts/screenshot.txt",

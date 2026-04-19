@@ -413,6 +413,14 @@ from tep_runtime.topic_index import (
     topic_tokenize,
     write_topic_index_reports,
 )
+from tep_runtime.telemetry import (
+    access_report_payload,
+    access_report_text_lines,
+    append_access_event,
+    claim_refs_from_text,
+    command_reads_raw_claims,
+    load_access_events,
+)
 from tep_runtime.sources import build_source_payload, default_independence_group
 from tep_runtime.settings import (
     ALLOWED_FREEDOM,

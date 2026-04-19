@@ -20,6 +20,7 @@ Responsibilities:
 - build generated lexical `topic_index/` data for search prefiltering and candidate review
 - build generated predicate `logic_index/` data from `CLM.logic` for symbol, atom, rule, and conflict-candidate checks
 - capture `INP-*` user-prompt provenance through the UserPromptSubmit hook when enabled by `input_capture`
+- collect append-only lookup telemetry in `activity/access.jsonl`, including MCP/CLI lookup events and hook-detected raw claim-file reads
 - push agents to preserve reusable discoveries, rules, actions, plans, debt, questions, models, flows, and proposals as records
 
 Non-responsibilities:
@@ -109,6 +110,11 @@ Generated navigation layer:
 - `.codex_context/activity/taps.jsonl`
   - append-only activity signals such as retrieved, opened, cited, decisive, updated, challenged, or contradicted
   - not evidence, not proof, and not claim support
+- `.codex_context/activity/access.jsonl`
+  - append-only lookup telemetry from MCP, CLI, and hooks
+  - tracks compact lookup usage, raw claim-file reads, and per-record access counts
+  - feeds generated attention heatmaps and `telemetry-report`
+  - not evidence, not proof, and not claim support
 
 Additional transient index:
 
@@ -130,6 +136,9 @@ current `CLM-*` anchors and compact linked source/support edges, then expand
 only the specific proof-critical records with `record_detail` or
 `linked_records`. Raw claim files remain available as an escape hatch for
 debugging, migration, or missing tool coverage.
+Use MCP `telemetry_report` or CLI `telemetry-report` to monitor whether agents
+are using compact lookup or falling back to raw claim-file reads. Attention maps
+combine explicit taps and lookup telemetry as navigation/heatmap signals.
 
 `.codex_context/settings.json` is the policy layer for:
 

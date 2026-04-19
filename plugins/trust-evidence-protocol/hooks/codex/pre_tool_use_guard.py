@@ -8,6 +8,7 @@ from hook_common import (
     active_permission_context,
     hook_mode,
     hooks_enabled,
+    append_raw_claim_read_event,
     infer_action_kind,
     load_payload,
     locate_context,
@@ -47,6 +48,7 @@ def main() -> int:
     command = str(payload.get("tool_input", {}).get("command", "")).strip()
     action_kind = infer_action_kind(command, context_root)
     if not action_kind:
+        append_raw_claim_read_event(context_root, command, cwd=cwd)
         return 0
 
     result = run_runtime_gate(

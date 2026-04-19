@@ -1031,6 +1031,13 @@ def test_search_records_finds_keywords_before_expanding_links(tmp_path: Path) ->
     fallback_anchor_ids = [item["id"] for item in fallback_graph["anchors"]]
     assert fallback_claim_id in fallback_anchor_ids
 
+    telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
+    assert telemetry["telemetry_is_proof"] is False
+    assert telemetry["by_tool"]["search-records"] >= 3
+    assert telemetry["by_tool"]["claim-graph"] >= 3
+    assert telemetry["raw_event_count"] == 0
+    assert active_claim_id in [item["record_ref"] for item in telemetry["top_records"]]
+
 
 def test_topic_index_builds_searchable_prefilter_and_candidate_report(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
@@ -1200,9 +1207,11 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
 
     tap = run_cli(context, "tap-record", "--record", tapped_claim_id, "--kind", "cited", "--intent", "support")
     assert "not proof" in tap.stdout
+    run_cli(context, "record-detail", "--record", tapped_claim_id)
 
     built = run_cli(context, "attention-index", "build", "--probe-limit", "10").stdout
     assert "Built attention index" in built
+    assert "access_events=1" in built
     assert "not proof" in built
     assert (context / "activity" / "taps.jsonl").exists()
     assert (context / "attention_index" / "records.json").exists()
@@ -1210,11 +1219,13 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
 
     records_payload = json.loads((context / "attention_index" / "records.json").read_text(encoding="utf-8"))
     assert records_payload[tapped_claim_id]["tap_count"] == 1
+    assert records_payload[tapped_claim_id]["access_count"] == 1
     assert records_payload[tapped_claim_id]["attention_index_is_proof"] is False
 
     map_text = run_cli(context, "attention-map").stdout
     assert "Not proof" in map_text
     assert "taps: `1`" in map_text
+    assert "access_events: `1`" in map_text
     diagram_text = run_cli(context, "attention-diagram", "--limit", "3").stdout
     assert "# Attention Diagram" in diagram_text
     assert "```mermaid" in diagram_text

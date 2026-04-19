@@ -9,6 +9,7 @@ surface for .codex_context.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.59"
+SERVER_VERSION = "0.1.60"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -157,6 +158,17 @@ TOOLS: list[JsonObject] = [
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["record"],
+        ),
+    },
+    {
+        "name": "telemetry_report",
+        "description": "Read non-proof lookup telemetry for MCP/CLI/hook access, including raw claim read counts.",
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
         ),
     },
     {
@@ -561,6 +573,7 @@ def run_cli(args: JsonObject, cli_args: list[str]) -> tuple[bool, str]:
     result = subprocess.run(
         command,
         cwd=cwd,
+        env={**os.environ, "TEP_ACCESS_CHANNEL": "mcp"},
         capture_output=True,
         text=True,
         check=False,
@@ -679,6 +692,19 @@ def tool_linked_records(args: JsonObject) -> tuple[bool, str]:
             direction,
             "--depth",
             str(as_int(args.get("depth"), 1, 1, 4)),
+            "--format",
+            as_format(args.get("format")),
+        ],
+    )
+
+
+def tool_telemetry_report(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "telemetry-report",
+            "--limit",
+            str(as_int(args.get("limit"), 10, 1, 50)),
             "--format",
             as_format(args.get("format")),
         ],
@@ -1064,6 +1090,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "record_detail": tool_record_detail,
     "claim_graph": tool_claim_graph,
     "linked_records": tool_linked_records,
+    "telemetry_report": tool_telemetry_report,
     "guidelines_for": tool_guidelines_for,
     "code_search": tool_code_search,
     "code_smell_report": tool_code_smell_report,

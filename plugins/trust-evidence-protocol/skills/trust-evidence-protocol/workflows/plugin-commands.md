@@ -30,6 +30,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `attention_map`: equivalent to `attention-map`; defaults to current `.tep` focus
 - `attention_diagram`: equivalent to `attention-diagram`; renders a Mermaid cluster/link map, defaulting to compact labels
 - `attention_diagram_compare`: equivalent to `attention-diagram-compare`; compares compact/full diagram metrics
+- `telemetry_report`: equivalent to `telemetry-report`; reports MCP/CLI/hook lookup telemetry and raw claim read counts
 - `curiosity_probes`: equivalent to `curiosity-probes`; defaults to current `.tep` focus
 - `probe_inspect`: equivalent to `probe-inspect`; expands one generated probe into canonical inspection context
 - `probe_chain_draft`: equivalent to `probe-chain-draft`; generates a non-proof evidence-chain draft from one probe
@@ -87,6 +88,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-info --record CLM-*
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context topic-conflict-candidates
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context tap-record --record CLM-* --kind cited --intent support
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context telemetry-report --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-index build
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-map --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-diagram --scope current --limit 8 --detail compact
@@ -116,6 +118,7 @@ Use `cleanup-restore --dry-run` before restore; `--apply` restores missing files
 Use `topic-search` only as a lexical prefilter, then inspect canonical records before citing facts.
 Use `topic-conflict-candidates` only to find records worth structured comparison; it does not replace `scan-conflicts`.
 Use `tap-record` to record non-proof activity when a record was retrieved, opened, cited, decisive, updated, challenged, or contradicted.
+Use `telemetry-report` to inspect non-proof lookup telemetry, including whether agents are using MCP/CLI compact views or reading raw claim files.
 Use `attention-map` and `curiosity-probes` to reduce token-heavy context exploration by asking the runtime for cold zones and bounded inspection questions.
 Use `attention-diagram` when a Mermaid cluster/link map is a cheaper orientation aid than reading several textual reports.
 Use `attention-diagram --detail full` only when compact node labels are not enough.

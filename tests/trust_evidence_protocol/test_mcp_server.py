@@ -417,6 +417,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "intent": "edit", "task": "MCP route", "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 24,
+                "method": "tools/call",
+                "params": {
+                    "name": "telemetry_report",
+                    "arguments": {"context": str(context), "format": "json"},
+                },
+            },
         ]
     )
 
@@ -429,6 +438,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "record_detail",
         "claim_graph",
         "linked_records",
+        "telemetry_report",
         "code_search",
         "code_smell_report",
         "cleanup_candidates",
@@ -564,6 +574,13 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     next_step_payload = json.loads(next_step_json["content"][0]["text"])
     assert next_step_payload["intent"] == "edit"
     assert next_step_payload["route_graph"]["graph_version"] == 1
+
+    telemetry = by_id[24]["result"]
+    assert telemetry["isError"] is False
+    telemetry_payload = json.loads(telemetry["content"][0]["text"])
+    assert telemetry_payload["telemetry_is_proof"] is False
+    assert telemetry_payload["by_channel"]["mcp"] >= 1
+    assert telemetry_payload["by_tool"]["claim-graph"] >= 1
 
 
 def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:

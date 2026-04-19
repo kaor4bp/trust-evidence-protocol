@@ -410,9 +410,9 @@ Forbidden use:
 
 ## Generated Attention Index
 
-`attention_index/` may combine topic clusters, tap activity, decayed activity
-scores, partial map views, cold-zone candidates, bridge candidates, and generated
-link-state summaries.
+`attention_index/` may combine topic clusters, tap activity, lookup telemetry,
+decayed activity scores, partial map views, cold-zone candidates, bridge
+candidates, and generated link-state summaries.
 
 Allowed use:
 
@@ -457,6 +457,23 @@ They should preserve:
 - resulting link state after review, if checked
 
 A probe result is navigation metadata until backed by canonical records.
+
+## Access Telemetry
+
+`activity/access.jsonl` is append-only lookup telemetry.
+
+Access events include:
+
+- `accessed_at`
+- `channel`: `cli`, `mcp`, `hook`, or another adapter name
+- `tool`: lookup surface, such as `claim-graph`, `record-detail`, or `bash`
+- `access_kind`: semantic lookup type, such as `claim_graph`, `record_detail`, or `raw_claim_read`
+- `record_refs`: records exposed by the lookup when known
+- `raw_path_count`: count of raw record-storage path references detected by hooks
+- `access_is_proof: false`
+
+Access telemetry may feed generated attention heatmaps and raw-read reports.
+It must not support claims, permissions, restrictions, or evidence chains.
 
 ## Generated Logic Index
 

@@ -74,6 +74,9 @@ from context_lib import (
     WORKING_CONTEXT_STATUSES,
     WORKSPACE_STATUSES,
     add_remove_values,
+    access_report_payload,
+    access_report_text_lines,
+    append_access_event,
     append_tap_event,
     attention_map_text_lines,
     build_attention_index,
@@ -160,6 +163,7 @@ from context_lib import (
     join_quote_items,
     linked_records_payload,
     load_attention_payload,
+    load_access_events,
     load_strictness_requests,
     load_tap_events,
     mark_knowledge_records_stale_payloads,
@@ -1819,6 +1823,7 @@ def cmd_help(topic: str) -> int:
             "working context: pin WCTX-* focus/context snapshots for retrospective and handoff",
             "topic index: generated lexical prefilter for navigation and candidate review",
             "attention index: generated tap-aware map, cold zones, and curiosity probes",
+            "telemetry: non-proof MCP/CLI/hook lookup stats, raw claim read counts, and heatmap inputs",
             "probe inspect: mechanically expand one curiosity probe into record details and link status",
             "probe chain draft: mechanically draft an evidence-chain skeleton from one curiosity probe",
             "probe pack: compact mechanical probe, inspection, and chain-draft bundle",
@@ -1841,7 +1846,7 @@ def cmd_help(topic: str) -> int:
             "record-input --input-kind user_prompt --origin-kind user --origin-ref ... --text ...",
             "working-context create|fork|show|close",
             "topic-index build --method lexical | topic-search --query ...",
-            "tap-record --record CLM-* --kind cited --intent support | attention-index build | attention-map | curiosity-probes --budget 5 | probe-inspect --index 1 | probe-chain-draft --index 1 | probe-pack --budget 3",
+            "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | attention-map | curiosity-probes --budget 5 | probe-inspect --index 1 | probe-chain-draft --index 1 | probe-pack --budget 3",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3",
         ],
@@ -1855,7 +1860,7 @@ def cmd_help(topic: str) -> int:
             "CLM.logic captures typed predicate atoms/rules as a machine-checkable claim projection",
             "PRP-*/PLN-*/DEBT-* preserve critique, intended work, and unresolved obligations",
             "topic_index/*.json is generated navigation/prefilter data only",
-            "attention_index/*.json and activity/taps.jsonl are generated navigation/curiosity data only",
+            "attention_index/*.json, activity/taps.jsonl, and activity/access.jsonl are generated navigation/curiosity data only",
             "logic_index/*.json is generated checking/navigation data only",
             "CIX-* is navigation/code-map metadata only, never proof",
         ],
@@ -2140,6 +2145,14 @@ def cmd_linked_records(root: Path, record_ref: str, direction: str, depth: int, 
     payload = linked_records_payload(records, record_ref, direction, depth)
     outgoing_by_ref = payload["_outgoing_by_ref"]
     incoming_by_ref = payload["_incoming_by_ref"]
+    append_lookup_access_event(
+        root,
+        channel="cli",
+        tool="linked-records",
+        access_kind="linked_records",
+        record_refs=[str(record.get("id") or "") for record in payload.get("records", [])] + [record_ref],
+        note=f"direction={direction} depth={depth}",
+    )
 
     def edge_key(edge: dict) -> tuple:
         return edge["from"], edge["to"], tuple(edge["fields"])
@@ -2215,6 +2228,14 @@ def cmd_record_detail(root: Path, record_ref: str, output_format: str) -> int:
         return 1
 
     payload = record_detail_payload(records, record_ref)
+    append_lookup_access_event(
+        root,
+        channel="cli",
+        tool="record-detail",
+        access_kind="record_detail",
+        record_refs=[record_ref],
+        note="record detail lookup",
+    )
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
@@ -2650,6 +2671,20 @@ def cmd_tap_record(root: Path, record_ref: str, kind: str, intent: str, note: st
     return 0
 
 
+def cmd_telemetry_report(root: Path, limit: int, output_format: str) -> int:
+    events, errors = load_access_events(root)
+    if errors:
+        print_errors(errors)
+        return 1
+    payload = access_report_payload(events, limit=limit)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        for line in access_report_text_lines(payload):
+            print(line)
+    return 0
+
+
 def cmd_attention_index_build(root: Path, probe_limit: int) -> int:
     records, exit_code = load_clean_context(root)
     if exit_code:
@@ -2658,13 +2693,17 @@ def cmd_attention_index_build(root: Path, probe_limit: int) -> int:
     if errors:
         print_errors(errors)
         return 1
+    access_events, access_errors = load_access_events(root)
+    if access_errors:
+        print_errors(access_errors)
+        return 1
     topic_payload = load_or_build_topic_payload(root, records)
-    payload = build_attention_index(records, topic_payload, taps, probe_limit=probe_limit)
+    payload = build_attention_index(records, topic_payload, taps, access_events=access_events, probe_limit=probe_limit)
     write_attention_index_reports(root, payload)
     invalidate_hydration_state(root, "rebuilt attention index")
     print(
         f"Built attention index: records={payload['record_count']} clusters={payload['cluster_count']} "
-        f"taps={payload['tap_count']} probes={len(payload['probes'])}"
+        f"taps={payload['tap_count']} access_events={payload['access_event_count']} probes={len(payload['probes'])}"
     )
     print("Attention index is navigation/curiosity data only; it is not proof.")
     return 0
@@ -3592,6 +3631,15 @@ def cmd_search_records(
         include_fallback,
         include_archived,
     )
+    append_lookup_access_event(
+        root,
+        channel="cli",
+        tool="search-records",
+        access_kind="record_search",
+        record_refs=[str(item["record"].get("id") or "") for item in ranked],
+        query=query,
+        note="keyword record search",
+    )
 
     if output_format == "json":
         print(
@@ -3648,6 +3696,36 @@ def cmd_search_records(
         print(f"  matched: {', '.join(matched)}")
         print(f"  summary: {record_summary(data)}")
     return 0
+
+
+def append_lookup_access_event(
+    root: Path,
+    *,
+    channel: str,
+    tool: str,
+    access_kind: str,
+    record_refs: list[str] | None = None,
+    query: str = "",
+    raw_path_count: int = 0,
+    note: str = "",
+) -> None:
+    channel = os.environ.get("TEP_ACCESS_CHANNEL", "").strip() or channel
+    append_access_event(
+        root,
+        {
+            "channel": channel,
+            "tool": tool,
+            "access_kind": access_kind,
+            "record_refs": sorted({ref for ref in (record_refs or []) if ref}),
+            "query": query,
+            "raw_path_count": raw_path_count,
+            "workspace_ref": current_workspace_ref(root),
+            "project_ref": current_project_ref(root),
+            "task_ref": current_task_ref(root),
+            "note": note,
+            "access_is_proof": False,
+        },
+    )
 
 
 def cmd_claim_graph(
@@ -3734,6 +3812,15 @@ def cmd_claim_graph(
         "records": [record_summaries[record_ref] for record_ref in sorted(record_summaries)],
         "edges": [edges_by_key[key] for key in sorted(edges_by_key)],
     }
+    append_lookup_access_event(
+        root,
+        channel="cli",
+        tool="claim-graph",
+        access_kind="claim_graph",
+        record_refs=[str(record.get("id") or "") for record in payload["records"]],
+        query=query,
+        note="compact claim graph lookup",
+    )
 
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -5223,6 +5310,12 @@ def parse_args() -> argparse.Namespace:
     tap_record.add_argument("--kind", choices=sorted(TAP_KINDS), required=True)
     tap_record.add_argument("--intent", required=True)
     tap_record.add_argument("--note", default="")
+    telemetry_report = subparsers.add_parser(
+        "telemetry-report",
+        help="Show read/navigation telemetry over MCP/CLI/hook lookup activity.",
+    )
+    telemetry_report.add_argument("--limit", type=int, default=10)
+    telemetry_report.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     attention_index = subparsers.add_parser(
         "attention-index",
         help="Build generated attention/curiosity indexes from topics, links, and taps.",
@@ -6341,6 +6434,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 note=args.note,
             )
         )
+    if args.command == "telemetry-report":
+        raise SystemExit(cmd_telemetry_report(root, limit=args.limit, output_format=args.output_format))
     if args.command == "attention-index":
         if args.attention_index_command == "build":
             raise SystemExit(cmd_attention_index_build(root, probe_limit=args.probe_limit))
