@@ -488,6 +488,10 @@ Default lookup order for truth-bearing claims:
 6. archived claims only by explicit id, audit, rollback, or user request
 
 Generated views should reflect this priority.
+Normal agent lookup should use compact projections such as MCP `claim_graph` or
+CLI `claim-graph` before opening raw `records/claim/*.json` files. Raw claim
+files are an escape hatch for debugging, migration, and missing tool coverage,
+not the primary reasoning interface.
 
 ## Link Semantics
 

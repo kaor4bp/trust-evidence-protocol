@@ -39,7 +39,7 @@ Current implementation:
 - `skills/trust-evidence-protocol/SKILL.md` contains only core semantics and workflow routing
 - `skills/trust-evidence-protocol/workflows/` contains task-specific operating procedures
 
-Runtime hook output is intentionally compact by default. Use compact MCP/CLI projections first, then expand only the specific records or sections needed with tools such as `brief_context(detail=full)`, `search_records`, `record_detail`, `linked_records`, `guidelines_for`, `code_search`, and `code_info`.
+Runtime hook output is intentionally compact by default. Use compact MCP/CLI projections first, then expand only the specific records or sections needed with tools such as `brief_context(detail=full)`, `search_records`, `claim_graph`, `record_detail`, `linked_records`, `guidelines_for`, `code_search`, and `code_info`.
 Hooks also surface a compact `TEP route` branch so agents can follow the next procedural step instead of rereading the plugin documentation.
 Human-facing TEP Runtime output uses the `🛡️` marker so plugin messages are easy to distinguish from normal agent prose.
 Machine-readable JSON fields and canonical records do not rely on the marker.
@@ -123,6 +123,13 @@ Additional transient index:
 `backlog.md` is a generated working view, not a source of truth.
 
 `runtime/` is generated runtime bookkeeping, not a source of truth.
+
+Agents should not read raw `records/claim/*.json` as the normal discovery path.
+Use MCP `claim_graph` or CLI `claim-graph --query "..."` to get matching
+current `CLM-*` anchors and compact linked source/support edges, then expand
+only the specific proof-critical records with `record_detail` or
+`linked_records`. Raw claim files remain available as an escape hatch for
+debugging, migration, or missing tool coverage.
 
 `.codex_context/settings.json` is the policy layer for:
 

@@ -37,9 +37,11 @@ When MCP tools are available, prefer them for read-only lookup:
 - use `next_step` first when you are unsure which TEP branch to follow; request `format=json` when a tool needs structured `route_graph`; treat both forms as navigation only
 - use compact `brief_context` before planning, answering, editing, or asking permission; request `detail=full` only when the compact brief is insufficient
 - use `search_records` before inspecting raw files from scratch
+- use `claim_graph` when keyword lookup should return a compact graph of current `CLM-*` anchors and linked sources/support before opening individual records
 - use `record_detail` or `linked_records` before citing a record
 - use `guidelines_for` before sizeable code/test edits
 - use `code_search` and `code_info` to find relevant files or code areas, then read code or cite `SRC-*`/`CLM-*` before making truth claims
+- avoid reading raw `records/claim/*.json` directly during normal reasoning; use raw files only as an escape hatch for debugging, migration, or missing MCP/CLI coverage
 
 If MCP is unavailable, use the equivalent `context_cli.py` commands from `workflows/plugin-commands.md`.
 Do not use `runtime_gate.py` for full context operations; it is only the hook-safe gate for hydration and preflight.

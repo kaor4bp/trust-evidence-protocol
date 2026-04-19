@@ -1812,6 +1812,7 @@ def cmd_help(topic: str) -> int:
             "hydration: refresh generated views and current project/task summaries",
             "review context: validate records, references, and structured contradictions",
             "reindex context: rebuild generated views, indexes, backlog, and reports",
+            "claim graph: keyword lookup over current CLM-* records plus compact linked edges; navigation only",
             "task control: start, pause, resume, switch, complete, or stop TASK-* focus",
             "precedent review: inspect previous TASK-* records of the same task_type before repeating work",
             "evidence chain: validate agent-supplied proof chains and keep context/proof separate",
@@ -1830,7 +1831,7 @@ def cmd_help(topic: str) -> int:
         "commands": [
             "review-context | reindex-context | scan-conflicts",
             "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]",
-            "brief-context --task ... | search-records --query ... | record-detail --record ...",
+            "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ...",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
             "start-task --type investigation --scope ... --title ... --note ...",
@@ -3649,6 +3650,130 @@ def cmd_search_records(
     return 0
 
 
+def cmd_claim_graph(
+    root: Path,
+    query: str,
+    limit: int,
+    depth: int,
+    all_projects: bool,
+    include_task_local: bool,
+    include_fallback: bool,
+    include_archived: bool,
+    output_format: str,
+) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    terms = task_terms(query)
+    if not terms:
+        print("claim graph query must contain at least one searchable token with 3+ characters")
+        return 1
+
+    project_ref = None if all_projects else current_project_ref(root) or None
+    task_ref = None if include_task_local else current_task_ref(root) or None
+    ranked = ranked_record_search(
+        records,
+        terms,
+        max(1, limit),
+        ["claim"],
+        project_ref,
+        task_ref,
+        include_fallback,
+        include_archived,
+    )
+
+    record_summaries: dict[str, dict] = {}
+    edges_by_key: dict[tuple[str, str, tuple[str, ...]], dict] = {}
+    anchors: list[dict] = []
+    safe_depth = max(1, min(depth, 4))
+
+    def include_linked_record(record_ref: str) -> bool:
+        data = records.get(record_ref)
+        if not data or data.get("record_type") != "claim":
+            return True
+        lifecycle_state = claim_lifecycle_state(data)
+        attention = claim_attention(data)
+        if lifecycle_state != "active" and not include_fallback:
+            return False
+        if attention == "fallback-only" and not include_fallback:
+            return False
+        if attention == "explicit-only" and not include_archived:
+            return False
+        return True
+
+    for item in ranked:
+        claim = item["record"]
+        claim_ref = str(claim.get("id") or "")
+        if not claim_ref:
+            continue
+        summary = public_record_summary(claim)
+        anchors.append({"score": item["score"], "matched_terms": item["matched_terms"], **summary})
+        record_summaries[claim_ref] = summary
+
+        graph = linked_records_payload(records, claim_ref, "both", safe_depth)
+        for linked_summary in graph.get("records", []):
+            linked_ref = str(linked_summary.get("id") or "")
+            if linked_ref and include_linked_record(linked_ref):
+                record_summaries[linked_ref] = linked_summary
+        for edge in graph.get("edges", []):
+            fields = tuple(str(field) for field in edge.get("fields", []))
+            key = (str(edge.get("from") or ""), str(edge.get("to") or ""), fields)
+            if not include_linked_record(key[0]) or not include_linked_record(key[1]):
+                continue
+            edges_by_key[key] = {"from": key[0], "to": key[1], "fields": list(key[2])}
+
+    payload = {
+        "query": query,
+        "terms": sorted(terms),
+        "project_filter": project_ref or None,
+        "task_filter": task_ref or None,
+        "depth": safe_depth,
+        "claim_graph_is_proof": False,
+        "result_count": len(anchors),
+        "anchors": anchors,
+        "records": [record_summaries[record_ref] for record_ref in sorted(record_summaries)],
+        "edges": [edges_by_key[key] for key in sorted(edges_by_key)],
+    }
+
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+
+    print("# Claim Graph\n")
+    print(f"Query: {query}")
+    print(f"Terms: {', '.join(payload['terms'])}")
+    print(f"Depth: `{safe_depth}`")
+    print("Mode: keyword-backed claim graph. Navigation only, not proof.")
+    if project_ref:
+        print(f"Project filter: `{project_ref}`")
+    if task_ref:
+        print(f"Task filter: `{task_ref}`")
+    if include_fallback:
+        print("Includes fallback historical claims.")
+    if include_archived:
+        print("Includes archived explicit-only claims.")
+    print()
+    if not anchors:
+        print("- no matching claims")
+        return 0
+
+    print("## Anchor Claims")
+    for anchor in anchors:
+        print(
+            f"- `{anchor.get('id')}` status=`{anchor.get('status', '')}` "
+            f"score={anchor.get('score')} matched=`{', '.join(anchor.get('matched_terms', []))}`"
+        )
+        print(f"  summary: {anchor.get('summary', '')}")
+
+    print("\n## Linked Edges")
+    if payload["edges"]:
+        for edge in payload["edges"]:
+            print(f"- `{edge['from']}` -> `{edge['to']}` via `{', '.join(edge['fields'])}`")
+    else:
+        print("- none")
+    return 0
+
+
 def claim_record_for_lifecycle(records: dict[str, dict], claim_ref: str) -> tuple[dict | None, int]:
     if claim_ref not in records:
         print(f"missing record {claim_ref}")
@@ -4995,6 +5120,18 @@ def parse_args() -> argparse.Namespace:
     search_records.add_argument("--include-fallback", action="store_true")
     search_records.add_argument("--include-archived", action="store_true")
     search_records.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    claim_graph = subparsers.add_parser(
+        "claim-graph",
+        help="Search CLM-* records by keyword and return a compact linked graph.",
+    )
+    claim_graph.add_argument("--query", required=True)
+    claim_graph.add_argument("--limit", type=int, default=8)
+    claim_graph.add_argument("--depth", type=int, default=1)
+    claim_graph.add_argument("--all-projects", action="store_true")
+    claim_graph.add_argument("--include-task-local", action="store_true")
+    claim_graph.add_argument("--include-fallback", action="store_true")
+    claim_graph.add_argument("--include-archived", action="store_true")
+    claim_graph.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     record_detail = subparsers.add_parser(
         "record-detail",
         help="Show one canonical record with direct sources and links.",
@@ -6094,6 +6231,20 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 query=args.query,
                 limit=args.limit,
                 record_types=args.record_types,
+                all_projects=args.all_projects,
+                include_task_local=args.include_task_local,
+                include_fallback=args.include_fallback,
+                include_archived=args.include_archived,
+                output_format=args.output_format,
+            )
+        )
+    if args.command == "claim-graph":
+        raise SystemExit(
+            cmd_claim_graph(
+                root,
+                query=args.query,
+                limit=args.limit,
+                depth=args.depth,
                 all_projects=args.all_projects,
                 include_task_local=args.include_task_local,
                 include_fallback=args.include_fallback,

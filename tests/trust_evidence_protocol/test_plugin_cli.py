@@ -996,6 +996,41 @@ def test_search_records_finds_keywords_before_expanding_links(tmp_path: Path) ->
     assert fallback_claim_id in result_ids
     assert payload["terms"] == ["gateway", "search"]
 
+    graph_text = run_cli(context, "claim-graph", "--query", "gateway search").stdout
+    assert "# Claim Graph" in graph_text
+    assert "Navigation only, not proof" in graph_text
+    assert active_claim_id in graph_text
+    assert fallback_claim_id not in graph_text
+
+    graph_payload = json.loads(
+        run_cli(context, "claim-graph", "--query", "gateway search", "--format", "json").stdout
+    )
+    anchor_ids = [item["id"] for item in graph_payload["anchors"]]
+    linked_ids = [item["id"] for item in graph_payload["records"]]
+    assert graph_payload["claim_graph_is_proof"] is False
+    assert active_claim_id in anchor_ids
+    assert fallback_claim_id not in anchor_ids
+    assert source_id in linked_ids
+    assert {
+        "from": active_claim_id,
+        "to": source_id,
+        "fields": ["source_refs"],
+    } in graph_payload["edges"]
+
+    fallback_graph = json.loads(
+        run_cli(
+            context,
+            "claim-graph",
+            "--query",
+            "gateway search",
+            "--include-fallback",
+            "--format",
+            "json",
+        ).stdout
+    )
+    fallback_anchor_ids = [item["id"] for item in fallback_graph["anchors"]]
+    assert fallback_claim_id in fallback_anchor_ids
+
 
 def test_topic_index_builds_searchable_prefilter_and_candidate_report(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)

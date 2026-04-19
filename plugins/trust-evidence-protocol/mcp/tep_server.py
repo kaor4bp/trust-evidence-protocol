@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.58"
+SERVER_VERSION = "0.1.59"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -122,6 +122,27 @@ TOOLS: list[JsonObject] = [
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["record"],
+        ),
+    },
+    {
+        "name": "claim_graph",
+        "description": (
+            "Search source-backed CLM-* claims by keyword and return a compact linked graph. "
+            "Navigation only, not proof; use record_detail for proof-critical records."
+        ),
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "query": {"type": "string", "description": "Claim search query with meaningful 3+ char tokens."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 8},
+                "depth": {"type": "integer", "minimum": 1, "maximum": 4, "default": 1},
+                "all_projects": {"type": "boolean", "default": False},
+                "include_task_local": {"type": "boolean", "default": False},
+                "include_fallback": {"type": "boolean", "default": False},
+                "include_archived": {"type": "boolean", "default": False},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["query"],
         ),
     },
     {
@@ -625,6 +646,25 @@ def tool_record_detail(args: JsonObject) -> tuple[bool, str]:
     )
 
 
+def tool_claim_graph(args: JsonObject) -> tuple[bool, str]:
+    cli_args = [
+        "claim-graph",
+        "--query",
+        str(args.get("query", "")),
+        "--limit",
+        str(as_int(args.get("limit"), 8, 1, 50)),
+        "--depth",
+        str(as_int(args.get("depth"), 1, 1, 4)),
+        "--format",
+        as_format(args.get("format")),
+    ]
+    add_flag(cli_args, as_bool(args.get("all_projects")), "--all-projects")
+    add_flag(cli_args, as_bool(args.get("include_task_local")), "--include-task-local")
+    add_flag(cli_args, as_bool(args.get("include_fallback")), "--include-fallback")
+    add_flag(cli_args, as_bool(args.get("include_archived")), "--include-archived")
+    return run_cli(args, cli_args)
+
+
 def tool_linked_records(args: JsonObject) -> tuple[bool, str]:
     direction = str(args.get("direction") or "both")
     if direction not in {"incoming", "outgoing", "both"}:
@@ -1022,6 +1062,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "next_step": tool_next_step,
     "search_records": tool_search_records,
     "record_detail": tool_record_detail,
+    "claim_graph": tool_claim_graph,
     "linked_records": tool_linked_records,
     "guidelines_for": tool_guidelines_for,
     "code_search": tool_code_search,

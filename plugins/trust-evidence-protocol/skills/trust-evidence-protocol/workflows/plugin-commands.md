@@ -16,6 +16,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `brief_context`: equivalent to compact `brief-context --task "..."`; pass `detail=full` only when the expanded brief is needed
 - `next_step`: equivalent to `next-step --intent ...`; use it as the first route branch when unsure what to do next, follow its compact action graph before re-reading the protocol, and request `format=json` when a tool needs structured `route_graph` data
 - `search_records`: equivalent to `search-records --query "..."`
+- `claim_graph`: equivalent to `claim-graph --query "..."`; returns current matching `CLM-*` anchors plus compact linked records/edges without reading raw claim JSON
 - `record_detail`: equivalent to `record-detail --record ID`
 - `linked_records`: equivalent to `linked-records --record ID`
 - `guidelines_for`: equivalent to `guidelines-for --task "..."`
@@ -42,7 +43,8 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 
 MCP lookup is read-only and does not replace canonical records.
 When a tool supports `cwd`, pass the active workdir so MCP resolves the nearest `.tep` anchor and uses the same workspace/project focus as hooks and CLI.
-Before citing a fact or rule, use `record_detail`, `linked_records`, or the equivalent CLI command to obtain the record id and quote.
+Before citing a fact or rule, use `claim_graph`, `record_detail`, `linked_records`, or the equivalent CLI command to obtain the record id and quote.
+Avoid reading raw `records/claim/*.json` directly during normal reasoning; direct files are an escape hatch for debugging, migration, or missing MCP/CLI coverage.
 Use CLI commands for all record creation, updates, strictness changes, task changes, code-index mutation, lifecycle changes, and review regeneration.
 
 ## Runtime Gate
@@ -69,6 +71,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context next-step --intent plan --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context next-step --intent plan --task "..." --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context search-records --query "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context claim-graph --query "..." --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-detail --record CLM-*
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-neighborhood --record CLM-* --depth 2
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context linked-records --record CLM-* --direction both --depth 1

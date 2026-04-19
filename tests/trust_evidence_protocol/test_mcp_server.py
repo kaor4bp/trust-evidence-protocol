@@ -239,6 +239,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
             },
             {
                 "jsonrpc": "2.0",
+                "id": 23,
+                "method": "tools/call",
+                "params": {
+                    "name": "claim_graph",
+                    "arguments": {"context": str(context), "query": "MCP gateway", "format": "json"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
                 "id": 5,
                 "method": "tools/call",
                 "params": {
@@ -418,6 +427,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "search_records",
         "next_step",
         "record_detail",
+        "claim_graph",
         "linked_records",
         "code_search",
         "code_smell_report",
@@ -450,6 +460,14 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     detail_result = by_id[4]["result"]
     assert detail_result["isError"] is False
     assert source_id in detail_result["content"][0]["text"]
+
+    claim_graph = by_id[23]["result"]
+    assert claim_graph["isError"] is False
+    claim_graph_payload = json.loads(claim_graph["content"][0]["text"])
+    assert claim_graph_payload["claim_graph_is_proof"] is False
+    assert claim_id in [item["id"] for item in claim_graph_payload["anchors"]]
+    assert source_id in [item["id"] for item in claim_graph_payload["records"]]
+    assert {"from": claim_id, "to": source_id, "fields": ["source_refs"]} in claim_graph_payload["edges"]
 
     topic_result = by_id[5]["result"]
     assert topic_result["isError"] is False
