@@ -2779,6 +2779,7 @@ def test_code_search_resolves_paths_from_project_root_not_agent_cwd(tmp_path: Pa
         (repo / "src" / "app.py").write_text(f"def app_label():\n    return '{label}'\n", encoding="utf-8")
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
         subprocess.run(["git", "add", "src/app.py"], cwd=repo, check=True, capture_output=True, text=True)
+    (repo_b / "src" / "legacy.py").write_text("def legacy_label():\n    return 'beta-legacy'\n", encoding="utf-8")
     agent_cwd.mkdir()
 
     workspace_a = recorded_id(
@@ -2926,6 +2927,35 @@ def test_code_search_resolves_paths_from_project_root_not_agent_cwd(tmp_path: Pa
         ),
         encoding="utf-8",
     )
+    active_unscoped_id = "CIX-20260420-feedface"
+    active_unscoped_path = context / "code_index" / "entries" / f"{active_unscoped_id}.json"
+    active_unscoped_path.write_text(
+        json.dumps(
+            {
+                "id": active_unscoped_id,
+                "record_type": "code_index_entry",
+                "status": "active",
+                "target": {"kind": "file", "path": "src/legacy.py"},
+                "target_state": "present",
+                "language": "python",
+                "code_kind": "source",
+                "summary": "legacy active unscoped entry",
+                "metadata": {},
+                "detected_features": [],
+                "manual_features": [],
+                "manual_links": {},
+                "annotations": [],
+                "links": [],
+                "child_entry_refs": [],
+                "related_entry_refs": [],
+                "supersedes_refs": [],
+                "created_at": "2026-04-20T10:00:00+03:00",
+                "updated_at": "2026-04-20T10:00:00+03:00",
+                "note": "explicit --status active should not include default missing",
+            }
+        ),
+        encoding="utf-8",
+    )
     scoped_with_missing = json.loads(
         run_cli(
             context,
@@ -2943,9 +2973,28 @@ def test_code_search_resolves_paths_from_project_root_not_agent_cwd(tmp_path: Pa
 
     archive_plan = json.loads(run_cli(context, "code-entry", "archive-unscoped", "--format", "json").stdout)
     assert archive_plan["archive_unscoped_is_dry_run"] is True
+    assert archive_plan["selected_statuses"] == ["missing"]
     assert archive_plan["count"] == 1
+    active_archive_plan = json.loads(
+        run_cli(context, "code-entry", "archive-unscoped", "--status", "active", "--format", "json").stdout
+    )
+    assert active_archive_plan["selected_statuses"] == ["active"]
+    assert active_archive_plan["count"] == 1
+    assert active_archive_plan["items"][0]["id"] == active_unscoped_id
+    attach_plan = json.loads(
+        run_cli(context, "code-entry", "attach-unscoped", "--root", str(repo_b), "--format", "json").stdout
+    )
+    assert attach_plan["attach_unscoped_is_dry_run"] is True
+    assert attach_plan["selected_statuses"] == ["active"]
+    assert attach_plan["count"] == 1
+    assert attach_plan["project_ref"] == project_b
+    run_cli(context, "code-entry", "attach-unscoped", "--root", str(repo_b), "--apply")
+    attached_entry = json.loads(active_unscoped_path.read_text(encoding="utf-8"))
+    assert attached_entry["workspace_ref"] == workspace_b
+    assert attached_entry["project_ref"] == project_b
     run_cli(context, "code-entry", "archive-unscoped", "--apply")
     assert json.loads(legacy_unscoped_path.read_text(encoding="utf-8"))["status"] == "archived"
+    assert json.loads(active_unscoped_path.read_text(encoding="utf-8"))["status"] == "active"
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()

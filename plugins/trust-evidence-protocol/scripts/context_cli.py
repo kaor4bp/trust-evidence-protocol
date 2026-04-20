@@ -5236,6 +5236,93 @@ def cmd_code_entry_archive_unscoped(root: Path, statuses: list[str], apply: bool
     return 0
 
 
+def cmd_code_entry_attach_unscoped(root: Path, repo_root: str, statuses: list[str] | None, apply: bool, output_format: str) -> int:
+    resolved_repo = Path(repo_root).expanduser().resolve()
+    workspace_ref, project_ref = repo_scope_for_root(root, resolved_repo)
+    if not workspace_ref or not project_ref:
+        print(f"{resolved_repo}: must match an active workspace and project root_refs before attaching unscoped CIX")
+        return 1
+    entries, errors = load_code_index_entries(root)
+    if errors:
+        print_errors(errors)
+        return 1
+    selected_statuses = set(statuses or ["active"])
+    invalid_statuses = selected_statuses - CODE_INDEX_STATUSES
+    if invalid_statuses:
+        print(f"invalid status: {sorted(invalid_statuses)[0]}")
+        return 1
+    targets = []
+    skipped = {"already_scoped": 0, "status": 0, "unsupported_target": 0, "not_present_under_root": 0}
+    for entry in entries.values():
+        if str(entry.get("project_ref", "") or "").strip():
+            skipped["already_scoped"] += 1
+            continue
+        if str(entry.get("status", "")).strip() not in selected_statuses:
+            skipped["status"] += 1
+            continue
+        target = entry.get("target") if isinstance(entry.get("target"), dict) else {}
+        target_kind = str(target.get("kind", ""))
+        target_path = str(target.get("path", "") or "").strip()
+        if target_kind not in {"file", "directory"} or not target_path:
+            skipped["unsupported_target"] += 1
+            continue
+        candidate = (resolved_repo / target_path).resolve()
+        if target_kind == "file" and not candidate.is_file():
+            skipped["not_present_under_root"] += 1
+            continue
+        if target_kind == "directory" and not candidate.is_dir():
+            skipped["not_present_under_root"] += 1
+            continue
+        targets.append(entry)
+    payload = {
+        "attach_unscoped_is_dry_run": not apply,
+        "repo_root": str(resolved_repo),
+        "workspace_ref": workspace_ref,
+        "project_ref": project_ref,
+        "selected_statuses": sorted(selected_statuses),
+        "count": len(targets),
+        "skipped": skipped,
+        "items": [
+            {
+                "id": entry.get("id"),
+                "status": entry.get("status"),
+                "target": entry.get("target", {}),
+            }
+            for entry in targets[:100]
+        ],
+    }
+    if not apply:
+        if output_format == "json":
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(
+                f"Would attach {len(targets)} unscoped CIX entr{'y' if len(targets) == 1 else 'ies'} "
+                f"to project `{project_ref}` workspace `{workspace_ref}`"
+            )
+            for item in payload["items"]:
+                target = item.get("target", {})
+                print(f"- `{item.get('id')}` status=`{item.get('status')}` target=`{target.get('path') or ''}`")
+        return 0
+    timestamp = now_timestamp()
+    changed = []
+    for entry in targets:
+        payload_entry = public_code_index_entry(entry)
+        payload_entry["workspace_ref"] = workspace_ref
+        payload_entry["project_ref"] = project_ref
+        payload_entry["updated_at"] = timestamp
+        payload_entry["note"] = append_note(
+            str(payload_entry.get("note", "")),
+            f"[{timestamp}] attached by code-entry attach-unscoped to workspace {workspace_ref} project {project_ref}",
+        )
+        changed.append(payload_entry)
+        entries[payload_entry["id"]] = payload_entry
+    persist_code_index_entries(root, entries, changed, f"Attached {len(changed)} unscoped code index entr{'y' if len(changed) == 1 else 'ies'}")
+    payload["attach_unscoped_is_dry_run"] = False
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
 def cmd_promote_model_to_domain(root: Path, model_ref: str, note: str | None) -> int:
     records, exit_code = load_clean_context(root)
     if exit_code:
@@ -6361,9 +6448,17 @@ def parse_args() -> argparse.Namespace:
         "archive-unscoped",
         help="Archive legacy CIX entries without project_ref so they cannot leak across projects.",
     )
-    code_entry_archive_unscoped.add_argument("--status", dest="statuses", action="append", default=["missing"])
+    code_entry_archive_unscoped.add_argument("--status", dest="statuses", action="append")
     code_entry_archive_unscoped.add_argument("--apply", action="store_true")
     code_entry_archive_unscoped.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    code_entry_attach_unscoped = code_entry_subparsers.add_parser(
+        "attach-unscoped",
+        help="Attach legacy unscoped CIX entries to the project/workspace matching --root.",
+    )
+    code_entry_attach_unscoped.add_argument("--root", required=True)
+    code_entry_attach_unscoped.add_argument("--status", dest="statuses", action="append")
+    code_entry_attach_unscoped.add_argument("--apply", action="store_true")
+    code_entry_attach_unscoped.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     annotate_code = subparsers.add_parser(
         "annotate-code",
         help="Add a non-proof annotation to a CIX-* entry.",
@@ -7553,6 +7648,16 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             raise SystemExit(
                 cmd_code_entry_archive_unscoped(
                     root,
+                    statuses=args.statuses,
+                    apply=args.apply,
+                    output_format=args.output_format,
+                )
+            )
+        if args.code_entry_command == "attach-unscoped":
+            raise SystemExit(
+                cmd_code_entry_attach_unscoped(
+                    root,
+                    repo_root=args.root,
                     statuses=args.statuses,
                     apply=args.apply,
                     output_format=args.output_format,
