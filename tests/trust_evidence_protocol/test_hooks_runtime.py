@@ -54,10 +54,15 @@ def run_cli(context: Path, *args: str, check: bool = True) -> subprocess.Complet
     return result
 
 
-def run_runtime(context: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_runtime(
+    context: Path,
+    *args: str,
+    check: bool = True,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         [sys.executable, str(RUNTIME_GATE), "--context", str(context), *args],
-        cwd=REPO_ROOT,
+        cwd=cwd or REPO_ROOT,
         capture_output=True,
         text=True,
         check=False,
@@ -214,13 +219,35 @@ def test_runtime_gate_refuses_ambiguous_unanchored_hydration(tmp_path: Path) -> 
 
     blocked = run_runtime(context, "hydrate-context", check=False)
     assert blocked.returncode == 1
-    assert "Explicit TEP anchor required" in blocked.stdout
+    assert "Explicit TEP workspace anchor required" in blocked.stdout
     assert "first-workspace" in blocked.stdout
     assert "second-workspace" in blocked.stdout
 
-    allowed = run_runtime(context, "hydrate-context", "--allow-unanchored")
-    assert allowed.returncode == 0
-    assert "Hydrated context" in allowed.stdout
+    still_blocked = run_runtime(context, "hydrate-context", "--allow-unanchored", check=False)
+    assert still_blocked.returncode == 1
+    assert "workspace_ref" in still_blocked.stdout
+
+
+def test_runtime_gate_refuses_single_workspace_without_anchor(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    workdir = tmp_path / "only-workspace"
+    workdir.mkdir()
+    run_cli(
+        context,
+        "record-workspace",
+        "--workspace-key",
+        "only-workspace",
+        "--title",
+        "Only Workspace",
+        "--root-ref",
+        str(workdir),
+        "--note",
+        "single workspace still requires anchor",
+    )
+
+    blocked = run_runtime(context, "hydrate-context", check=False)
+    assert blocked.returncode == 1
+    assert "Explicit TEP workspace anchor required" in blocked.stdout
 
 
 def test_runtime_gate_points_full_cli_commands_to_context_cli(tmp_path: Path) -> None:
@@ -356,6 +383,8 @@ def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:
 
 def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
+    workdir = tmp_path / "pray-and-run"
+    workdir.mkdir()
 
     run_cli(
         context,
@@ -365,7 +394,7 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
         "--title",
         "QA TIM Workspace",
         "--root-ref",
-        "/tmp/pray-and-run",
+        str(workdir),
         "--note",
         "workspace boundary",
     )
@@ -380,7 +409,7 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
         "--title",
         "Pray And Run",
         "--root-ref",
-        "/tmp/pray-and-run",
+        str(workdir),
         "--note",
         "project boundary",
     )
@@ -487,8 +516,22 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
         "project restriction",
     )
     restriction_id = record_ids(context, "restriction")[0]
+    run_cli(
+        context,
+        "init-anchor",
+        "--directory",
+        str(workdir),
+        "--workspace",
+        workspace_id,
+        "--project",
+        project_id,
+        "--task",
+        task_id,
+        "--note",
+        "project scope test anchor",
+    )
 
-    hydrate = run_runtime(context, "hydrate-context")
+    hydrate = run_runtime(context, "hydrate-context", cwd=workdir)
     assert f"Current workspace: {workspace_id}" in hydrate.stdout
     assert f"Current project: {project_id}" in hydrate.stdout
     assert f"Current task: {task_id}" in hydrate.stdout
@@ -503,7 +546,7 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
     assert claim_id in attention
     assert restriction_id in attention
 
-    show = run_runtime(context, "show-hydration")
+    show = run_runtime(context, "show-hydration", cwd=workdir)
     assert f"current_project={project_id}" in show.stdout
     assert "active_restrictions=1" in show.stdout
 
@@ -536,6 +579,8 @@ def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:
 
 def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
+    global_workdir = tmp_path / "global"
+    global_workdir.mkdir()
 
     run_cli(
         context,
@@ -545,7 +590,7 @@ def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_
         "--title",
         "Global Workspace",
         "--root-ref",
-        str(tmp_path / "global"),
+        str(global_workdir),
         "--note",
         "global workspace",
     )
@@ -559,7 +604,7 @@ def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_
         "--title",
         "Global Project",
         "--root-ref",
-        str(tmp_path / "global"),
+        str(global_workdir),
         "--note",
         "global project",
     )
@@ -632,7 +677,28 @@ def test_show_hydration_warns_when_snapshot_focus_differs_from_local_anchor(tmp_
         "task",
     )
     run_cli(context, "switch-task", "--task", global_task_id, "--note", "restore global task before anchor check")
-    run_runtime(context, "hydrate-context", "--allow-unanchored")
+    (global_workdir / ".tep").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "context_root": str(context),
+                "workspace_ref": global_workspace_id,
+                "project_ref": global_project_id,
+                "task_ref": global_task_id,
+                "note": "global local anchor",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    global_hydrate = subprocess.run(
+        [sys.executable, str(RUNTIME_GATE), "--context", str(context), "hydrate-context"],
+        cwd=global_workdir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert global_hydrate.returncode == 0, global_hydrate.stdout + global_hydrate.stderr
     (workdir / ".tep").write_text(
         json.dumps(
             {
@@ -747,7 +813,7 @@ def test_hooks_require_anchor_in_unanchored_cwd_when_multiple_workspaces_are_act
 
     prompt_output = hook_json_with_env(HOOK_DIR / "user_prompt_hydration_notice.py", payload, env)
     assert prompt_output["systemMessage"] == "🛡️ Explicit TEP anchor required."
-    assert "multiple active workspaces" in prompt_output["hookSpecificOutput"]["additionalContext"]
+    assert "active workspaces" in prompt_output["hookSpecificOutput"]["additionalContext"]
     assert "anchor-workspace" in prompt_output["hookSpecificOutput"]["additionalContext"]
 
     session_output = hook_json_with_env(HOOK_DIR / "session_start_hydrate.py", {"cwd": str(unanchored)}, env)
@@ -788,7 +854,7 @@ def test_hooks_defer_unanchored_hydration_when_multiple_workspaces_are_active(tm
 
     session_output = hook_json_with_env(HOOK_DIR / "session_start_hydrate.py", {"cwd": str(unanchored)}, env)
     assert session_output["systemMessage"] == "🛡️ Explicit TEP anchor required."
-    assert "multiple active workspaces" in session_output["hookSpecificOutput"]["additionalContext"]
+    assert "active workspaces" in session_output["hookSpecificOutput"]["additionalContext"]
 
     prompt_output = hook_json_with_env(HOOK_DIR / "user_prompt_hydration_notice.py", payload, env)
     assert prompt_output["systemMessage"] == "🛡️ Explicit TEP anchor required."
@@ -1055,6 +1121,62 @@ def test_pre_and_post_tool_hooks_track_mutating_bash_commands(tmp_path: Path) ->
     stale = run_runtime(context, "show-hydration", check=False)
     assert stale.returncode == 1
     assert "hydration_status=stale" in stale.stdout
+
+
+def test_pre_tool_hook_blocks_mutation_targets_outside_current_workspace(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    workdir = tmp_path / "current-workspace"
+    workdir.mkdir()
+    outside = tmp_path / "other-workspace"
+    outside.mkdir()
+    outside_file = outside / "plugin.py"
+    outside_file.write_text("value = 'old'\n", encoding="utf-8")
+
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "current-workspace",
+            "--title",
+            "Current Workspace",
+            "--root-ref",
+            str(workdir),
+            "--note",
+            "current workspace boundary",
+        ),
+        "workspace",
+    )
+    run_cli(
+        context,
+        "init-anchor",
+        "--directory",
+        str(workdir),
+        "--workspace",
+        workspace_id,
+        "--note",
+        "path scope guard anchor",
+    )
+    anchored_hydrate = subprocess.run(
+        [sys.executable, str(RUNTIME_GATE), "--context", str(context), "hydrate-context"],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert anchored_hydrate.returncode == 0, anchored_hydrate.stdout + anchored_hydrate.stderr
+
+    denial = hook_json(
+        HOOK_DIR / "pre_tool_use_guard.py",
+        {
+            "cwd": str(workdir),
+            "tool_input": {"command": f"sed -i '' 's/old/new/' {outside_file}"},
+        },
+    )
+    assert denial["hookSpecificOutput"]["permissionDecision"] == "deny"
+    reason = denial["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "Mutation target outside current TEP workspace roots" in reason
+    assert str(outside_file) in reason
 
 
 def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_path: Path) -> None:

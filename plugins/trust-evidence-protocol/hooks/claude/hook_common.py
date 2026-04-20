@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -129,6 +130,7 @@ STDOUT_REDIRECT_TARGET_PATTERN = re.compile(r"(?:^|[\s;|&])(?:1)?>>?\s*(?![&])(?
 COMBINED_REDIRECT_TARGET_PATTERN = re.compile(r"(?:^|[\s;|&])&>>?\s*(?P<target>\"[^\"]+\"|'[^']+'|[^\s;|&]+)")
 TEE_TARGET_PATTERN = re.compile(r"\btee(?:\s+-a)?\s+(?P<target>\"[^\"]+\"|'[^']+'|[^\s;|&]+)", re.IGNORECASE)
 HEREDOC_PATTERN = re.compile(r"<<-?\s*(?P<delimiter>\"[^\"]+\"|'[^']+'|\\?[A-Za-z_][A-Za-z0-9_]*)")
+MUTATING_FILE_COMMANDS = {"rm", "rmdir", "mkdir", "touch", "chmod", "chown", "chgrp", "cp", "mv", "install", "ln"}
 
 
 def load_payload() -> dict:
@@ -192,16 +194,16 @@ def hooks_enabled(context_root: Path | None) -> bool:
 
 def has_context_anchor(context_root: Path, cwd: str | Path | None) -> bool:
     settings = load_effective_settings(context_root, start=cwd)
-    return bool(str(settings.get("anchor_path") or "").strip())
+    return bool(
+        str(settings.get("anchor_path") or "").strip()
+        and str(settings.get("current_workspace_ref") or "").strip()
+    )
 
 
 def should_preserve_anchored_hydration(context_root: Path, cwd: str | Path | None) -> bool:
     if has_context_anchor(context_root, cwd):
         return False
-    if len(active_workspace_records(context_root)) > 1:
-        return False
-    state = load_hydration_state(context_root)
-    return bool(str(state.get("anchor_path") or "").strip())
+    return False
 
 
 def active_workspace_records(context_root: Path) -> list[dict]:
@@ -218,9 +220,7 @@ def active_workspace_records(context_root: Path) -> list[dict]:
 def should_defer_unanchored_hydration(context_root: Path, cwd: str | Path | None) -> bool:
     if has_context_anchor(context_root, cwd):
         return False
-    if should_preserve_anchored_hydration(context_root, cwd):
-        return False
-    return len(active_workspace_records(context_root)) > 1
+    return len(active_workspace_records(context_root)) > 0
 
 
 def anchored_hydration_preserved_message(context_root: Path) -> str:
@@ -244,8 +244,8 @@ def anchored_hydration_preserved_message(context_root: Path) -> str:
 def unanchored_hydration_deferred_message(context_root: Path) -> str:
     workspaces = active_workspace_records(context_root)
     lines = [
-        "TEP did not hydrate automatically because the hook cwd has no `.tep` anchor and the context has multiple active workspaces.",
-        "Run `hydrate-context` from a workdir with the intended `.tep` anchor, or create/validate a local `.tep` anchor before relying on workspace/project facts.",
+        "TEP did not hydrate automatically because the hook cwd has no `.tep` workspace anchor and the context has active workspaces.",
+        "Run `hydrate-context` from a workdir with a `.tep` anchor that declares `workspace_ref`, or create/validate the local anchor before relying on workspace/project facts.",
     ]
     if workspaces:
         lines.append("Active workspaces:")
@@ -269,8 +269,8 @@ def permission_applies(permission: dict, project_ref: str | None, task_ref: str 
     return False
 
 
-def active_permission_context(context_root: Path, action_kind: str, *, limit: int = 5) -> str:
-    settings = load_effective_settings(context_root)
+def active_permission_context(context_root: Path, action_kind: str, *, cwd: str | Path | None = None, limit: int = 5) -> str:
+    settings = load_effective_settings(context_root, start=cwd)
     records, errors = load_records(context_root)
     project_ref = str(settings.get("current_project_ref") or "").strip() or None
     task_ref = str(settings.get("current_task_ref") or "").strip() or None
@@ -328,6 +328,95 @@ def is_under_path(path: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _path_from_token(token: str, cwd: Path) -> Path | None:
+    cleaned = unquote_shell_token(token)
+    if not cleaned or cleaned.startswith("-") or any(marker in cleaned for marker in ("$", "`", "*", "?")):
+        return None
+    path = Path(cleaned)
+    if not path.is_absolute():
+        path = cwd / path
+    return path.expanduser()
+
+
+def command_target_paths(command: str, cwd: str | Path | None) -> list[Path]:
+    normalized = strip_heredoc_bodies(command).strip()
+    if not normalized:
+        return []
+    cwd_path = Path(cwd or Path.cwd()).expanduser().resolve()
+    targets: list[Path] = []
+    for pattern in (STDOUT_REDIRECT_TARGET_PATTERN, COMBINED_REDIRECT_TARGET_PATTERN, TEE_TARGET_PATTERN):
+        for match in pattern.finditer(normalized):
+            path = _path_from_token(match.group("target"), cwd_path)
+            if path is not None:
+                targets.append(path)
+
+    for segment in re.split(r"[;&|]+", normalized):
+        try:
+            tokens = shlex.split(segment)
+        except ValueError:
+            continue
+        if not tokens:
+            continue
+        while tokens and tokens[0] in {"sudo", "command"}:
+            tokens = tokens[1:]
+        if not tokens:
+            continue
+        command_name = Path(tokens[0]).name
+        if command_name in MUTATING_FILE_COMMANDS:
+            for token in tokens[1:]:
+                path = _path_from_token(token, cwd_path)
+                if path is not None:
+                    targets.append(path)
+        if command_name in {"sed", "perl"} and any(token == "-i" or token.startswith(("-i", "-pi")) for token in tokens[1:]):
+            for token in tokens[1:]:
+                path = _path_from_token(token, cwd_path)
+                if path is not None:
+                    targets.append(path)
+    return targets
+
+
+def scoped_write_roots(context_root: Path, cwd: str | Path | None) -> list[Path]:
+    settings = load_effective_settings(context_root, start=cwd)
+    workspace_ref = str(settings.get("current_workspace_ref") or "").strip()
+    project_ref = str(settings.get("current_project_ref") or "").strip()
+    anchor_path = str(settings.get("anchor_path") or "").strip()
+    records, errors = load_records(context_root)
+    if errors:
+        records = {}
+    roots: list[Path] = []
+    workspace = records.get(workspace_ref, {}) if workspace_ref else {}
+    if isinstance(workspace, dict):
+        roots.extend(Path(str(path)).expanduser() for path in workspace.get("root_refs", []) if str(path).strip())
+    project = records.get(project_ref, {}) if project_ref else {}
+    if isinstance(project, dict):
+        roots.extend(Path(str(path)).expanduser() for path in project.get("root_refs", []) if str(path).strip())
+    if anchor_path:
+        roots.append(Path(anchor_path).expanduser().resolve().parent)
+    return sorted({path.resolve() for path in roots if str(path).strip()}, key=str)
+
+
+def command_scope_violation(context_root: Path, command: str, *, cwd: str | Path | None) -> str | None:
+    settings = load_effective_settings(context_root, start=cwd)
+    if active_workspace_records(context_root) and not str(settings.get("current_workspace_ref") or "").strip():
+        return "Explicit TEP workspace anchor required before mutating commands."
+    targets = command_target_paths(command, cwd)
+    if not targets:
+        return None
+    allowed_roots = scoped_write_roots(context_root, cwd)
+    if not allowed_roots:
+        return None
+    artifacts_root = context_root / "artifacts"
+    for target in targets:
+        resolved = target.resolve()
+        if is_under_path(resolved, artifacts_root):
+            continue
+        if allowed_roots and any(is_under_path(resolved, root) for root in allowed_roots):
+            continue
+        allowed = ", ".join(str(root) for root in allowed_roots) or "<none>"
+        return f"Mutation target outside current TEP workspace roots: {resolved}. Allowed roots: {allowed}"
+    return None
 
 
 def is_artifact_output_target(target: str, context_root: Path | None) -> bool:

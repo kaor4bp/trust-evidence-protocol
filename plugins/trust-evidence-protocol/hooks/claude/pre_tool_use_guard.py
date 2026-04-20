@@ -9,6 +9,7 @@ from hook_common import (
     hook_mode,
     hooks_enabled,
     append_raw_claim_read_event,
+    command_scope_violation,
     infer_action_kind,
     load_payload,
     locate_context,
@@ -51,6 +52,11 @@ def main() -> int:
         append_raw_claim_read_event(context_root, command, cwd=cwd)
         return 0
 
+    scope_violation = command_scope_violation(context_root, command, cwd=cwd)
+    if scope_violation:
+        emit_denial(scope_violation)
+        return 0
+
     result = run_runtime_gate(
         "--context",
         str(context_root),
@@ -67,7 +73,7 @@ def main() -> int:
     message = (result.stdout or result.stderr or "").strip()
     if not message:
         message = f"Bash mutation blocked: action kind {action_kind!r} failed preflight."
-    permission_context = active_permission_context(context_root, action_kind)
+    permission_context = active_permission_context(context_root, action_kind, cwd=cwd)
     if mode == "warn":
         print(
             json.dumps(

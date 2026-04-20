@@ -830,5 +830,5 @@ def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
     )
     unanchored_result = {response["id"]: response for response in unanchored_responses}[2]["result"]
     assert unanchored_result["isError"] is True
-    assert "MCP cwd is required" in unanchored_result["content"][0]["text"]
+    assert "MCP workspace anchor is required" in unanchored_result["content"][0]["text"]
     assert global_task_id not in unanchored_result["content"][0]["text"]

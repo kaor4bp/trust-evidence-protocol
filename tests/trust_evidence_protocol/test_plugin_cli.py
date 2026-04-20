@@ -2752,6 +2752,80 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     assert telemetry["by_access_kind"]["backend_code_feedback"] >= 1
 
 
+def test_cocoindex_status_distinguishes_storage_from_cli_search_readiness(tmp_path: Path, monkeypatch) -> None:
+    context = bootstrap_context(tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "coco-readiness-workspace",
+            "--title",
+            "Coco readiness workspace",
+            "--root-ref",
+            str(repo),
+            "--note",
+            "coco readiness workspace",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    project_id = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "coco-readiness-project",
+            "--title",
+            "Coco readiness project",
+            "--root-ref",
+            str(repo),
+            "--note",
+            "coco readiness project",
+        ),
+        "project",
+    )
+    run_cli(context, "set-current-project", "--project", project_id)
+    storage_dir = context / "backends" / "cocoindex" / "projects" / project_id / ".cocoindex_code"
+    storage_dir.mkdir(parents=True)
+    (storage_dir / "settings.yml").write_text("include_patterns: ['**/*.py']\nexclude_patterns: []\n", encoding="utf-8")
+    (storage_dir / "target_sqlite.db").write_text("fake db marker\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    ccc = fake_bin / "ccc"
+    ccc.write_text("#!/usr/bin/env bash\necho should-not-run >&2\nexit 99\n", encoding="utf-8")
+    ccc.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}")
+    run_cli(
+        context,
+        "configure-runtime",
+        "--backend",
+        "code_intelligence.cocoindex.enabled=true",
+        "--backend",
+        "code_intelligence.cocoindex.mode=cli",
+    )
+
+    status = json.loads(
+        run_cli(context, "backend-check", "--backend", "code_intelligence.cocoindex", "--root", str(repo), "--format", "json").stdout
+    )
+    coco = status["matches"][0]
+    assert coco["storage"]["index_exists"] is True
+    assert coco["storage"]["storage_marker_exists"] is True
+    assert coco["storage"]["repo_marker_exists"] is False
+    assert coco["storage"]["search_ready"] is False
+    assert any("repo-local .cocoindex_code/settings.yml marker" in warning for warning in coco["warnings"])
+
+    search = json.loads(
+        run_cli(context, "code-search", "--root", str(repo), "--query", "semantic lookup", "--format", "json").stdout
+    )
+    assert "returncode" not in search["backend_results"]
+    assert search["backend_results"]["results"] == []
+    assert any("TEP will not create repo-local CocoIndex markers" in warning for warning in search["backend_results"]["warnings"])
+
+
 def test_code_index_supports_ast_search_refresh_annotations_and_links(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     repo = tmp_path / "repo"

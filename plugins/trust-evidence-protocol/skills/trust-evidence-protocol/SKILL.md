@@ -16,7 +16,7 @@ Treat the resolved TEP context root as durable agent memory.
 The preferred live root is global `~/.tep_context`; legacy repo-local `.codex_context` remains valid as a migration source, fallback, or test fixture.
 If a workdir contains a `.tep` file, treat it as a local anchor that selects the resolved context root plus current `WSP-*` workspace, optional `PRJ-*` project, and optional `TASK-*` task for that checkout.
 `.tep` is local configuration, not canonical memory and not proof.
-In a multi-workspace context, do not silently inherit global current focus from an unanchored workdir; create or validate a local `.tep` anchor first.
+Do not silently inherit global current focus from an unanchored workdir; when any active workspace exists, use a local `.tep` anchor with `workspace_ref` or treat TEP runtime/MCP/hook context as unavailable.
 If no TEP context root is available, follow the same reasoning rules manually and state that mechanical validation/persistence was unavailable.
 
 ## Core Rule
@@ -57,7 +57,7 @@ Persistence write boundary:
 - Do not create or edit canonical records with shell redirection, `tee`, ad hoc scripts, or manual JSON edits.
 - Workdir-local `.tep` anchors may select `context_root`, `workspace_ref`, `project_ref`, `task_ref`, hook verbosity, context budget, and stricter local `allowed_freedom`; they must not store records, facts, permissions, restrictions, guidelines, or proposals.
 - Local `.tep.settings.allowed_freedom` may only keep or lower effective freedom. It is not a way to raise permission above canonical context policy.
-- If hooks report `Anchored context preserved`, continue using the preserved workspace/project/task only when the context has a single active workspace; otherwise require an explicit `.tep` anchor for the intended workdir.
+- If older hooks report `Anchored context preserved`, treat it as stale behavior; current TEP requires an explicit `.tep` anchor for workspace-scoped work.
 - If hooks report `Explicit TEP anchor required`, do not infer workspace/project from global fallback; use or create the intended workdir `.tep` anchor, then hydrate again.
 - Before analyzing or persisting records for an unknown repository, run `workspace-admission check --repo ...`; if it requires a decision, ask whether this is a new workspace, a new project in the current workspace, or read-only inspection without persistence.
 - When the user changes topic, repository, or task type, run `working-context check-drift --task ...`; switch, fork, or create `WCTX-*` before persisting task-local conclusions under the wrong focus.
@@ -101,6 +101,7 @@ Persistence write boundary:
 - CocoIndex backend storage is scoped by TEP settings under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code` by default; workspace storage is an explicit broader scope.
 - Backend status and backend output are navigation/diagnostic data only; cite canonical `SRC-*` and `CLM-*` records before using a backend result as proof.
 - Use `backend-status` / `backend-check` before relying on an optional backend, pass repo root/scope when checking code intelligence, and degrade cleanly when dependencies are missing.
+- For CocoIndex, distinguish `index_exists` from `search_ready`; TEP must not create repo-local `.cocoindex_code` markers just to satisfy CLI discovery.
 - Prefer MCP `backend_status` / `backend_check` when available so selected backend, WSP/PRJ/TASK focus, CocoIndex storage path, and per-scope index state are visible without reading settings or raw backend files.
 - Use `validate-facts` for backend-produced validation candidates; candidates can guide review but cannot support claims or appear as proof-chain facts.
 - Use `export-rdf` only as a backend projection for validation/debugging; the export is not canonical memory and not proof.

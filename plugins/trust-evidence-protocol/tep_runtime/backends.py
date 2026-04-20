@@ -107,6 +107,12 @@ def _cocoindex_diagnostics(
         storage_root=storage_root,
     )
     repo = repo_root.expanduser().resolve() if repo_root else None
+    repo_marker = repo / ".cocoindex_code" / "settings.yml" if repo else None
+    storage_marker = storage_dir / "settings.yml" if storage_dir else None
+    storage_index = storage_dir / "target_sqlite.db" if storage_dir else None
+    storage_marker_exists = bool(storage_marker and storage_marker.is_file())
+    storage_index_exists = bool(storage_index and storage_index.exists())
+    repo_marker_exists = bool(repo_marker and repo_marker.is_file())
     return {
         "default_scope": default_scope,
         "effective_scope": effective_scope,
@@ -118,7 +124,10 @@ def _cocoindex_diagnostics(
             "project_ref": project_ref,
             "scoped_db_dir": str(storage_dir) if storage_dir else "",
             "db_path_mapping": f"{repo}={storage_dir}" if repo and storage_dir else "",
-            "index_exists": bool(storage_dir and storage_dir.exists()),
+            "index_exists": storage_index_exists,
+            "storage_marker_exists": storage_marker_exists,
+            "repo_marker_exists": repo_marker_exists,
+            "search_ready": storage_index_exists and storage_marker_exists and repo_marker_exists,
         },
     }
 
@@ -246,7 +255,15 @@ def backend_status_payload(root: Path, *, repo_root: Path | None = None, scope: 
                 "version": command_path,
                 "mode": coco_mode,
                 "freshness": "present" if coco_diagnostics["storage"]["index_exists"] else "missing",
-                "warnings": [] if command_available else ["CocoIndex command was not found on PATH"],
+                "warnings": (
+                    ([] if command_available else ["CocoIndex command was not found on PATH"])
+                    + (
+                        ["CocoIndex storage exists but `ccc search` requires repo-local .cocoindex_code/settings.yml marker."]
+                        if coco_diagnostics["storage"]["index_exists"]
+                        and not coco_diagnostics["storage"]["repo_marker_exists"]
+                        else []
+                    )
+                ),
                 "setup_hint": "" if command_available else "Install/configure CocoIndex before selecting code_intelligence.cocoindex.",
                 "backend_output_is_proof": BACKEND_IS_PROOF,
                 **coco_diagnostics,
@@ -372,7 +389,9 @@ def backend_status_text_lines(payload: dict, *, selected: list[dict] | None = No
             if storage:
                 lines.append(
                     f"  scope: effective=`{item.get('effective_scope')}` default=`{item.get('default_scope')}` "
-                    f"index_exists=`{str(storage.get('index_exists')).lower()}`"
+                    f"index_exists=`{str(storage.get('index_exists')).lower()}` "
+                    f"repo_marker=`{str(storage.get('repo_marker_exists')).lower()}` "
+                    f"search_ready=`{str(storage.get('search_ready')).lower()}`"
                 )
                 if storage.get("scoped_db_dir"):
                     lines.append(f"  storage: {storage.get('scoped_db_dir')}")

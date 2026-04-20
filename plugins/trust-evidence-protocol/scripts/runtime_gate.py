@@ -83,10 +83,10 @@ def active_workspace_summaries_for_guard(records: dict[str, dict]) -> list[dict]
 
 def print_unanchored_hydration_block(workspaces: list[dict]) -> None:
     print(
-        "Explicit TEP anchor required: refusing to hydrate from an unanchored cwd "
-        "while multiple active workspaces exist."
+        "Explicit TEP workspace anchor required: refusing to hydrate from an unanchored cwd "
+        "while active workspaces exist."
     )
-    print("Run hydrate-context from the intended workdir with a .tep anchor, or pass --allow-unanchored explicitly.")
+    print("Run hydrate-context from the intended workdir with a .tep anchor that declares workspace_ref.")
     if workspaces:
         print("Active workspaces:")
         for workspace in workspaces[:8]:
@@ -255,7 +255,10 @@ def cmd_hydrate_context(root: Path, *, allow_unanchored: bool = False) -> int:
     records, errors = collect_validation_errors(root)
     settings = load_effective_settings(root)
     active_workspaces = active_workspace_summaries_for_guard(records)
-    if not allow_unanchored and not str(settings.get("anchor_path") or "").strip() and len(active_workspaces) > 1:
+    if active_workspaces and (
+        not str(settings.get("anchor_path") or "").strip()
+        or not str(settings.get("current_workspace_ref") or "").strip()
+    ):
         print_unanchored_hydration_block(active_workspaces)
         return 1
 
@@ -476,7 +479,7 @@ def parse_args() -> argparse.Namespace:
     hydrate.add_argument(
         "--allow-unanchored",
         action="store_true",
-        help="Allow hydration from a cwd without .tep even when multiple active workspaces exist.",
+        help="Deprecated compatibility flag. Active workspaces still require a .tep workspace anchor.",
     )
     subparsers.add_parser("show-hydration", help="Show hydration status and currentness.")
 

@@ -149,6 +149,9 @@ def cocoindex_search_payload(
             "project_ref": project_ref or "",
             "scoped_db_dir": str(storage_dir) if storage_dir else "",
             "db_path_mapping": f"{repo_root}={storage_dir}" if storage_dir else "",
+            "index_exists": bool(storage_dir and (storage_dir / "target_sqlite.db").exists()),
+            "storage_marker_exists": bool(storage_dir and (storage_dir / "settings.yml").is_file()),
+            "repo_marker_exists": bool((repo_root / ".cocoindex_code" / "settings.yml").is_file()),
         },
         "results": [],
     }
@@ -170,6 +173,12 @@ def cocoindex_search_payload(
         payload["warnings"].append("project-scoped CocoIndex search has no current project ref")
     if effective_scope == "workspace" and not workspace_ref:
         payload["warnings"].append("workspace-scoped CocoIndex search has no current workspace ref")
+    if payload["storage"]["index_exists"] and not payload["storage"]["repo_marker_exists"]:
+        payload["warnings"].append(
+            "CocoIndex index exists in TEP storage, but `ccc search` requires a repo-local "
+            ".cocoindex_code/settings.yml marker. TEP will not create repo-local CocoIndex markers."
+        )
+        return payload
 
     args = [command, "search", query, "--limit", str(effective_limit)]
     if language:

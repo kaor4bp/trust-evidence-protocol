@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.76"
+SERVER_VERSION = "0.1.77"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -681,6 +681,19 @@ def has_nearest_anchor(cwd: Path) -> bool:
     return False
 
 
+def nearest_anchor_has_workspace(cwd: Path) -> bool:
+    current = cwd.resolve()
+    for candidate in (current, *current.parents):
+        anchor = candidate / ".tep"
+        if anchor.is_file():
+            try:
+                data = json.loads(anchor.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return False
+            return bool(str(data.get("workspace_ref") or "").strip().startswith("WSP-"))
+    return False
+
+
 def active_workspace_count(context_root: Path) -> int:
     workspace_root = context_root / "records" / "workspace"
     if not workspace_root.is_dir():
@@ -704,14 +717,14 @@ def mcp_context_root(args: JsonObject) -> Path | None:
 
 
 def unsafe_unanchored_fallback(args: JsonObject, cwd: Path) -> str | None:
-    if args.get("cwd") or has_nearest_anchor(cwd):
-        return None
     context_root = mcp_context_root(args)
-    if context_root is None or active_workspace_count(context_root) <= 1:
+    if context_root is None or active_workspace_count(context_root) == 0:
+        return None
+    if nearest_anchor_has_workspace(cwd):
         return None
     return (
-        "MCP cwd is required: refusing to use the MCP server cwd as TEP focus in a multi-workspace context. "
-        "Pass the active agent workdir via the tool `cwd` argument so `.tep` can select workspace/project/task."
+        "MCP workspace anchor is required: refusing to use global TEP focus while active workspaces exist. "
+        "Pass `cwd` pointing to a workdir with a `.tep` file that declares `workspace_ref`, or create/validate the local anchor first."
     )
 
 

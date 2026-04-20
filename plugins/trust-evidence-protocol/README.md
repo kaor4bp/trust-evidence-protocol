@@ -70,6 +70,7 @@ Local `.tep.settings.allowed_freedom` can only keep or lower the effective freed
 It cannot raise a workspace from `proof-only` to `evidence-authorized` or `implementation-choice`; escalation still goes through canonical strictness requests and approvals.
 In a multi-workspace context, an unanchored workdir must not silently inherit the global `current_task_ref`.
 Create or validate a local `.tep` anchor before relying on workspace, project, or task facts.
+When any active workspace exists, TEP runtime, hooks, and MCP require a `.tep` anchor with `workspace_ref`; global current focus is not a valid fallback.
 
 Context-root resolution order is:
 
@@ -242,6 +243,7 @@ Backend output may guide lookup, indexing, validation, and candidate generation,
 External code-intelligence backends such as CocoIndex should be accessed through TEP `code-search` / MCP `code_search`, not as parallel direct MCP entrypoints in normal operation.
 TEP scopes CocoIndex storage by default under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code`; workspace scope uses `<context>/backends/cocoindex/workspaces/<WSP-ID>/.cocoindex_code`.
 The default search scope is project; workspace scope is an explicit outward glance, not the normal search boundary.
+Current CocoIndex CLI `ccc search` still requires repo-local `.cocoindex_code/settings.yml` discovery marker; TEP reports `search_ready=false` instead of creating markers in the checkout.
 TEP normalizes backend output into navigation-only projections, records telemetry, and keeps `WSP-*` / `PRJ-*` / `TASK-*` scope visible.
 The first fact-validation backend exposes fake RDF/SHACL-shaped checks so agents can debug the flow without installing pySHACL.
 Validation candidates are not proof and do not make a claim supported.
