@@ -794,6 +794,8 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
 
     commands_help = run_cli(context, "help", "commands").stdout
     assert "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]" in commands_help
+    assert "record-detail --record ... | linked-records --record ..." in commands_help
+    assert "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]" in commands_help
     assert "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]" in commands_help
     assert "validate-facts --backend rdf_shacl [--format json]" in commands_help
     assert "export-rdf --format turtle|jsonld [--output path]" in commands_help

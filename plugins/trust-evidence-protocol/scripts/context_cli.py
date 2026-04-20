@@ -2253,7 +2253,8 @@ def cmd_help(topic: str) -> int:
         "commands": [
             "review-context | reindex-context | scan-conflicts",
             "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]",
-            "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ...",
+            "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
+            "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
             "start-task --type investigation --scope ... --title ... --note ...",
