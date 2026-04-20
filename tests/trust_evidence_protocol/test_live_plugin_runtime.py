@@ -83,3 +83,28 @@ def test_live_agent_checks_telemetry_anomalies_and_workspace_guards():
     assert "anomalies" in markers, payload
     assert "workspace-admission" in markers, payload
     assert "check-drift" in markers, payload
+
+
+def test_live_agent_checks_compact_lookup_help_route():
+    payload = run_plugin_runtime_case(
+        """
+        Verify the installed TEP Runtime plugin exposes the compact lookup route in help:
+        1. Run `help commands` through the installed plugin runtime CLI.
+        2. Report observed literal markers from command output: `linked-records`,
+           `guidelines-for`, `code-search`, and `telemetry-report`.
+        Do not infer these markers from memory; base the verdict on command output.
+        """
+    )
+
+    checks = payload["plugin_checks"]
+    commands = " ".join(payload["commands_run"])
+    markers = " ".join(payload["observed_markers"])
+    assert payload["verdict"] == "plugin-active", payload
+    assert checks["plugin_root_exists"] is True, payload
+    assert checks["context_cli_works"] is True, payload
+    assert checks["hydration_or_review_works"] is True, payload
+    assert "help commands" in commands, payload
+    assert "linked-records" in markers, payload
+    assert "guidelines-for" in markers, payload
+    assert "code-search" in markers, payload
+    assert "telemetry-report" in markers, payload
