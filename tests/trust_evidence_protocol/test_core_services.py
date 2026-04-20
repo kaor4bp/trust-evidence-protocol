@@ -2256,9 +2256,14 @@ def test_access_report_surfaces_navigation_anomalies_without_proof() -> None:
     assert payload["telemetry_is_proof"] is False
     anomaly_kinds = {item["kind"] for item in payload["anomalies"]}
     assert {"raw-record-read", "tool-concentration", "low-mcp-ratio", "hot-record"}.issubset(anomaly_kinds)
+    raw_anomaly = next(item for item in payload["anomalies"] if item["kind"] == "raw-record-read")
+    assert raw_anomaly["recommended_tools"] == ["record_detail", "claim_graph", "linked_records"]
+    assert "Replace raw file reads" in raw_anomaly["next_action"]
     text = "\n".join(compat_access_report_text_lines(payload))
     assert "## Anomalies" in text
     assert "Raw record reads bypass compact MCP/CLI projections" in text
+    assert "suggested tools: `record_detail`, `claim_graph`, `linked_records`" in text
+    assert "next action: Replace raw file reads" in text
 
 
 def test_report_core_renders_reports_and_relative_paths(tmp_path: Path) -> None:

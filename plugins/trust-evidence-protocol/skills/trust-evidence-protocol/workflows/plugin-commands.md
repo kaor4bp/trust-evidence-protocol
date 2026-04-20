@@ -127,7 +127,7 @@ Use `cleanup-restore --dry-run` before restore; `--apply` restores missing files
 Use `topic-search` only as a lexical prefilter, then inspect canonical records before citing facts.
 Use `topic-conflict-candidates` only to find records worth structured comparison; it does not replace `scan-conflicts`.
 Use `tap-record` to record non-proof activity when a record was retrieved, opened, cited, decisive, updated, challenged, or contradicted.
-Use `telemetry-report` to inspect non-proof lookup telemetry, including whether agents are using MCP/CLI compact views or reading raw claim files; inspect `anomalies` before manually interpreting counters.
+Use `telemetry-report` to inspect non-proof lookup telemetry, including whether agents are using MCP/CLI compact views or reading raw claim files; inspect anomaly `recommended_tools` and `next_action` before manually interpreting counters or expanding raw records.
 Use `backend-status` and `backend-check` to inspect optional helper availability before relying on external fact-validation, code-intelligence, or derivation backends.
 Backend status is diagnostic/navigation data only; it is not proof and does not replace canonical `SRC-*` or `CLM-*` support.
 Use `validate-facts` to get backend-produced validation candidates over canonical records.

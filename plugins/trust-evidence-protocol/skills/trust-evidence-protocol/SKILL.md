@@ -73,7 +73,7 @@ Persistence write boundary:
 - `<context>/attention_index/` is generated attention/curiosity map data, not proof.
 - Use attention maps and curiosity probes to choose what to inspect next, especially cold-but-relevant clusters and unestablished links.
 - `<context>/activity/access.jsonl` is append-only lookup telemetry from MCP/CLI/hooks. It records navigation access, including raw claim-file reads, and is not proof.
-- Use MCP `telemetry_report` or CLI `telemetry-report` to inspect access statistics before deciding whether agents are bypassing compact lookup tools or over-reading raw records.
+- Use MCP `telemetry_report` or CLI `telemetry-report` to inspect access statistics before deciding whether agents are bypassing compact lookup tools or over-reading raw records; follow anomaly `recommended_tools` and `next_action` before manually expanding raw records.
 - Use `attention-diagram` / MCP `attention_diagram` when a Mermaid cluster/link map is a cheaper way to orient than reading multiple textual reports.
 - Prefer `attention-diagram detail=compact` first; request `detail=full` only when record-summary labels are needed.
 - Use `attention-diagram-compare` / MCP `attention_diagram_compare` when deciding mechanically whether full diagram labels are worth the payload.

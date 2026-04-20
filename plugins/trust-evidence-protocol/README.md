@@ -142,8 +142,9 @@ debugging, migration, or missing tool coverage.
 Use MCP `telemetry_report` or CLI `telemetry-report` to monitor whether agents
 are using compact lookup or falling back to raw claim-file reads. The report
 also emits mechanical anomaly hints for raw reads, tool concentration, low MCP
-usage, and hot records. Attention maps combine explicit taps and lookup telemetry
-as navigation/heatmap signals.
+usage, and hot records; each anomaly includes suggested compact tools and a
+next action so agents do not spend tokens inventing the lookup route. Attention
+maps combine explicit taps and lookup telemetry as navigation/heatmap signals.
 
 `.codex_context/settings.json` is the policy layer for:
 

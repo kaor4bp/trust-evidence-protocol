@@ -99,6 +99,8 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
                 "severity": "warning",
                 "count": len(raw_events),
                 "message": "Raw record reads bypass compact MCP/CLI projections; prefer record_detail, claim_graph, or linked_records.",
+                "recommended_tools": ["record_detail", "claim_graph", "linked_records"],
+                "next_action": "Replace raw file reads with compact MCP/CLI record projections before expanding full records.",
             }
         )
     if event_list and top_tool_count / max(1, len(event_list)) >= 0.5 and len(event_list) >= 10:
@@ -109,6 +111,8 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
                 "tool": top_tool,
                 "count": top_tool_count,
                 "message": "One lookup tool dominates recent telemetry; consider a more targeted route or generated view.",
+                "recommended_tools": ["next_step", "brief_context", "claim_graph"],
+                "next_action": "Ask for a route or compact brief before repeating broad lookup commands.",
             }
         )
     if event_list and by_channel.get("cli", 0) > by_channel.get("mcp", 0) * 2 and len(event_list) >= 10:
@@ -119,6 +123,8 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
                 "cli_count": by_channel.get("cli", 0),
                 "mcp_count": by_channel.get("mcp", 0),
                 "message": "CLI lookup dominates MCP lookup; prefer MCP for read-only context retrieval when available.",
+                "recommended_tools": ["telemetry_report", "record_detail", "code_search"],
+                "next_action": "Use MCP read-only tools for compact context retrieval when available; keep CLI for mutations and diagnostics.",
             }
         )
     if top_record_count >= 5:
@@ -129,6 +135,8 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
                 "record_ref": top_record,
                 "count": top_record_count,
                 "message": "One record is repeatedly accessed; consider linking it from a model, flow, WCTX, or guideline if it is a recurring anchor.",
+                "recommended_tools": ["linked_records", "record_detail", "working_contexts"],
+                "next_action": "Promote recurring anchors into a model, flow, WCTX, or guideline link instead of repeatedly rediscovering them.",
             }
         )
     return {
@@ -179,6 +187,13 @@ def access_report_text_lines(payload: dict) -> list[str]:
         prefix = f"- `{item.get('kind')}` severity=`{item.get('severity')}`"
         detail = str(item.get("message") or "").strip()
         lines.append(f"{prefix}: {detail}" if detail else prefix)
+        recommended_tools = item.get("recommended_tools") or []
+        if recommended_tools:
+            rendered_tools = ", ".join(f"`{tool}`" for tool in recommended_tools)
+            lines.append(f"  suggested tools: {rendered_tools}")
+        next_action = str(item.get("next_action") or "").strip()
+        if next_action:
+            lines.append(f"  next action: {next_action}")
     if not payload.get("anomalies"):
         lines.append("- none")
     return lines
