@@ -3,7 +3,7 @@
 
 The server intentionally delegates all policy and context logic to context_cli.py.
 It only exposes bounded read-only tools so MCP does not become a second mutation
-surface for .codex_context.
+surface for the TEP context root.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.72"
+SERVER_VERSION = "0.1.73"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -52,13 +52,13 @@ TOOLS: list[JsonObject] = [
     {
         "name": "brief_context",
         "description": (
-            "Read a task-oriented .codex_context brief: current workspace/project/task, relevant models, flows, "
+            "Read a task-oriented TEP context brief: current workspace/project/task, relevant models, flows, "
             "claims, permissions, restrictions, guidelines, proposals, plans, debt, and questions. "
             "Use before answering, planning, or editing."
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "task": {"type": "string", "description": "Concrete task or question to brief."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 8},
                 "detail": {
@@ -79,7 +79,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "intent": {
                     "type": "string",
                     "enum": ["auto", "answer", "plan", "edit", "test", "persist", "permission", "debug", "after-mutation"],
@@ -99,7 +99,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "query": {"type": "string", "description": "Search query with meaningful 3+ char tokens."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 12},
                 "record_types": {
@@ -121,7 +121,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read one canonical record with its source quotes and direct incoming/outgoing links.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "record": {"type": "string", "description": "Record id such as CLM-*, SRC-*, GLD-*, MODEL-*."},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -136,7 +136,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "query": {"type": "string", "description": "Claim search query with meaningful 3+ char tokens."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 8},
                 "depth": {"type": "integer", "minimum": 1, "maximum": 4, "default": 1},
@@ -154,7 +154,7 @@ TOOLS: list[JsonObject] = [
         "description": "Expand canonical record graph links around an anchor record.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "record": {"type": "string", "description": "Anchor record id."},
                 "direction": {"type": "string", "enum": ["incoming", "outgoing", "both"], "default": "both"},
                 "depth": {"type": "integer", "minimum": 1, "maximum": 4, "default": 1},
@@ -168,7 +168,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read non-proof lookup telemetry for MCP/CLI/hook access, including raw claim read counts.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -182,7 +182,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "task": {"type": "string", "description": "Concrete task the guidelines should apply to."},
                 "domain": {
                     "type": "string",
@@ -204,7 +204,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "root": {"type": "string", "description": "Repository root for freshness checks. Defaults to current directory."},
                 "query": {
                     "type": "string",
@@ -258,7 +258,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "root": {"type": "string", "description": "Repository root for stale annotation checks. Defaults to current directory."},
                 "categories": {"type": "array", "items": {"type": "string"}},
                 "severities": {"type": "array", "items": {"type": "string", "enum": ["low", "medium", "high", "critical"]}},
@@ -276,7 +276,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "root": {"type": "string", "description": "Repository root for backend search. Defaults to current directory."},
                 "query": {"type": "string", "description": "Semantic code query to review through the configured TEP code backend."},
                 "paths": {"type": "array", "items": {"type": "string"}},
@@ -297,7 +297,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read projected metadata for one CIX-* entry or path. CIX is navigation only, not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "root": {"type": "string", "description": "Repository root for freshness checks. Defaults to current directory."},
                 "entry": {"type": "string", "description": "CIX-* id."},
                 "path": {"type": "string", "description": "Indexed target path."},
@@ -313,7 +313,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -324,7 +324,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read-only cleanup archive catalog. Lists ARC-* archives or inspects one archive manifest.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "archive": {"type": "string", "description": "Optional ARC-* id or archive zip path under the context root."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -339,7 +339,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "file": {"type": "string", "description": "Path to an evidence-chain JSON file."},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -353,7 +353,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "query": {"type": "string", "description": "Search query with meaningful 3+ char tokens."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 12},
                 "record_types": {"type": "array", "items": {"type": "string"}},
@@ -367,7 +367,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read generated topic terms and similar records for one record id. Navigation only, not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "record": {"type": "string", "description": "Canonical record id to inspect in topic_index."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 8},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -382,7 +382,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -393,7 +393,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read generated attention-map clusters and cold zones. Attention data is navigation only, not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 12},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -405,7 +405,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read a generated Mermaid attention graph over clusters, top records, established bridges, and curiosity probes. Diagram data is navigation only, not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 8},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "detail": {"type": "string", "enum": ["compact", "full"], "default": "compact"},
@@ -418,7 +418,7 @@ TOOLS: list[JsonObject] = [
         "description": "Compare compact and full attention-diagram metrics so agents can decide whether summary labels are worth requesting. Comparison is not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 8},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -430,7 +430,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read generated bounded curiosity probes over attention clusters. Probes are questions, not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "budget": {"type": "integer", "minimum": 1, "maximum": 100, "default": 8},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -442,7 +442,7 @@ TOOLS: list[JsonObject] = [
         "description": "Inspect one generated curiosity probe with canonical record details and direct link status. Inspection is navigation only, not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "index": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -454,7 +454,7 @@ TOOLS: list[JsonObject] = [
         "description": "Draft a mechanical evidence-chain skeleton from one curiosity probe. Draft is not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "index": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -466,7 +466,7 @@ TOOLS: list[JsonObject] = [
         "description": "Generate an ordered mechanical inspection route for one curiosity probe. Route is navigation only, not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "index": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -478,7 +478,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read a compact mechanical bundle of top curiosity probes, inspection summaries, and chain-draft validation. Pack is not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "budget": {"type": "integer", "minimum": 1, "maximum": 20, "default": 3},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "detail": {"type": "string", "enum": ["compact", "full"], "default": "compact"},
@@ -491,7 +491,7 @@ TOOLS: list[JsonObject] = [
         "description": "Compare compact and full probe-pack metrics so agents can decide whether expanded context is worth requesting. Comparison is not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "budget": {"type": "integer", "minimum": 1, "maximum": 20, "default": 3},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -503,7 +503,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read WCTX-* operational working contexts. WCTX is handoff/focus context, not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "record": {"type": "string", "description": "Optional WCTX-* id."},
                 "all": {"type": "boolean", "default": False},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -518,7 +518,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "task": {"type": "string", "description": "Current user task or planned task summary."},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -533,7 +533,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "repo": {"type": "string", "description": "Repository/workdir path to classify against current WSP/PRJ focus."},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -545,7 +545,7 @@ TOOLS: list[JsonObject] = [
         "description": "Search generated CLM.logic predicate atoms and rules. Logic index is checking/navigation only, not proof.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "predicate": {"type": "string"},
                 "symbol": {"type": "string"},
                 "claim": {"type": "string", "description": "Optional CLM-* filter."},
@@ -559,7 +559,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read-only predicate consistency check over CLM.logic blocks. Does not mutate records.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -573,7 +573,7 @@ TOOLS: list[JsonObject] = [
         ),
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "symbol": {"type": "string", "description": "Optional typed symbol filter such as service:api."},
                 "predicate": {"type": "string", "description": "Optional predicate filter."},
                 "smells": {"type": "boolean", "default": False},
@@ -587,7 +587,7 @@ TOOLS: list[JsonObject] = [
         "description": "Read predicate-level conflict candidates. Candidates are not proof and do not change claim status.",
         "inputSchema": schema(
             {
-                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "context": {"type": "string", "description": "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, ~/.tep_context, or legacy ./.codex_context."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },

@@ -459,6 +459,11 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     by_id = {response["id"]: response for response in responses}
     assert by_id[1]["result"]["serverInfo"]["name"] == "trust-evidence-protocol"
     tool_names = {tool["name"] for tool in by_id[2]["result"]["tools"]}
+    tools_payload = json.dumps(by_id[2]["result"]["tools"])
+    assert "Path to TEP context root" in tools_payload
+    assert "nearest .tep context_root" in tools_payload
+    assert "Read a task-oriented TEP context brief" in tools_payload
+    assert "Path to .codex_context. Defaults to ./.codex_context." not in tools_payload
     assert {
         "search_records",
         "next_step",
