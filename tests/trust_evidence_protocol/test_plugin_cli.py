@@ -1577,6 +1577,12 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert html_path.exists()
     html_text = html_path.read_text(encoding="utf-8")
     assert "TEP Curiosity Map" in html_text
+    assert "vis-network@10.0.2" in html_text
+    assert "new vis.Network" in html_text
+    assert "navigationButtons: true" in html_text
+    assert "Focus cold zones" in html_text
+    assert "cluster-list" in html_text
+    assert "graph-data" in html_text
     assert "Generated navigation view only" in html_text
     assert facility_claim_id in html_text
     research_map = json.loads(

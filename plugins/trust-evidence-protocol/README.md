@@ -114,6 +114,7 @@ Generated navigation layer:
   - not a source of truth and not proof
 - `.codex_context/views/curiosity/*.html`
   - generated human-facing curiosity graph snapshots written by `curiosity-map --html`
+  - uses `vis-network` from a CDN for pan/zoom, physics layout, cluster grouping, search, focus buttons, and selection details
   - safe to show to a user for orientation
   - not a source of truth and not proof
 - `.codex_context/activity/taps.jsonl`
@@ -571,7 +572,7 @@ Commands:
 
 - `curiosity-map --mode research|theory|code --volume compact|normal|wide --html`
   - writes a standalone HTML visual graph to `.codex_context/views/curiosity/`
-  - includes clusters, heat/cold zones, established bridges, candidate probes, and prompt list
+  - includes interactive pan/zoom, search, focus controls, clusters, heat/cold zones, established bridges, candidate probes, and prompt list
   - useful when the agent should show the user why it wants to inspect a cold or weakly linked area
   - the HTML is generated navigation only and must not be cited as evidence
 

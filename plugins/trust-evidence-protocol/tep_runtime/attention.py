@@ -998,10 +998,10 @@ def curiosity_map_text_lines(payload: dict) -> list[str]:
 
 
 def curiosity_map_html(payload: dict) -> str:
-    """Render a standalone, dependency-free HTML curiosity graph.
+    """Render a standalone HTML curiosity graph backed by vis-network.
 
-    The HTML view is for human orientation only. It deliberately embeds the
-    same non-proof payload metadata and does not introduce new evidence.
+    The HTML view is for human orientation only. It embeds the same non-proof
+    payload metadata and uses a CDN graph library for interaction.
     """
 
     clusters = payload.get("clusters", []) if isinstance(payload.get("clusters"), list) else []
@@ -1009,88 +1009,123 @@ def curiosity_map_html(payload: dict) -> str:
     bridges = payload.get("bridges", []) if isinstance(payload.get("bridges"), list) else []
     probes = payload.get("probes", []) if isinstance(payload.get("probes"), list) else []
     cold_topic_ids = {str(zone.get("topic_id", "")) for zone in payload.get("cold_zones", []) if isinstance(zone, dict)}
-    width = 1100
-    height = 760
-    center_x = width / 2
-    center_y = height / 2
-    cluster_radius = 270
-    record_radius = 82
-    cluster_positions: dict[str, tuple[float, float]] = {}
-    record_positions: dict[str, tuple[float, float]] = {}
 
-    for index, cluster in enumerate(clusters):
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    record_to_clusters: dict[str, set[str]] = {}
+    for cluster in clusters:
         cluster_id = str(cluster.get("id", ""))
         if not cluster_id:
             continue
-        angle = (2 * math.pi * index / max(1, len(clusters))) - (math.pi / 2)
-        x = center_x + cluster_radius * math.cos(angle)
-        y = center_y + cluster_radius * math.sin(angle)
-        cluster_positions[cluster_id] = (x, y)
-        top_records = [str(ref) for ref in cluster.get("top_records", []) if str(ref) in records]
-        for record_index, record_ref in enumerate(top_records):
-            if record_ref in record_positions:
-                continue
-            offset_angle = angle + ((record_index - (len(top_records) - 1) / 2) * 0.45)
-            record_positions[record_ref] = (
-                x + record_radius * math.cos(offset_angle),
-                y + record_radius * math.sin(offset_angle),
-            )
-
-    missing_records = [ref for ref in records if ref not in record_positions]
-    for index, record_ref in enumerate(missing_records):
-        angle = (2 * math.pi * index / max(1, len(missing_records))) + (math.pi / 2)
-        record_positions[record_ref] = (
-            center_x + (cluster_radius + 125) * math.cos(angle),
-            center_y + (cluster_radius + 125) * math.sin(angle),
-        )
-
-    def cluster_node(cluster: dict) -> str:
-        cluster_id = str(cluster.get("id", ""))
-        x, y = cluster_positions.get(cluster_id, (center_x, center_y))
-        cold = cluster_id in cold_topic_ids
-        css_class = "cluster cold" if cold else "cluster"
         label = str(cluster.get("term", "") or cluster_id)
-        meta = f"records={cluster.get('record_count', 0)} heat={cluster.get('activity_score', 0)}"
-        return (
-            f'<div class="{css_class}" style="left:{x:.1f}px;top:{y:.1f}px">'
-            f"<strong>{escape(label)}</strong><small>{escape(meta)}</small></div>"
+        heat = float(cluster.get("activity_score", 0.0) or 0.0)
+        is_cold = cluster_id in cold_topic_ids
+        nodes.append(
+            {
+                "id": f"cluster:{cluster_id}",
+                "label": label,
+                "title": f"{cluster_id}\\nrecords={cluster.get('record_count', 0)} heat={heat}",
+                "group": "coldCluster" if is_cold else "cluster",
+                "value": max(20, 18 + int(cluster.get("record_count", 0) or 0) * 2 + min(heat, 10)),
+                "shape": "dot",
+                "kind": "cluster",
+                "record_ref": cluster_id,
+                "meta": {
+                    "id": cluster_id,
+                    "term": label,
+                    "record_count": cluster.get("record_count", 0),
+                    "activity_score": heat,
+                    "cold": is_cold,
+                    "top_records": cluster.get("top_records", []),
+                },
+            }
         )
-
-    def record_node(record_ref: str, record: dict) -> str:
-        x, y = record_positions.get(record_ref, (center_x, center_y))
-        summary = record_diagram_summary(record)
-        meta = f"{record.get('record_type', '')} heat={record.get('activity_score', 0)} taps={record.get('tap_count', 0)}"
-        return (
-            f'<div class="record" style="left:{x:.1f}px;top:{y:.1f}px">'
-            f"<strong>{escape(record_ref)}</strong><small>{escape(meta)}</small>"
-            f"<span>{escape(summary)}</span></div>"
-        )
-
-    line_items: list[str] = []
-    for cluster in clusters:
-        cluster_id = str(cluster.get("id", ""))
-        if cluster_id not in cluster_positions:
-            continue
-        x1, y1 = cluster_positions[cluster_id]
         for record_ref in cluster.get("top_records", []):
             record_ref = str(record_ref)
-            if record_ref not in record_positions:
+            if record_ref not in records:
                 continue
-            x2, y2 = record_positions[record_ref]
-            line_items.append(f'<line class="membership" x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" />')
+            record_to_clusters.setdefault(record_ref, set()).add(cluster_id)
+            edges.append(
+                {
+                    "id": f"membership:{cluster_id}:{record_ref}",
+                    "from": f"cluster:{cluster_id}",
+                    "to": f"record:{record_ref}",
+                    "label": "contains",
+                    "kind": "membership",
+                    "color": {"color": "#9aa7b4", "opacity": 0.45},
+                    "width": 1,
+                }
+            )
+
+    for record_ref, record in records.items():
+        summary = record_diagram_summary(record)
+        record_type = str(record.get("record_type", "") or "record")
+        heat = float(record.get("activity_score", 0.0) or 0.0)
+        cluster_terms = ", ".join(sorted(record_to_clusters.get(record_ref, set()))) or "unclustered"
+        label = f"{record_ref}\\n{record_type}"
+        nodes.append(
+            {
+                "id": f"record:{record_ref}",
+                "label": label,
+                "title": f"{record_ref}\\n{record_type}\\nheat={heat}\\n{summary}",
+                "group": "record",
+                "shape": "box",
+                "value": max(8, 8 + min(heat, 12)),
+                "kind": "record",
+                "record_ref": record_ref,
+                "meta": {
+                    "id": record_ref,
+                    "record_type": record_type,
+                    "status": record.get("status", ""),
+                    "summary": summary,
+                    "activity_score": heat,
+                    "tap_count": record.get("tap_count", 0),
+                    "access_count": record.get("access_count", 0),
+                    "clusters": sorted(record_to_clusters.get(record_ref, set())),
+                    "cluster_terms": cluster_terms,
+                },
+            }
+        )
+
     for bridge in bridges:
         left = str(bridge.get("from_topic", ""))
         right = str(bridge.get("to_topic", ""))
-        if left in cluster_positions and right in cluster_positions:
-            x1, y1 = cluster_positions[left]
-            x2, y2 = cluster_positions[right]
-            line_items.append(f'<line class="bridge" x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" />')
-    for probe in probes:
-        refs = [str(ref) for ref in probe.get("record_refs", []) if str(ref) in record_positions]
+        if left and right:
+            edges.append(
+                {
+                    "id": f"bridge:{left}:{right}",
+                    "from": f"cluster:{left}",
+                    "to": f"cluster:{right}",
+                    "label": "bridge",
+                    "kind": "bridge",
+                    "color": {"color": "#2b8a3e", "opacity": 0.86},
+                    "width": 4,
+                    "dashes": False,
+                }
+            )
+    for index, probe in enumerate(probes, start=1):
+        refs = [str(ref) for ref in probe.get("record_refs", []) if str(ref) in records]
         if len(refs) == 2:
-            x1, y1 = record_positions[refs[0]]
-            x2, y2 = record_positions[refs[1]]
-            line_items.append(f'<line class="probe" x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" />')
+            edges.append(
+                {
+                    "id": f"probe:{index}:{refs[0]}:{refs[1]}",
+                    "from": f"record:{refs[0]}",
+                    "to": f"record:{refs[1]}",
+                    "label": f"probe {index}",
+                    "kind": "probe",
+                    "color": {"color": "#b83280", "opacity": 0.9},
+                    "width": 3,
+                    "dashes": [8, 8],
+                    "title": str(probe.get("explanation") or probe.get("reason") or ""),
+                    "meta": {
+                        "probe_index": index,
+                        "score": probe.get("score", 0),
+                        "record_refs": refs,
+                        "cluster_refs": probe.get("cluster_refs", []),
+                        "reason": probe.get("explanation") or probe.get("reason", ""),
+                    },
+                }
+            )
 
     prompt_items = []
     for prompt in payload.get("curiosity_prompts", []):
@@ -1103,13 +1138,19 @@ def curiosity_map_html(payload: dict) -> str:
             "</li>"
         )
     prompt_html = "\n".join(prompt_items) or "<li>none</li>"
-    node_html = "\n".join(cluster_node(cluster) for cluster in clusters)
-    node_html += "\n" + "\n".join(record_node(record_ref, record) for record_ref, record in records.items())
     title = f"TEP Curiosity Map - {payload.get('mode', 'general')} / {payload.get('volume', 'normal')}"
     metadata = (
         f"scope={payload.get('scope', '')} workspace={payload.get('workspace_ref', '')} "
         f"project={payload.get('project_ref', '')} task={payload.get('task_ref', '')}"
     )
+    graph_payload = {
+        "nodes": nodes,
+        "edges": edges,
+        "payload": payload,
+        "coldNodeIds": [f"cluster:{topic_id}" for topic_id in sorted(cold_topic_ids)],
+        "probeEdgeIds": [edge["id"] for edge in edges if edge.get("kind") == "probe"],
+    }
+    graph_json = json.dumps(graph_payload, ensure_ascii=False, sort_keys=True).replace("<", "\\u003c")
     payload_json = escape(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
     return f"""<!doctype html>
 <html lang="en">
@@ -1117,29 +1158,51 @@ def curiosity_map_html(payload: dict) -> str:
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{escape(title)}</title>
+  <script src="https://unpkg.com/vis-network@10.0.2/standalone/umd/vis-network.min.js"></script>
   <style>
-    :root {{ color-scheme: light; --ink:#17202a; --muted:#5c6773; --line:#9aa7b4; --cold:#fff1a8; --cluster:#d7ecff; --record:#f8f9fa; --probe:#b83280; --bridge:#2b8a3e; }}
+    :root {{ color-scheme: light; --ink:#17202a; --muted:#5c6773; --panel:#fffdf8; --line:#9aa7b4; --cold:#fff1a8; --cluster:#d7ecff; --record:#f8f9fa; --probe:#b83280; --bridge:#2b8a3e; }}
+    * {{ box-sizing:border-box; }}
     body {{ margin:0; font:14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:#f4f2ed; }}
-    header {{ padding:20px 28px 12px; background:#fffdf8; border-bottom:1px solid #ded8cc; }}
+    header {{ padding:18px 24px 12px; background:var(--panel); border-bottom:1px solid #ded8cc; }}
     h1 {{ margin:0 0 6px; font-size:22px; }}
     .meta {{ color:var(--muted); }}
     .warning {{ margin-top:10px; padding:9px 12px; background:#fff7db; border:1px solid #e3c76b; border-radius:8px; }}
-    .canvas-wrap {{ overflow:auto; padding:18px; }}
-    .canvas {{ position:relative; width:{width}px; height:{height}px; margin:auto; background:radial-gradient(circle at center, #fffdf9, #ece7dd); border:1px solid #d9d1c2; border-radius:18px; box-shadow:0 18px 35px rgba(30,25,15,.10); }}
-    svg {{ position:absolute; inset:0; pointer-events:none; }}
-    line {{ stroke:var(--line); stroke-width:1.4; opacity:.65; }}
-    line.bridge {{ stroke:var(--bridge); stroke-width:3; opacity:.78; }}
-    line.probe {{ stroke:var(--probe); stroke-width:2.2; stroke-dasharray:7 7; opacity:.82; }}
-    .cluster,.record {{ position:absolute; transform:translate(-50%,-50%); box-sizing:border-box; border-radius:14px; border:1px solid #9eb7ce; background:var(--cluster); padding:10px 12px; width:190px; min-height:70px; box-shadow:0 8px 18px rgba(20,35,50,.13); }}
-    .cluster.cold {{ background:var(--cold); border-color:#b7791f; }}
-    .record {{ width:230px; background:var(--record); border-color:#9ca3af; }}
-    strong {{ display:block; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
-    small {{ display:block; color:var(--muted); margin-top:3px; }}
-    span {{ display:block; margin-top:5px; max-height:38px; overflow:hidden; color:#293241; }}
-    section {{ max-width:1100px; margin:0 auto 28px; padding:0 20px; }}
+    .app {{ display:grid; grid-template-columns:minmax(240px, 320px) minmax(500px, 1fr) minmax(280px, 360px); gap:14px; padding:14px; height:calc(100vh - 116px); min-height:620px; }}
+    aside,.main {{ background:var(--panel); border:1px solid #d9d1c2; border-radius:16px; box-shadow:0 14px 28px rgba(30,25,15,.08); overflow:hidden; }}
+    aside {{ display:flex; flex-direction:column; min-height:0; }}
+    .panel-header {{ padding:12px 14px; border-bottom:1px solid #e5dece; font-weight:700; }}
+    .panel-body {{ padding:12px 14px; overflow:auto; min-height:0; }}
+    .main {{ position:relative; min-height:0; }}
+    #network {{ width:100%; height:100%; background:radial-gradient(circle at center, #fffdf9, #ece7dd); }}
+    .toolbar {{ position:absolute; z-index:5; left:14px; top:14px; display:flex; flex-wrap:wrap; gap:8px; max-width:calc(100% - 28px); }}
+    button,input,select {{ font:inherit; }}
+    button {{ border:1px solid #c8bdab; background:#fffaf0; border-radius:999px; padding:7px 10px; cursor:pointer; }}
+    button:hover {{ background:#fff1cc; }}
+    input {{ width:100%; border:1px solid #c8bdab; border-radius:10px; padding:8px 10px; background:white; }}
+    .legend {{ display:grid; gap:8px; }}
+    .legend span {{ display:inline-flex; align-items:center; gap:8px; }}
+    .dot {{ width:12px; height:12px; border-radius:50%; display:inline-block; border:1px solid #53606d; }}
+    .dot.cluster {{ background:var(--cluster); }}
+    .dot.cold {{ background:var(--cold); }}
+    .dot.record {{ background:var(--record); }}
+    .dot.probe {{ background:var(--probe); }}
+    .dot.bridge {{ background:var(--bridge); }}
+    .node-list,.prompt-list {{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }}
+    .node-list button {{ width:100%; text-align:left; border-radius:10px; background:#fff; }}
+    .node-list small,.prompt-list small {{ color:var(--muted); display:block; margin-top:2px; }}
+    .details-card {{ border:1px solid #e1d8c7; background:#fff; border-radius:12px; padding:10px; margin-bottom:10px; }}
+    .details-card strong {{ display:block; margin-bottom:4px; }}
+    .details-card code {{ word-break:break-word; }}
+    .fallback {{ display:none; margin:14px; padding:12px; border:1px solid #c2410c; background:#fff4ed; border-radius:10px; }}
+    body.library-missing .fallback {{ display:block; }}
+    body.library-missing #network {{ display:none; }}
     li {{ margin:8px 0; }}
     details {{ margin-top:18px; }}
     pre {{ overflow:auto; background:#161b22; color:#d6deeb; padding:14px; border-radius:10px; }}
+    @media (max-width: 980px) {{
+      .app {{ grid-template-columns:1fr; height:auto; }}
+      .main {{ height:70vh; min-height:520px; }}
+    }}
   </style>
 </head>
 <body>
@@ -1148,20 +1211,184 @@ def curiosity_map_html(payload: dict) -> str:
     <div class="meta">{escape(metadata)}</div>
     <div class="warning">Generated navigation view only. Inspect canonical records before citing any link, heat, cold zone, or probe as proof.</div>
   </header>
-  <div class="canvas-wrap">
-    <div class="canvas">
-      <svg viewBox="0 0 {width} {height}" aria-hidden="true">{''.join(line_items)}</svg>
-      {node_html}
-    </div>
+  <div class="app">
+    <aside>
+      <div class="panel-header">Navigation</div>
+      <div class="panel-body">
+        <input id="search" placeholder="Filter records or clusters" />
+        <h3>Legend</h3>
+        <div class="legend">
+          <span><i class="dot cluster"></i>Active cluster</span>
+          <span><i class="dot cold"></i>Cold cluster</span>
+          <span><i class="dot record"></i>Record</span>
+          <span><i class="dot bridge"></i>Established bridge</span>
+          <span><i class="dot probe"></i>Curiosity probe</span>
+        </div>
+        <h3>Clusters</h3>
+        <ul id="cluster-list" class="node-list"></ul>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="toolbar">
+        <button id="fit">Fit</button>
+        <button id="stabilize">Stabilize</button>
+        <button id="cold">Focus cold zones</button>
+        <button id="probes">Focus probes</button>
+        <button id="reset">Reset filter</button>
+      </div>
+      <div id="network"></div>
+      <div class="fallback">The vis-network library did not load. Check network access or open the embedded payload below.</div>
+    </main>
+    <aside>
+      <div class="panel-header">Selection</div>
+      <div class="panel-body">
+        <div id="details" class="details-card">Select a node or edge.</div>
+        <h3>Curiosity Prompts</h3>
+        <ol class="prompt-list">{prompt_html}</ol>
+        <details>
+          <summary>Embedded non-proof payload</summary>
+          <pre>{payload_json}</pre>
+        </details>
+      </div>
+    </aside>
   </div>
-  <section>
-    <h2>Curiosity Prompts</h2>
-    <ol>{prompt_html}</ol>
-    <details>
-      <summary>Embedded non-proof payload</summary>
-      <pre>{payload_json}</pre>
-    </details>
-  </section>
+  <script id="graph-data" type="application/json">{graph_json}</script>
+  <script>
+  (function () {{
+    const raw = document.getElementById("graph-data").textContent;
+    const graph = JSON.parse(raw);
+    if (!window.vis || !window.vis.Network) {{
+      document.body.classList.add("library-missing");
+      return;
+    }}
+    const nodes = new vis.DataSet(graph.nodes);
+    const edges = new vis.DataSet(graph.edges);
+    const container = document.getElementById("network");
+    const options = {{
+      autoResize: true,
+      layout: {{ improvedLayout: true }},
+      interaction: {{
+        hover: true,
+        navigationButtons: true,
+        keyboard: true,
+        multiselect: true,
+        tooltipDelay: 120,
+      }},
+      physics: {{
+        enabled: true,
+        solver: "forceAtlas2Based",
+        stabilization: {{ iterations: 180, fit: true }},
+        forceAtlas2Based: {{
+          gravitationalConstant: -85,
+          centralGravity: 0.015,
+          springLength: 125,
+          springConstant: 0.08,
+          damping: 0.55,
+          avoidOverlap: 0.75,
+        }},
+      }},
+      groups: {{
+        cluster: {{ color: {{ background: "#d7ecff", border: "#2862a8" }}, font: {{ color: "#17202a", size: 15 }}, borderWidth: 2 }},
+        coldCluster: {{ color: {{ background: "#fff1a8", border: "#b7791f" }}, font: {{ color: "#17202a", size: 15 }}, borderWidth: 3 }},
+        record: {{ color: {{ background: "#f8f9fa", border: "#68737f" }}, font: {{ color: "#17202a", size: 12, multi: true }}, margin: 10, borderWidth: 1 }},
+      }},
+      edges: {{
+        smooth: {{ type: "dynamic" }},
+        font: {{ size: 10, align: "middle", strokeWidth: 3, strokeColor: "#fffdf8" }},
+        arrows: {{ to: {{ enabled: false }} }},
+      }},
+    }};
+    const network = new vis.Network(container, {{ nodes, edges }}, options);
+    const details = document.getElementById("details");
+    const clusterList = document.getElementById("cluster-list");
+    const allNodeIds = nodes.getIds();
+    const allEdgeIds = edges.getIds();
+
+    function html(text) {{
+      return String(text ?? "").replace(/[&<>"']/g, ch => ({{ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\\"": "&quot;", "'": "&#39;" }}[ch]));
+    }}
+    function renderDetails(item) {{
+      if (!item) {{
+        details.innerHTML = "Select a node or edge.";
+        return;
+      }}
+      if (item.kind === "cluster") {{
+        details.innerHTML = `<strong>${{html(item.meta.term)}}</strong><code>${{html(item.meta.id)}}</code><p>records=${{html(item.meta.record_count)}} heat=${{html(item.meta.activity_score)}} cold=${{html(item.meta.cold)}}</p>`;
+        return;
+      }}
+      if (item.kind === "record") {{
+        details.innerHTML = `<strong>${{html(item.record_ref)}}</strong><p>${{html(item.meta.record_type)}} status=${{html(item.meta.status)}} heat=${{html(item.meta.activity_score)}}</p><p>${{html(item.meta.summary)}}</p><p><small>clusters: ${{html(item.meta.cluster_terms)}}</small></p>`;
+        return;
+      }}
+      if (item.kind === "probe") {{
+        details.innerHTML = `<strong>Curiosity probe ${{html(item.meta.probe_index)}}</strong><p>score=${{html(item.meta.score)}} refs=${{html(item.meta.record_refs.join(", "))}}</p><p>${{html(item.meta.reason)}}</p>`;
+        return;
+      }}
+      details.innerHTML = `<strong>${{html(item.kind || "edge")}}</strong><pre>${{html(JSON.stringify(item.meta || item, null, 2))}}</pre>`;
+    }}
+    function focusNodes(ids) {{
+      const existing = ids.filter(id => nodes.get(id));
+      if (!existing.length) return;
+      network.selectNodes(existing);
+      network.fit({{ nodes: existing, animation: {{ duration: 450, easingFunction: "easeInOutQuad" }} }});
+    }}
+    function resetVisibility() {{
+      nodes.update(allNodeIds.map(id => ({{ id, hidden: false }})));
+      edges.update(allEdgeIds.map(id => ({{ id, hidden: false }})));
+      network.fit({{ animation: true }});
+    }}
+    function filterGraph(term) {{
+      const query = term.trim().toLowerCase();
+      if (!query) {{
+        resetVisibility();
+        return;
+      }}
+      const visible = new Set();
+      nodes.forEach(node => {{
+        const haystack = JSON.stringify(node).toLowerCase();
+        if (haystack.includes(query)) visible.add(node.id);
+      }});
+      edges.forEach(edge => {{
+        if (visible.has(edge.from) || visible.has(edge.to)) {{
+          visible.add(edge.from);
+          visible.add(edge.to);
+        }}
+      }});
+      nodes.update(allNodeIds.map(id => ({{ id, hidden: !visible.has(id) }})));
+      edges.update(allEdgeIds.map(id => {{
+        const edge = edges.get(id);
+        return {{ id, hidden: !(visible.has(edge.from) && visible.has(edge.to)) }};
+      }}));
+      focusNodes(Array.from(visible).slice(0, 40));
+    }}
+    function renderClusterList() {{
+      const clusters = nodes.get().filter(node => node.kind === "cluster");
+      clusterList.innerHTML = clusters.map(node => `<li><button data-node="${{html(node.id)}}">${{html(node.meta.term)}}<small>${{html(node.meta.id)}} records=${{html(node.meta.record_count)}} heat=${{html(node.meta.activity_score)}}</small></button></li>`).join("") || "<li>none</li>";
+      clusterList.querySelectorAll("button[data-node]").forEach(button => {{
+        button.addEventListener("click", () => focusNodes([button.getAttribute("data-node")]));
+      }});
+    }}
+    network.on("selectNode", params => renderDetails(nodes.get(params.nodes[0])));
+    network.on("selectEdge", params => renderDetails(edges.get(params.edges[0])));
+    document.getElementById("fit").addEventListener("click", () => network.fit({{ animation: true }}));
+    document.getElementById("stabilize").addEventListener("click", () => network.stabilize(180));
+    document.getElementById("cold").addEventListener("click", () => focusNodes(graph.coldNodeIds || []));
+    document.getElementById("probes").addEventListener("click", () => {{
+      const edgeIds = graph.probeEdgeIds || [];
+      const ids = new Set();
+      edgeIds.forEach(edgeId => {{
+        const edge = edges.get(edgeId);
+        if (edge) {{ ids.add(edge.from); ids.add(edge.to); }}
+      }});
+      network.selectEdges(edgeIds);
+      focusNodes(Array.from(ids));
+    }});
+    document.getElementById("reset").addEventListener("click", resetVisibility);
+    document.getElementById("search").addEventListener("input", event => filterGraph(event.target.value));
+    renderClusterList();
+    network.once("stabilizationIterationsDone", () => network.fit({{ animation: true }}));
+  }})();
+  </script>
 </body>
 </html>
 """
