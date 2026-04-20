@@ -464,6 +464,12 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert "nearest .tep context_root" in tools_payload
     assert "Read a task-oriented TEP context brief" in tools_payload
     assert "Path to .codex_context. Defaults to ./.codex_context." not in tools_payload
+    context_schemas = {
+        json.dumps(tool["inputSchema"]["properties"]["context"], sort_keys=True)
+        for tool in by_id[2]["result"]["tools"]
+        if "context" in tool["inputSchema"]["properties"]
+    }
+    assert len(context_schemas) == 1
     assert {
         "search_records",
         "next_step",
