@@ -780,11 +780,69 @@ def test_linked_records_returns_incoming_and_outgoing_edges_for_any_record(tmp_p
     assert {source_id, guideline_id, task_id}.issubset(linked_ids)
 
 
+def test_type_graph_reports_allowed_chains_and_scope_pressure(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    task = run_cli(
+        context,
+        "start-task",
+        "--type",
+        "implementation",
+        "--scope",
+        "type.graph.demo",
+        "--title",
+        "Exercise type graph diagnostics",
+        "--note",
+        "active task should create WCTX pressure",
+    )
+    task_id = re.search(r"(TASK-\d{8}-[0-9a-f]{8})", task.stdout).group(1)
+    cix_id = "CIX-20260420-badscope"
+    cix_path = context / "code_index" / "entries" / f"{cix_id}.json"
+    cix_path.parent.mkdir(parents=True, exist_ok=True)
+    cix_path.write_text(
+        json.dumps(
+            {
+                "id": cix_id,
+                "record_type": "code_index_entry",
+                "status": "active",
+                "target": {"kind": "file", "path": "src/app.py"},
+                "target_state": "present",
+                "language": "python",
+                "code_kind": "source",
+                "summary": "unscoped active CIX should be a type-graph issue",
+                "metadata": {},
+                "detected_features": [],
+                "manual_features": [],
+                "manual_links": {},
+                "annotations": [],
+                "links": [],
+                "child_entry_refs": [],
+                "related_entry_refs": [],
+                "supersedes_refs": [],
+                "created_at": "2026-04-20T10:00:00+03:00",
+                "updated_at": "2026-04-20T10:00:00+03:00",
+                "note": "test fixture",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    overview = run_cli(context, "type-graph")
+    assert "CIX -/-> proof" in overview.stdout
+
+    checked = run_cli(context, "type-graph", "--check", "--format", "json", check=False)
+    assert checked.returncode == 1
+    payload = json.loads(checked.stdout)
+    assert payload["type_graph_is_proof"] is False
+    assert any(item["kind"] == "active-cix-without-project" and item["ref"] == cix_id for item in payload["issues"])
+    assert any(item["kind"] == "active-task-without-active-wctx" and item["ref"] == task_id for item in payload["warnings"])
+
+
 def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
     help_text = run_cli(context, "help", "modes").stdout
     assert "precedent review" in help_text
+    assert "type graph" in help_text
     assert "task control" in help_text
     assert "workspace admission" in help_text
     assert "--format json route_graph" in help_text
@@ -794,6 +852,7 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
 
     commands_help = run_cli(context, "help", "commands").stdout
     assert "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]" in commands_help
+    assert "review-context | reindex-context | scan-conflicts | type-graph --check" in commands_help
     assert "record-detail --record ... | linked-records --record ..." in commands_help
     assert "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]" in commands_help
     assert "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]" in commands_help
@@ -1972,6 +2031,19 @@ def test_claim_logic_index_validates_symbols_rules_and_conflict_candidates(tmp_p
 
 def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
+    task = run_cli(
+        context,
+        "start-task",
+        "--type",
+        "investigation",
+        "--scope",
+        "wctx.demo",
+        "--title",
+        "Investigate working context",
+        "--note",
+        "wctx task",
+    )
+    task_id = re.search(r"(TASK-\d{8}-[0-9a-f]{8})", task.stdout).group(1)
 
     source_id = recorded_id(
         run_cli(
@@ -2032,6 +2104,8 @@ def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> 
         "Pinned context is useful for handoff|exploration-only",
         "--concern",
         "Working context must not be proof.",
+        "--task",
+        task_id,
         "--note",
         "create working context",
     )
@@ -2040,6 +2114,7 @@ def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> 
     assert wctx["pinned_refs"] == [claim_id]
     assert wctx["topic_seed_refs"] == [claim_id]
     assert wctx["assumptions"][0]["mode"] == "exploration-only"
+    assert wctx_id in load_record(context, "task", task_id)["working_context_refs"]
 
     forked = run_cli(
         context,
@@ -2053,6 +2128,8 @@ def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> 
         "handoff",
         "--add-concern",
         "Need a current source before proof.",
+        "--task",
+        task_id,
         "--note",
         "copy-on-write fork",
     )
@@ -2063,6 +2140,9 @@ def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> 
     assert fork["parent_context_ref"] == wctx_id
     assert wctx_id in fork["supersedes_refs"]
     assert "handoff" in fork["topic_terms"]
+    task_after_fork = load_record(context, "task", task_id)
+    assert wctx_id in task_after_fork["working_context_refs"]
+    assert fork_id in task_after_fork["working_context_refs"]
 
     show = run_cli(context, "working-context", "show", "--context", fork_id).stdout
     assert fork_id in show

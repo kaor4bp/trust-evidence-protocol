@@ -1647,6 +1647,45 @@ def cmd_working_context_check_drift(root: Path, task_text: str, output_format: s
     return 0
 
 
+def persist_working_context_with_task_links(root: Path, records: dict[str, dict], payload: dict) -> int:
+    if not payload.get("workspace_refs"):
+        refs = workspace_refs_for_write(root, [])
+        if refs:
+            payload = dict(payload)
+            payload["workspace_refs"] = refs
+    timestamp = now_timestamp()
+    mutations: dict[str, dict] = {payload["id"]: payload}
+    for task_ref in payload.get("task_refs", []) if isinstance(payload.get("task_refs"), list) else []:
+        task = records.get(str(task_ref))
+        if not task or task.get("record_type") != "task":
+            continue
+        task_payload = public_record_payload(task)
+        refs = sorted({*task_payload.get("working_context_refs", []), payload["id"]})
+        task_payload["working_context_refs"] = refs
+        task_payload["updated_at"] = timestamp
+        task_payload["note"] = append_note(
+            str(task_payload.get("note", "")),
+            f"[{timestamp}] linked working_context {payload['id']}",
+        )
+        mutations[str(task_ref)] = task_payload
+
+    merged, errors = validate_mutated_records(root, records, mutations)
+    if errors:
+        print_errors(errors)
+        return 1
+
+    write_json_file(record_path(root, "working_context", payload["id"]), payload)
+    for task_ref, task_payload in mutations.items():
+        if task_ref == payload["id"]:
+            continue
+        write_json_file(record_path(root, "task", task_ref), task_payload)
+    write_validation_report(root, [])
+    refresh_generated_outputs(root, merged)
+    invalidate_hydration_state(root, f"recorded working_context {payload['id']}")
+    print(f"Recorded working_context {payload['id']} at {record_path(root, 'working_context', payload['id'])}")
+    return 0
+
+
 def cmd_working_context_create(
     root: Path,
     scope: str,
@@ -1690,7 +1729,7 @@ def cmd_working_context_create(
         tags=tags,
         note=note,
     )
-    return persist_candidate(root, records, payload, "working_context")
+    return persist_working_context_with_task_links(root, records, payload)
 
 
 def cmd_working_context_show(root: Path, context_ref: str | None, show_all: bool, output_format: str) -> int:
@@ -1792,7 +1831,7 @@ def cmd_working_context_fork(
         tags=tags,
         note=note,
     )
-    return persist_candidate(root, records, payload, "working_context")
+    return persist_working_context_with_task_links(root, records, payload)
 
 
 def cmd_working_context_close(root: Path, context_ref: str, status: str, note: str | None) -> int:
@@ -2270,6 +2309,7 @@ def cmd_help(topic: str) -> int:
         "modes": [
             "hydration: refresh generated views and current project/task summaries",
             "review context: validate records, references, and structured contradictions",
+            "type graph: inspect allowed record chains and WCTX/CIX scope pressure",
             "reindex context: rebuild generated views, indexes, backlog, and reports",
             "claim graph: keyword lookup over current CLM-* records plus compact linked edges; navigation only",
             "task control: start, pause, resume, switch, complete, or stop TASK-* focus",
@@ -2292,7 +2332,7 @@ def cmd_help(topic: str) -> int:
             "runtime budget: tune hook verbosity, context budget, optional analysis policy, and external backend policy through settings",
         ],
         "commands": [
-            "review-context | reindex-context | scan-conflicts",
+            "review-context | reindex-context | scan-conflicts | type-graph --check",
             "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]",
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
@@ -5323,6 +5363,247 @@ def cmd_code_entry_attach_unscoped(root: Path, repo_root: str, statuses: list[st
     return 0
 
 
+TYPE_GRAPH_CHAINS = [
+    {
+        "name": "scope",
+        "chains": [
+            "WSP -> PRJ",
+            "WSP -> TASK",
+            "PRJ -> TASK",
+            "WSP/PRJ/TASK -> WCTX",
+            "WSP/PRJ -> CIX",
+        ],
+    },
+    {
+        "name": "input provenance",
+        "chains": [
+            "INP -> derived_record_refs -> SRC|CLM|GLD|PRM|RST|TASK|...",
+            "derived record -> input_refs -> INP",
+            "INP -/-> proof",
+        ],
+    },
+    {
+        "name": "truth",
+        "chains": [
+            "SRC -> CLM",
+            "CLM -> CLM via support_refs",
+            "CLM -> CLM via contradiction_refs",
+            "CLM -> CLM via lifecycle.resolved_by_claim_refs",
+            "CLM.logic -> logic_index",
+        ],
+    },
+    {
+        "name": "understanding",
+        "chains": [
+            "CLM -> MODEL",
+            "MODEL -> MODEL via related_model_refs|supersedes_refs|promoted_from_refs",
+            "MODEL -> FLOW",
+            "CLM -> FLOW via preconditions|oracle|steps",
+            "OPEN -> CLM|MODEL|FLOW",
+        ],
+    },
+    {
+        "name": "code navigation",
+        "chains": [
+            "WSP/PRJ -> CIX",
+            "CIX -> code target",
+            "CIX -> CIX via related_entry_refs|supersedes_refs|child_entry_refs",
+            "CIX -> records via manual_links|links",
+            "records -> CIX via code_index_refs",
+            "CIX -> code target -> SRC -> CLM",
+            "CIX -/-> proof",
+        ],
+    },
+    {
+        "name": "execution",
+        "chains": [
+            "TASK -> WCTX",
+            "TASK -> PLN|DEBT|ACT|OPEN",
+            "TASK -> CLM|MODEL|FLOW",
+            "PLN -> justified_by|blocked_by",
+            "DEBT -> evidence_refs|plan_refs",
+            "ACT -> justified_by",
+        ],
+    },
+    {
+        "name": "policy",
+        "chains": [
+            "INP/SRC -> GLD",
+            "GLD -> CLM via related_claim_refs",
+            "RST -> CLM via related_claim_refs",
+            "PRM/RST/GLD -> WSP/PRJ/TASK scope",
+            "PRP -> CLM|GLD|MODEL|FLOW|OPEN",
+        ],
+    },
+]
+
+
+def _type_graph_record_type(records: dict[str, dict], ref: str) -> str:
+    record = records.get(ref)
+    if not record:
+        return ""
+    return str(record.get("record_type", "") or "")
+
+
+def build_type_graph_report(root: Path) -> tuple[dict, int]:
+    records, record_errors = load_records(root)
+    entries, code_errors = load_code_index_entries(root)
+    issues: list[dict] = []
+    warnings: list[dict] = []
+
+    def add_issue(kind: str, ref: str, message: str, field: str = "") -> None:
+        issues.append({"kind": kind, "ref": ref, "field": field, "message": message})
+
+    def add_warning(kind: str, ref: str, message: str, field: str = "") -> None:
+        warnings.append({"kind": kind, "ref": ref, "field": field, "message": message})
+
+    if record_errors:
+        for error in record_errors:
+            add_issue("record-load-error", str(error.path), error.message)
+    if code_errors:
+        for error in code_errors:
+            add_issue("code-index-load-error", str(error.path), error.message)
+
+    workspace_project_refs: dict[str, set[str]] = {
+        ref: set(str(item) for item in data.get("project_refs", []) if str(item).strip())
+        for ref, data in records.items()
+        if data.get("record_type") == "workspace"
+    }
+    project_workspace_refs: dict[str, set[str]] = {}
+    for project_ref, data in records.items():
+        if data.get("record_type") != "project":
+            continue
+        refs = set(str(item) for item in data.get("workspace_refs", []) if str(item).strip())
+        refs.update(workspace_ref for workspace_ref, project_refs in workspace_project_refs.items() if project_ref in project_refs)
+        project_workspace_refs[project_ref] = refs
+
+    for workspace_ref, project_refs in workspace_project_refs.items():
+        for project_ref in sorted(project_refs):
+            if _type_graph_record_type(records, project_ref) != "project":
+                add_issue("workspace-project-ref", workspace_ref, f"{project_ref} is not a project", "project_refs")
+            elif workspace_ref not in project_workspace_refs.get(project_ref, set()):
+                add_warning("workspace-project-reciprocity", project_ref, f"{project_ref} is listed in {workspace_ref} but does not link back", "workspace_refs")
+
+    for record_ref, data in records.items():
+        record_type = str(data.get("record_type", "") or "")
+        if record_type != "workspace" and not data.get("workspace_refs"):
+            add_warning("missing-workspace-scope", record_ref, "record has no workspace_refs", "workspace_refs")
+        for project_ref in data.get("project_refs", []) if isinstance(data.get("project_refs"), list) else []:
+            if _type_graph_record_type(records, str(project_ref)) != "project":
+                add_issue("project-scope-type", record_ref, f"{project_ref} is not a project", "project_refs")
+                continue
+            record_workspaces = set(str(item) for item in data.get("workspace_refs", []) if str(item).strip())
+            project_workspaces = project_workspace_refs.get(str(project_ref), set())
+            if record_workspaces and project_workspaces and record_workspaces.isdisjoint(project_workspaces):
+                add_issue(
+                    "project-workspace-scope-mismatch",
+                    record_ref,
+                    f"{project_ref} belongs to {sorted(project_workspaces)}, record is scoped to {sorted(record_workspaces)}",
+                    "project_refs",
+                )
+        if record_type in {"claim", "source"} and data.get("code_index_refs"):
+            add_issue("code-index-proof-boundary", record_ref, "claim/source must not use CIX as proof support", "code_index_refs")
+        if record_type == "model" and data.get("status") in {"working", "stable"} and not data.get("claim_refs"):
+            add_warning("model-without-claims", record_ref, "working/stable model has no claim_refs", "claim_refs")
+        if record_type == "flow" and data.get("status") in {"working", "stable"} and not data.get("model_refs"):
+            add_warning("flow-without-models", record_ref, "working/stable flow has no model_refs", "model_refs")
+
+    active_wctx_by_task: dict[str, list[str]] = {}
+    for record_ref, data in records.items():
+        if data.get("record_type") != "working_context" or data.get("status") != "active":
+            continue
+        for task_ref in data.get("task_refs", []) if isinstance(data.get("task_refs"), list) else []:
+            active_wctx_by_task.setdefault(str(task_ref), []).append(record_ref)
+            if _type_graph_record_type(records, str(task_ref)) != "task":
+                add_issue("working-context-task-ref", record_ref, f"{task_ref} is not a task", "task_refs")
+        task_refs = data.get("task_refs", []) if isinstance(data.get("task_refs"), list) else []
+        if not task_refs:
+            add_warning("active-working-context-without-task", record_ref, "active WCTX has no task_refs", "task_refs")
+
+    for task_ref, data in records.items():
+        if data.get("record_type") != "task" or data.get("status") != "active":
+            continue
+        active_wctx = active_wctx_by_task.get(task_ref, [])
+        if not active_wctx:
+            add_warning("active-task-without-active-wctx", task_ref, "active task has no active WCTX; create or fork WCTX before persisting task-local conclusions", "working_context_refs")
+        elif not data.get("working_context_refs"):
+            add_warning("active-task-missing-working-context-ref", task_ref, f"active WCTX exists {active_wctx}, but task.working_context_refs is empty", "working_context_refs")
+
+    for entry_ref, entry in entries.items():
+        status = str(entry.get("status", "") or "")
+        workspace_ref = str(entry.get("workspace_ref", "") or "").strip()
+        project_ref = str(entry.get("project_ref", "") or "").strip()
+        if status == "active":
+            if not workspace_ref:
+                add_issue("active-cix-without-workspace", entry_ref, "active CIX has no workspace_ref", "workspace_ref")
+            if not project_ref:
+                add_issue("active-cix-without-project", entry_ref, "active CIX has no project_ref", "project_ref")
+        if workspace_ref and _type_graph_record_type(records, workspace_ref) != "workspace":
+            add_issue("cix-workspace-ref", entry_ref, f"{workspace_ref} is not a workspace", "workspace_ref")
+        if project_ref and _type_graph_record_type(records, project_ref) != "project":
+            add_issue("cix-project-ref", entry_ref, f"{project_ref} is not a project", "project_ref")
+        if workspace_ref and project_ref and project_ref not in workspace_project_refs.get(workspace_ref, set()):
+            add_issue("cix-project-workspace-mismatch", entry_ref, f"{project_ref} is not listed in {workspace_ref}.project_refs", "project_ref")
+
+    record_counts: dict[str, int] = {}
+    for data in records.values():
+        record_type = str(data.get("record_type", "") or "unknown")
+        record_counts[record_type] = record_counts.get(record_type, 0) + 1
+    cix_counts: dict[str, int] = {}
+    for entry in entries.values():
+        status = str(entry.get("status", "") or "unknown")
+        cix_counts[status] = cix_counts.get(status, 0) + 1
+
+    payload = {
+        "type_graph_is_proof": False,
+        "chains": TYPE_GRAPH_CHAINS,
+        "counts": {
+            "records": dict(sorted(record_counts.items())),
+            "cix": dict(sorted(cix_counts.items())),
+        },
+        "issues": issues,
+        "warnings": warnings,
+        "issue_count": len(issues),
+        "warning_count": len(warnings),
+    }
+    return payload, 1 if issues else 0
+
+
+def type_graph_text_lines(payload: dict, *, include_check: bool) -> list[str]:
+    lines = ["# TEP Type Graph\n", "\n"]
+    lines.append("Navigation/typing map only; proof still requires `SRC-* -> CLM-*` evidence.\n\n")
+    for group in payload.get("chains", []):
+        lines.append(f"## {group.get('name', '')}\n")
+        for chain in group.get("chains", []):
+            lines.append(f"- `{chain}`\n")
+        lines.append("\n")
+    counts = payload.get("counts", {})
+    lines.append("## Counts\n")
+    record_counts = counts.get("records", {})
+    lines.append("- records: " + ", ".join(f"{key}={value}" for key, value in record_counts.items()) + "\n")
+    cix_counts = counts.get("cix", {})
+    lines.append("- CIX: " + ", ".join(f"{key}={value}" for key, value in cix_counts.items()) + "\n")
+    if include_check:
+        lines.append("\n## Check\n")
+        lines.append(f"- issues: `{payload.get('issue_count', 0)}`\n")
+        lines.append(f"- warnings: `{payload.get('warning_count', 0)}`\n")
+        for item in payload.get("issues", [])[:50]:
+            lines.append(f"- ISSUE `{item.get('kind')}` `{item.get('ref')}` {item.get('field')}: {item.get('message')}\n")
+        for item in payload.get("warnings", [])[:50]:
+            lines.append(f"- WARNING `{item.get('kind')}` `{item.get('ref')}` {item.get('field')}: {item.get('message')}\n")
+    return lines
+
+
+def cmd_type_graph(root: Path, check: bool, output_format: str) -> int:
+    payload, exit_code = build_type_graph_report(root)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        for line in type_graph_text_lines(payload, include_check=check):
+            print(line, end="")
+    return exit_code if check else 0
+
+
 def cmd_promote_model_to_domain(root: Path, model_ref: str, note: str | None) -> int:
     records, exit_code = load_clean_context(root)
     if exit_code:
@@ -6081,6 +6362,12 @@ def parse_args() -> argparse.Namespace:
 
     subparsers.add_parser("review-context", help="Check structural and epistemic correctness.")
     subparsers.add_parser("reindex-context", help="Regenerate index and review artifacts.")
+    type_graph = subparsers.add_parser(
+        "type-graph",
+        help="Show allowed TEP record chains and optional typing/scope pressure diagnostics.",
+    )
+    type_graph.add_argument("--check", action="store_true")
+    type_graph.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     brief_context = subparsers.add_parser(
         "brief-context",
         help="Print a task-oriented context brief for agent reasoning.",
@@ -7324,6 +7611,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(cmd_review_context(root))
     if args.command == "reindex-context":
         raise SystemExit(cmd_reindex_context(root))
+    if args.command == "type-graph":
+        raise SystemExit(cmd_type_graph(root, check=args.check, output_format=args.output_format))
     if args.command == "brief-context":
         raise SystemExit(cmd_brief_context(root, task=args.task, limit=args.limit, detail=args.detail))
     if args.command == "next-step":

@@ -522,6 +522,12 @@ Commands:
   - prints the fields that create each edge, such as `source_refs`, `claim_refs`, `resolved_by_claim_refs`, or nested flow fields
   - use `--format json` when another tool or agent needs structured graph data
 
+- `type-graph [--check] [--format text|json]`
+  - shows the intended TEP record chains: scope, input provenance, truth, understanding, code navigation, execution, and policy
+  - marks proof boundaries explicitly, especially `CIX -/-> proof` and `INP -/-> proof`
+  - with `--check`, reports hard typing/scope issues and softer pressure warnings such as active tasks without active `WCTX-*`
+  - returns non-zero only for hard issues; WCTX pressure is reported as warnings so existing contexts are not broken by policy tightening
+
 - `guidelines-for --task "..." [--domain code|tests|review|debugging|architecture|agent-behavior] [--format text|json]`
   - selects active scoped `GLD-*` rules that apply to a concrete task
   - respects current project and task filters by default
@@ -578,6 +584,7 @@ Commands:
   - manages `WCTX-*` operational context snapshots
   - `create` stores pinned refs, focus paths, topic seeds, local assumptions, and concerns
   - `fork` creates a copy-on-write replacement instead of mutating the old context
+  - `create` and `fork` link back from supplied `TASK-*` records through `task.working_context_refs`
   - `show` is read-only and suitable for handoff or retrospective
   - `close` ends a context when it should stop guiding current work
 

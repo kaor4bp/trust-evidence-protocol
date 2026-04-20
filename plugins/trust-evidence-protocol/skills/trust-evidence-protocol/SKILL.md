@@ -92,6 +92,7 @@ Persistence write boundary:
 - Treat `probe-pack.metrics` as mechanical context-budget telemetry only; it is not confidence, support, or proof.
 - Use `probe-pack-compare` / MCP `probe_pack_compare` to compare compact/full payload cost before expanding context; the comparison is not proof.
 - Do not use tap frequency, access telemetry, cold-zone status, bridge candidates, or curiosity probes as claim support, source support, action justification, or evidence-chain proof.
+- Use `type-graph --check` when record typing, proof boundaries, or WCTX/CIX scope feel ambiguous; treat its warnings as pressure to create/fork `WCTX-*` or migrate CIX scope before persisting new conclusions.
 - `CLM.logic` is an optional typed predicate projection inside a source-backed `CLM-*`.
 - `<context>/logic_index/` is generated predicate checking/navigation data, not proof.
 - Use logic search/check to find typed atoms, symbols, rules, and conflict candidates, then inspect canonical claims and sources.
