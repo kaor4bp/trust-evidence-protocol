@@ -39,6 +39,7 @@ DEFAULT_HALF_LIFE_DAYS = 7.0
 ATTENTION_SCOPES = {"current", "all"}
 ATTENTION_MODES = {"general", "research", "theory", "code"}
 CURIOSITY_MAP_VOLUMES = {"compact", "normal", "wide"}
+MAP_GRAPH_VERSION = "tep.map_graph.v1"
 CURIOSITY_MAP_BUDGETS = {
     "compact": {"clusters": 4, "records_per_cluster": 2, "bridges": 4, "probes": 3, "cold_zones": 4},
     "normal": {"clusters": 8, "records_per_cluster": 3, "bridges": 8, "probes": 6, "cold_zones": 8},
@@ -80,6 +81,20 @@ ATTENTION_MODE_EXCLUDED_TYPES = {
     "code": {"input", "source", "claim", "permission", "restriction"},
 }
 ATTENTION_CODE_OPERATIONAL_TYPES = {"guideline", "proposal", "plan", "debt", "open_question", "model", "flow", "action", "task", "working_context"}
+MAP_RELATION_WEIGHTS = {
+    "supports": 1.0,
+    "contradicts": 1.0,
+    "derived_from": 0.9,
+    "depends_on": 0.8,
+    "implemented_by": 0.75,
+    "cites": 0.7,
+    "same_topic": 0.35,
+    "mentions": 0.2,
+    "candidate_link": 0.1,
+    "no_known_link": 0.0,
+    "rejected_link": -0.2,
+}
+TOPOLOGY_ESTABLISHED_RELATIONS = {"supports", "contradicts", "derived_from", "depends_on", "implemented_by", "cites"}
 
 
 def activity_root(root: Path) -> Path:
@@ -187,6 +202,228 @@ def link_pairs(records: dict[str, dict]) -> set[tuple[str, str]]:
 
 def sorted_pair(left: str, right: str) -> tuple[str, str]:
     return tuple(sorted([left, right]))
+
+
+def map_edge_relation(fields: list[str]) -> str:
+    joined = " ".join(str(field) for field in fields)
+    if "contradiction_refs" in joined or "conflict_refs" in joined:
+        return "contradicts"
+    if "support_refs" in joined or "source_refs" in joined or "evidence_refs" in joined:
+        return "supports" if "support_refs" in joined else "cites"
+    if "derived_from" in joined or "supersedes_refs" in joined or "promoted_from_refs" in joined:
+        return "derived_from"
+    if "code_index_refs" in joined:
+        return "implemented_by"
+    if "model_refs" in joined or "flow_refs" in joined or "claim_refs" in joined or "justified_by" in joined:
+        return "depends_on"
+    return "mentions"
+
+
+def map_graph_nodes(records: dict[str, dict]) -> list[dict]:
+    nodes = []
+    for record_id, record in sorted(records.items()):
+        nodes.append(
+            {
+                "id": record_id,
+                "kind": str(record.get("record_type", "") or "record"),
+                "label": record_id,
+                "summary": record_diagram_summary(record),
+                "status": record.get("status", ""),
+                "topic_ref": record.get("top_topic_id", ""),
+                "scores": {
+                    "heat": float(record.get("activity_score", 0.0) or 0.0),
+                    "tap_count": int(record.get("tap_count", 0) or 0),
+                    "access_count": int(record.get("access_count", 0) or 0),
+                },
+                "not_proof": True,
+            }
+        )
+    return nodes
+
+
+def map_graph_edges(link_edges: list[dict], selected_record_ids: set[str]) -> list[dict]:
+    edges = []
+    seen: set[tuple[str, str, str, tuple[str, ...]]] = set()
+    for index, edge in enumerate(link_edges, start=1):
+        left = str(edge.get("from", ""))
+        right = str(edge.get("to", ""))
+        if left not in selected_record_ids or right not in selected_record_ids:
+            continue
+        fields = [str(field) for field in edge.get("fields", [])]
+        relation = map_edge_relation(fields)
+        key = (left, right, relation, tuple(fields))
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append(
+            {
+                "id": f"MEDGE-{index:04d}",
+                "from": left,
+                "to": right,
+                "relation": relation,
+                "status": "established",
+                "weight": MAP_RELATION_WEIGHTS.get(relation, 0.2),
+                "fields": fields,
+                "not_proof": True,
+            }
+        )
+    return edges
+
+
+def topology_clusters(nodes: list[dict], edges: list[dict]) -> list[dict]:
+    node_ids = {str(node.get("id", "")) for node in nodes if str(node.get("id", ""))}
+    adjacency: dict[str, set[str]] = {node_id: set() for node_id in node_ids}
+    edge_ids_by_pair: dict[tuple[str, str], list[str]] = {}
+    for edge in edges:
+        relation = str(edge.get("relation", ""))
+        if relation not in TOPOLOGY_ESTABLISHED_RELATIONS or float(edge.get("weight", 0.0) or 0.0) < 0.35:
+            continue
+        left = str(edge.get("from", ""))
+        right = str(edge.get("to", ""))
+        if left not in node_ids or right not in node_ids:
+            continue
+        adjacency[left].add(right)
+        adjacency[right].add(left)
+        edge_ids_by_pair.setdefault(tuple(sorted([left, right])), []).append(str(edge.get("id", "")))
+
+    clusters = []
+    seen: set[str] = set()
+    for node_id in sorted(node_ids):
+        if node_id in seen:
+            continue
+        stack = [node_id]
+        component: set[str] = set()
+        while stack:
+            current = stack.pop()
+            if current in component:
+                continue
+            component.add(current)
+            stack.extend(sorted(adjacency.get(current, set()) - component))
+        seen.update(component)
+        if len(component) < 2:
+            continue
+        internal_edges = []
+        bridge_nodes = []
+        for left in sorted(component):
+            external_degree = len(adjacency.get(left, set()) - component)
+            if external_degree:
+                bridge_nodes.append(left)
+            for right in sorted(adjacency.get(left, set()) & component):
+                if left < right:
+                    internal_edges.extend(edge_ids_by_pair.get((left, right), []))
+        possible_edges = max(1, len(component) * (len(component) - 1) / 2)
+        density = round(len(internal_edges) / possible_edges, 4)
+        clusters.append(
+            {
+                "id": f"MCL-topology-{len(clusters) + 1:03d}",
+                "kind": "topology",
+                "label": f"Topology component {len(clusters) + 1}",
+                "algorithm": "connected_components",
+                "status": "generated",
+                "node_refs": sorted(component),
+                "edge_refs": sorted(internal_edges),
+                "scores": {
+                    "density": density,
+                    "heat": round(
+                        sum(float(node.get("scores", {}).get("heat", 0.0) or 0.0) for node in nodes if node.get("id") in component),
+                        4,
+                    ),
+                    "bridge_score": round(len(bridge_nodes) / max(1, len(component)), 4),
+                },
+                "boundary": {
+                    "internal_edge_refs": sorted(internal_edges),
+                    "external_edge_refs": [],
+                    "bridge_node_refs": sorted(bridge_nodes),
+                    "orphan_node_refs": [],
+                },
+                "explanation": "Generated from established TEP record links using connected components.",
+                "not_proof": True,
+            }
+        )
+    return clusters
+
+
+def topic_map_clusters(clusters: list[dict]) -> list[dict]:
+    result = []
+    for index, cluster in enumerate(clusters, start=1):
+        cluster_id = str(cluster.get("id", ""))
+        result.append(
+            {
+                "id": f"MCL-topic-{index:03d}",
+                "kind": "topic",
+                "label": str(cluster.get("term", "") or cluster_id),
+                "algorithm": "lexical",
+                "status": "generated",
+                "source_cluster_ref": cluster_id,
+                "node_refs": [str(ref) for ref in cluster.get("top_records", [])],
+                "edge_refs": [],
+                "centroid": {"terms": [str(cluster.get("term", "") or cluster_id)], "embedding_ref": None},
+                "scores": {
+                    "cohesion": None,
+                    "heat": float(cluster.get("activity_score", 0.0) or 0.0),
+                    "coldness": 1.0 if float(cluster.get("activity_score", 0.0) or 0.0) < 1.0 else 0.0,
+                    "curiosity": 0.0,
+                },
+                "explanation": "Generated from lexical topic index membership.",
+                "not_proof": True,
+            }
+        )
+    return result
+
+
+def build_map_graph(link_edges: list[dict], selected_records: dict[str, dict], clusters: list[dict], probes: list[dict]) -> dict:
+    nodes = map_graph_nodes(selected_records)
+    node_ids = {str(node.get("id", "")) for node in nodes if str(node.get("id", ""))}
+    edges = map_graph_edges(link_edges, node_ids)
+    topic_clusters = topic_map_clusters(clusters)
+    topology = topology_clusters(nodes, edges)
+    cluster_layers = [
+        {
+            "id": "layer:topic",
+            "kind": "topic",
+            "algorithm": "lexical",
+            "edge_policy": {"include_relations": ["same_topic"], "exclude_relations": [], "min_weight": 0.0},
+            "cluster_refs": [cluster["id"] for cluster in topic_clusters],
+            "not_proof": True,
+        },
+        {
+            "id": "layer:topology",
+            "kind": "topology",
+            "algorithm": "connected_components",
+            "edge_policy": {
+                "include_relations": sorted(TOPOLOGY_ESTABLISHED_RELATIONS),
+                "exclude_relations": ["candidate_link", "no_known_link", "rejected_link"],
+                "min_weight": 0.35,
+            },
+            "cluster_refs": [cluster["id"] for cluster in topology],
+            "not_proof": True,
+        },
+    ]
+    return {
+        "format": MAP_GRAPH_VERSION,
+        "graph_is_proof": False,
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "cluster_count": len(topic_clusters) + len(topology),
+        "nodes": nodes,
+        "edges": edges,
+        "clusters": topic_clusters + topology,
+        "cluster_layers": cluster_layers,
+        "probes": [
+            {
+                "id": f"PROBE-{index:03d}",
+                "record_refs": probe.get("record_refs", []),
+                "cluster_refs": probe.get("cluster_refs", []),
+                "score": probe.get("score", 0),
+                "link_state": probe.get("link_state", "candidate"),
+                "reason": probe.get("explanation") or probe.get("reason", ""),
+                "not_proof": True,
+            }
+            for index, probe in enumerate(probes, start=1)
+        ],
+        "relation_weights": MAP_RELATION_WEIGHTS,
+        "note": "Typed generated map graph. Navigation only; not proof.",
+    }
 
 
 def list_refs(data: dict, key: str) -> list[str]:
@@ -395,8 +632,9 @@ def build_attention_index(
         key=lambda item: (-item["record_count"], item["term"], item["topic_id"]),
     )
 
+    link_edges = collect_link_edges(records)
     bridges = []
-    for edge in collect_link_edges(records):
+    for edge in link_edges:
         left = str(edge.get("from", ""))
         right = str(edge.get("to", ""))
         left_topic = record_items.get(left, {}).get("top_topic_id", "")
@@ -429,6 +667,7 @@ def build_attention_index(
         "cluster_count": len(clusters),
         "records": record_items,
         "clusters": clusters,
+        "link_edges": link_edges,
         "bridges": bridges[: max(1, probe_limit)],
         "established_pairs": [list(pair) for pair in sorted(established_pairs)],
         "cold_zones": cold_zones[: max(1, probe_limit)],
@@ -509,6 +748,11 @@ def filter_attention_payload(
         for bridge in payload.get("bridges", [])
         if isinstance(bridge, dict) and str(bridge.get("from", "")) in kept_ids and str(bridge.get("to", "")) in kept_ids
     ]
+    link_edges = [
+        edge
+        for edge in payload.get("link_edges", [])
+        if isinstance(edge, dict) and str(edge.get("from", "")) in kept_ids and str(edge.get("to", "")) in kept_ids
+    ]
 
     return {
         **payload,
@@ -525,6 +769,7 @@ def filter_attention_payload(
         "tap_count": sum(int(record.get("tap_count", 0)) for record in kept_records.values()),
         "access_event_count": payload.get("access_event_count", 0),
         "record_access_count": sum(int(record.get("access_count", 0)) for record in kept_records.values()),
+        "link_edges": link_edges,
         "bridges": bridges,
         "established_pairs": payload.get("established_pairs", []),
         "cold_zones": cold_zones,
@@ -542,6 +787,7 @@ def write_attention_index_reports(root: Path, payload: dict) -> None:
             "attention_index_is_proof": False,
             "access_event_count": payload.get("access_event_count", 0),
             "record_access_count": payload.get("record_access_count", 0),
+            "link_edges": payload.get("link_edges", []),
             "bridges": payload["bridges"],
             "established_pairs": payload.get("established_pairs", []),
         },
@@ -560,6 +806,7 @@ def load_attention_payload(root: Path) -> dict:
         clusters = json.loads(paths["clusters"].read_text(encoding="utf-8"))
         bridge_payload = json.loads(paths["bridges"].read_text(encoding="utf-8"))
         bridges = bridge_payload.get("bridges", [])
+        link_edges = bridge_payload.get("link_edges", [])
         established_pairs = bridge_payload.get("established_pairs", [])
         cold_zones = json.loads(paths["cold_zones"].read_text(encoding="utf-8")).get("cold_zones", [])
         probes = json.loads(paths["probes"].read_text(encoding="utf-8")).get("probes", [])
@@ -578,6 +825,7 @@ def load_attention_payload(root: Path) -> dict:
         "record_access_count": sum(int(item.get("access_count", 0)) for item in records.values() if isinstance(item, dict))
         if isinstance(records, dict)
         else 0,
+        "link_edges": link_edges if isinstance(link_edges, list) else [],
         "bridges": bridges if isinstance(bridges, list) else [],
         "established_pairs": established_pairs if isinstance(established_pairs, list) else [],
         "cold_zones": cold_zones if isinstance(cold_zones, list) else [],
@@ -847,6 +1095,7 @@ def curiosity_map_payload(payload: dict, *, volume: str = "normal") -> dict:
 
     visual_payload = {
         "map_is_proof": False,
+        "map_graph_version": MAP_GRAPH_VERSION,
         "attention_index_is_proof": False,
         "scope": payload.get("scope", "all"),
         "mode": payload.get("mode", "general"),
@@ -860,6 +1109,7 @@ def curiosity_map_payload(payload: dict, *, volume: str = "normal") -> dict:
         "bridges": bridges,
         "cold_zones": cold_zones,
         "probes": probes,
+        "map_graph": build_map_graph(payload.get("link_edges", []), selected_records, clusters, probes),
         "curiosity_prompts": [
             {
                 "probe_index": index,

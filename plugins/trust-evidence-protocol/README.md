@@ -574,6 +574,7 @@ Commands:
 - `curiosity-map --mode research|theory|code --volume compact|normal|wide --html`
   - writes a standalone HTML visual graph to `.codex_context/views/curiosity/`
   - includes interactive pan/zoom, search, focus controls, clusters, heat/cold zones, established bridges, candidate probes, and prompt list
+  - includes `map_graph.format=tep.map_graph.v1`, a generated typed graph with record nodes, weighted relation edges, `topic` and `topology` cluster layers, and navigation-only probes
   - useful when the agent should show the user why it wants to inspect a cold or weakly linked area
   - the HTML is generated navigation only and must not be cited as evidence
 

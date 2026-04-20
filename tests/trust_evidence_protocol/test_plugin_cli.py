@@ -1556,6 +1556,13 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert curiosity_map["attention_index_is_proof"] is False
     assert curiosity_map["mode"] == "general"
     assert curiosity_map["volume"] == "compact"
+    assert curiosity_map["map_graph_version"] == "tep.map_graph.v1"
+    assert curiosity_map["map_graph"]["format"] == "tep.map_graph.v1"
+    assert curiosity_map["map_graph"]["graph_is_proof"] is False
+    assert {layer["kind"] for layer in curiosity_map["map_graph"]["cluster_layers"]} == {"topic", "topology"}
+    assert any(cluster["kind"] == "topology" for cluster in curiosity_map["map_graph"]["clusters"])
+    assert any(edge["relation"] == "cites" for edge in curiosity_map["map_graph"]["edges"])
+    assert curiosity_map["map_graph"]["relation_weights"]["candidate_link"] < curiosity_map["map_graph"]["relation_weights"]["supports"]
     assert curiosity_map["metrics"]["metrics_are_proof"] is False
     assert curiosity_map["metrics"]["cluster_count"] <= curiosity_map["budget"]["clusters"]
     assert curiosity_map["metrics"]["probe_count"] <= curiosity_map["budget"]["probes"]
