@@ -20,7 +20,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `record_detail`: equivalent to `record-detail --record ID`
 - `linked_records`: equivalent to `linked-records --record ID`
 - `guidelines_for`: equivalent to `guidelines-for --task "..."`
-- `code_search`: equivalent to `code-search`; optional semantic `query` is proxied through TEP-managed backends such as CocoIndex
+- `code_search`: equivalent to `code-search`; optional semantic `query` is proxied through TEP-managed backends such as CocoIndex; `scope=workspace` is an explicit broader glance
 - `code_feedback`: equivalent to read-only `code-feedback`; use CLI apply mode for reviewed CIX-to-record links
 - `code_smell_report`: equivalent to `code-smell-report`
 - `code_info`: equivalent to `code-info`
@@ -39,6 +39,8 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `probe_pack`: equivalent to `probe-pack`; compactly bundles top probes with inspection summaries and draft validation
 - `probe_pack_compare`: equivalent to `probe-pack-compare`; compares compact/full metrics before requesting expanded context
 - `working_contexts`: equivalent to `working-context show`
+- `working_context_drift`: equivalent to `working-context check-drift`
+- `workspace_admission`: equivalent to `workspace-admission check`
 - `logic_search`: equivalent to `logic-search`
 - `logic_check`: equivalent to `logic-check`
 - `logic_conflict_candidates`: equivalent to `logic-conflict-candidates`

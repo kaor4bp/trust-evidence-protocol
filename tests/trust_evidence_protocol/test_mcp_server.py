@@ -426,6 +426,33 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 25,
+                "method": "tools/call",
+                "params": {
+                    "name": "working_context_drift",
+                    "arguments": {"context": str(context), "task": "mcp working context handoff", "format": "json"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 26,
+                "method": "tools/call",
+                "params": {
+                    "name": "workspace_admission",
+                    "arguments": {"context": str(context), "repo": str(tmp_path / "unknown-repo"), "format": "json"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 27,
+                "method": "tools/call",
+                "params": {
+                    "name": "code_search",
+                    "arguments": {"context": str(context), "scope": "workspace", "format": "json"},
+                },
+            },
         ]
     )
 
@@ -458,6 +485,8 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "probe_pack",
         "probe_pack_compare",
         "working_contexts",
+        "working_context_drift",
+        "workspace_admission",
         "logic_search",
         "logic_check",
         "logic_graph",
@@ -487,6 +516,23 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     wctx_result = by_id[6]["result"]
     assert wctx_result["isError"] is False
     assert wctx_id in wctx_result["content"][0]["text"]
+
+    wctx_drift = by_id[25]["result"]
+    assert wctx_drift["isError"] is False
+    wctx_drift_payload = json.loads(wctx_drift["content"][0]["text"])
+    assert wctx_drift_payload["working_context_drift_is_proof"] is False
+    assert wctx_drift_payload["best_matching_context"]["id"] == wctx_id
+
+    workspace_admission = by_id[26]["result"]
+    assert workspace_admission["isError"] is False
+    workspace_admission_payload = json.loads(workspace_admission["content"][0]["text"])
+    assert workspace_admission_payload["workspace_admission_is_proof"] is False
+    assert workspace_admission_payload["requires_user_decision"] is True
+    assert "create-new-workspace" in workspace_admission_payload["options"]
+
+    code_search = by_id[27]["result"]
+    assert code_search["isError"] is False
+    assert json.loads(code_search["content"][0]["text"])["results"] == []
 
     logic_result = by_id[7]["result"]
     assert logic_result["isError"] is False

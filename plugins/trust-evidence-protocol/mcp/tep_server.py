@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.67"
+SERVER_VERSION = "0.1.68"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -209,6 +209,11 @@ TOOLS: list[JsonObject] = [
                 "query": {
                     "type": "string",
                     "description": "Optional semantic code query proxied through the configured TEP code backend.",
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["project", "workspace"],
+                    "description": "Optional backend index scope. Defaults to TEP CocoIndex settings.",
                 },
                 "paths": {"type": "array", "items": {"type": "string"}},
                 "language": {"type": "string"},
@@ -503,6 +508,36 @@ TOOLS: list[JsonObject] = [
                 "all": {"type": "boolean", "default": False},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
+        ),
+    },
+    {
+        "name": "working_context_drift",
+        "description": (
+            "Read-only check that compares a task summary against active WCTX-* focus. "
+            "Use before persisting task-local conclusions after topic/repo/task-type drift."
+        ),
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "task": {"type": "string", "description": "Current user task or planned task summary."},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["task"],
+        ),
+    },
+    {
+        "name": "workspace_admission",
+        "description": (
+            "Read-only guard before analyzing or persisting facts for an external repo. "
+            "If it requires a decision, ask whether to create a new workspace, add a project to the current workspace, or inspect read-only."
+        ),
+        "inputSchema": schema(
+            {
+                "context": {"type": "string", "description": "Path to .codex_context. Defaults to ./.codex_context."},
+                "repo": {"type": "string", "description": "Repository/workdir path to classify against current WSP/PRJ focus."},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["repo"],
         ),
     },
     {
@@ -821,6 +856,8 @@ def tool_code_search(args: JsonObject) -> tuple[bool, str]:
     ]
     if args.get("query"):
         cli_args.extend(["--query", str(args["query"])])
+    if args.get("scope"):
+        cli_args.extend(["--scope", str(args["scope"])])
     add_repeated(cli_args, "--path", as_list(args.get("paths")))
     for key, flag in (
         ("imports", "--import"),
@@ -1130,6 +1167,34 @@ def tool_working_contexts(args: JsonObject) -> tuple[bool, str]:
     return run_cli(args, cli_args)
 
 
+def tool_working_context_drift(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "working-context",
+            "check-drift",
+            "--task",
+            str(args.get("task", "")),
+            "--format",
+            as_format(args.get("format")),
+        ],
+    )
+
+
+def tool_workspace_admission(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "workspace-admission",
+            "check",
+            "--repo",
+            str(args.get("repo", "")),
+            "--format",
+            as_format(args.get("format")),
+        ],
+    )
+
+
 def tool_logic_search(args: JsonObject) -> tuple[bool, str]:
     cli_args = [
         "logic-search",
@@ -1215,6 +1280,8 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "probe_pack": tool_probe_pack,
     "probe_pack_compare": tool_probe_pack_compare,
     "working_contexts": tool_working_contexts,
+    "working_context_drift": tool_working_context_drift,
+    "workspace_admission": tool_workspace_admission,
     "logic_search": tool_logic_search,
     "logic_check": tool_logic_check,
     "logic_graph": tool_logic_graph,

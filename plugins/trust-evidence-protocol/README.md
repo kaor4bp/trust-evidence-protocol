@@ -349,6 +349,8 @@ Exposed tools:
 - `probe_pack`: compact generated bundle of top probes, inspection summaries, and chain-draft validation
 - `probe_pack_compare`: compact/full probe-pack metric comparison for deciding whether expanded context is worth requesting
 - `working_contexts`: read-only `WCTX-*` working-context lookup
+- `working_context_drift`: read-only task summary vs active `WCTX-*` focus check
+- `workspace_admission`: read-only repository-to-workspace/project admission guard
 - `logic_search`: generated predicate atom/rule search
 - `logic_check`: read-only predicate consistency summary
 - `logic_graph`: generated symbol/predicate/rule-variable graph and vocabulary-smell lookup
