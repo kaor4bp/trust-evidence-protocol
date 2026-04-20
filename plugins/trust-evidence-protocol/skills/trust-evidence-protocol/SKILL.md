@@ -93,7 +93,7 @@ Persistence write boundary:
 - After choosing a curiosity probe, prefer `probe-inspect` / MCP `probe_inspect` to mechanically fetch summaries, source quotes, direct link status, and follow-up commands before spending tokens on manual exploration.
 - Use `probe-chain-draft` / MCP `probe_chain_draft` only as a mechanically assembled draft; validate, augment, and revise it before showing any proof chain to the user.
 - Use `probe-route` / MCP `probe_route` to get an ordered, generated inspection route and diagram/full-pack expansion hints for a selected probe instead of manually composing lookup commands.
-- If probe inspection produces a real supported relationship, persist it with `record-link`; do not silently mutate the original probed claims or treat the probe itself as support.
+- If probe inspection produces a real supported relationship, persist it with `record-link`; it creates append-only support and refreshes attention state, but you must not silently mutate the original probed claims or treat the probe itself as support.
 - Use `probe-pack` / MCP `probe_pack` for a compact mechanical bundle of top probes, inspection summaries, and draft validation before deciding where to spend reasoning effort.
 - Prefer `probe-pack detail=compact` first; request `detail=full` only when you need source quotes and full chain payload.
 - Treat `probe-pack.metrics` as mechanical context-budget telemetry only; it is not confidence, support, or proof.

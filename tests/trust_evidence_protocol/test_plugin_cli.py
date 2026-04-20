@@ -1698,6 +1698,9 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     linked_edges = {(edge["from"], edge["to"]) for edge in linked_after["edges"]}
     assert (link_claim_id, route["record_refs"][0]) in linked_edges
     assert (link_claim_id, route["record_refs"][1]) in linked_edges
+    rebuilt_probes = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--scope", "all", "--format", "json").stdout)
+    rebuilt_pairs = {tuple(sorted(probe["record_refs"])) for probe in rebuilt_probes["probes"]}
+    assert tuple(sorted(route["record_refs"])) not in rebuilt_pairs
     pack = json.loads(run_cli(context, "probe-pack", "--budget", "2", "--scope", "all", "--format", "json").stdout)
     assert pack["pack_is_proof"] is False
     assert pack["detail"] == "compact"

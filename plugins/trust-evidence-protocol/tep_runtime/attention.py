@@ -197,6 +197,13 @@ def link_pairs(records: dict[str, dict]) -> set[tuple[str, str]]:
         left, right = sorted([str(edge.get("from", "")), str(edge.get("to", ""))])
         if left and right:
             pairs.add((left, right))
+    for data in records.values():
+        tags = data.get("tags", [])
+        if data.get("record_type") != "claim" or "record-link" not in tags:
+            continue
+        support_refs = [str(ref) for ref in data.get("support_refs", []) if str(ref) in records]
+        if len(support_refs) == 2:
+            pairs.add(sorted_pair(support_refs[0], support_refs[1]))
     return pairs
 
 

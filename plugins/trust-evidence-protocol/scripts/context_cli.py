@@ -6460,12 +6460,31 @@ def cmd_record_link(
     if errors:
         print_errors(errors)
         return 1
-    return persist_mutated_records(
+    taps, tap_errors = load_tap_events(root)
+    if tap_errors:
+        print_errors(tap_errors)
+        return 1
+    access_events, access_errors = load_access_events(root)
+    if access_errors:
+        print_errors(access_errors)
+        return 1
+    topic_payload = load_or_build_topic_payload(root, merged_records)
+    attention_payload = build_attention_index(merged_records, topic_payload, taps, access_events=access_events)
+    result = persist_mutated_records(
         root,
         merged_records,
         [source_id, claim_id],
         f"Recorded link claim {claim_id} with source {source_id}",
     )
+    if result:
+        return result
+    write_attention_index_reports(root, attention_payload)
+    invalidate_hydration_state(root, f"recorded link claim {claim_id} and rebuilt attention index")
+    print(
+        f"Rebuilt attention index: records={attention_payload['record_count']} "
+        f"clusters={attention_payload['cluster_count']} probes={len(attention_payload['probes'])}"
+    )
+    return 0
 
 
 def cmd_record_permission(
