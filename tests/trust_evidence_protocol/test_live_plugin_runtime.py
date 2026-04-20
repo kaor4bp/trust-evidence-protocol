@@ -53,3 +53,33 @@ def test_live_agent_checks_mcp_lookup_telemetry_runtime():
     assert "claim-graph" in commands, payload
     assert "telemetry-report" in commands, payload
     assert any(marker in markers for marker in ("telemetry_is_proof", "event_count", "by_tool", "claim-graph")), payload
+
+
+def test_live_agent_checks_telemetry_anomalies_and_workspace_guards():
+    payload = run_plugin_runtime_case(
+        """
+        Verify the installed TEP Runtime plugin exposes the newer guard surfaces mechanically:
+        1. Run `telemetry-report --format json` against `/workspace/.tep_context` and report
+           the literal `anomalies` field marker from the JSON output.
+        2. Run a command that proves `workspace-admission check --repo /workspace --format json`
+           is available.
+        3. Run a command that proves `working-context check-drift --task "live guard smoke" --format json`
+           is available.
+        4. Report observed literal markers: `anomalies`, `workspace-admission`, and `check-drift`.
+        Do not rely on memory; base the verdict on command output.
+        """
+    )
+
+    checks = payload["plugin_checks"]
+    commands = " ".join(payload["commands_run"])
+    markers = " ".join(payload["observed_markers"])
+    assert payload["verdict"] == "plugin-active", payload
+    assert checks["plugin_root_exists"] is True, payload
+    assert checks["context_cli_works"] is True, payload
+    assert checks["hydration_or_review_works"] is True, payload
+    assert "telemetry-report" in commands, payload
+    assert "workspace-admission" in commands, payload
+    assert "check-drift" in commands, payload
+    assert "anomalies" in markers, payload
+    assert "workspace-admission" in markers, payload
+    assert "check-drift" in markers, payload
