@@ -940,13 +940,13 @@ def tool_guidelines_for(args: JsonObject) -> tuple[bool, str]:
 def tool_code_search(args: JsonObject) -> tuple[bool, str]:
     cli_args = [
         "code-search",
-        "--root",
-        str(args.get("root") or "."),
         "--limit",
         str(as_int(args.get("limit"), 20, 1, 100)),
         "--format",
         as_format(args.get("format")),
     ]
+    if args.get("root"):
+        cli_args.extend(["--root", str(args["root"])])
     if args.get("query"):
         cli_args.extend(["--query", str(args["query"])])
     if args.get("scope"):
@@ -982,13 +982,13 @@ def tool_code_search(args: JsonObject) -> tuple[bool, str]:
 def tool_code_smell_report(args: JsonObject) -> tuple[bool, str]:
     cli_args = [
         "code-smell-report",
-        "--root",
-        str(args.get("root") or "."),
         "--limit",
         str(as_int(args.get("limit"), 20, 1, 100)),
         "--format",
         as_format(args.get("format")),
     ]
+    if args.get("root"):
+        cli_args.extend(["--root", str(args["root"])])
     add_repeated(cli_args, "--category", as_list(args.get("categories")))
     add_repeated(cli_args, "--severity", as_list(args.get("severities")))
     add_flag(cli_args, as_bool(args.get("include_stale")), "--include-stale")
@@ -998,8 +998,6 @@ def tool_code_smell_report(args: JsonObject) -> tuple[bool, str]:
 def tool_code_feedback(args: JsonObject) -> tuple[bool, str]:
     cli_args = [
         "code-feedback",
-        "--root",
-        str(args.get("root") or "."),
         "--query",
         str(args.get("query") or ""),
         "--limit",
@@ -1007,6 +1005,8 @@ def tool_code_feedback(args: JsonObject) -> tuple[bool, str]:
         "--format",
         as_format(args.get("format")),
     ]
+    if args.get("root"):
+        cli_args.extend(["--root", str(args["root"])])
     add_repeated(cli_args, "--path", as_list(args.get("paths")))
     add_repeated(cli_args, "--link-candidate", as_list(args.get("link_candidate_refs")))
     if args.get("language"):
@@ -1017,11 +1017,11 @@ def tool_code_feedback(args: JsonObject) -> tuple[bool, str]:
 def tool_code_info(args: JsonObject) -> tuple[bool, str]:
     cli_args = [
         "code-info",
-        "--root",
-        str(args.get("root") or "."),
         "--format",
         as_format(args.get("format")),
     ]
+    if args.get("root"):
+        cli_args.extend(["--root", str(args["root"])])
     if args.get("entry"):
         cli_args.extend(["--entry", str(args["entry"])])
     if args.get("path"):

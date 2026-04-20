@@ -2769,6 +2769,168 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     assert telemetry["by_access_kind"]["backend_code_feedback"] >= 1
 
 
+def test_code_search_resolves_paths_from_project_root_not_agent_cwd(tmp_path: Path, monkeypatch) -> None:
+    context = bootstrap_context(tmp_path)
+    repo_a = tmp_path / "repo-a"
+    repo_b = tmp_path / "repo-b"
+    agent_cwd = tmp_path / "agent-cwd"
+    for repo, label in ((repo_a, "alpha"), (repo_b, "beta")):
+        (repo / "src").mkdir(parents=True)
+        (repo / "src" / "app.py").write_text(f"def app_label():\n    return '{label}'\n", encoding="utf-8")
+        subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+        subprocess.run(["git", "add", "src/app.py"], cwd=repo, check=True, capture_output=True, text=True)
+    agent_cwd.mkdir()
+
+    workspace_a = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "workspace-a",
+            "--title",
+            "Workspace A",
+            "--root-ref",
+            str(repo_a),
+            "--note",
+            "workspace a",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_a)
+    project_a = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "project-a",
+            "--title",
+            "Project A",
+            "--root-ref",
+            str(repo_a),
+            "--note",
+            "project a",
+        ),
+        "project",
+    )
+    run_cli(context, "set-current-project", "--project", project_a)
+    run_cli(context, "init-code-index", "--root", str(repo_a))
+
+    workspace_b = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "workspace-b",
+            "--title",
+            "Workspace B",
+            "--root-ref",
+            str(repo_b),
+            "--note",
+            "workspace b",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_b)
+    project_b = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "project-b",
+            "--title",
+            "Project B",
+            "--root-ref",
+            str(repo_b),
+            "--note",
+            "project b",
+        ),
+        "project",
+    )
+    run_cli(context, "set-current-project", "--project", project_b)
+    run_cli(context, "init-code-index", "--root", str(repo_b))
+
+    run_cli(
+        context,
+        "init-anchor",
+        "--directory",
+        str(agent_cwd),
+        "--workspace",
+        workspace_b,
+        "--project",
+        project_b,
+        "--force",
+        "--note",
+        "agent cwd anchored to project b",
+    )
+    implicit = subprocess.run(
+        [
+            sys.executable,
+            str(CLI),
+            "--context",
+            str(context),
+            "code-search",
+            "--path",
+            "src/app.py",
+            "--fields",
+            "target,freshness",
+            "--format",
+            "json",
+        ],
+        cwd=agent_cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert implicit.returncode == 0, implicit.stdout + implicit.stderr
+    implicit_payload = json.loads(implicit.stdout)
+    assert len(implicit_payload["results"]) == 1
+    implicit_entry = json.loads(
+        (context / "code_index" / "entries" / f"{implicit_payload['results'][0]['id']}.json").read_text(encoding="utf-8")
+    )
+    assert implicit_entry["project_ref"] == project_b
+    assert implicit_payload["results"][0]["freshness"]["stale"] is False
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    ccc = fake_bin / "ccc"
+    ccc.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "import sys\n"
+        "assert sys.argv[1] == 'search'\n"
+        "assert os.environ.get('COCOINDEX_CODE_DB_PATH_MAPPING') == os.environ.get('TEP_TEST_EXPECTED_MAPPING')\n"
+        "print('--- Result 1 (score: 0.900) ---')\n"
+        "print('File: src/app.py:1-2 [python]')\n"
+        "print('def app_label():')\n",
+        encoding="utf-8",
+    )
+    ccc.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv(
+        "TEP_TEST_EXPECTED_MAPPING",
+        f"{repo_b}={context / 'backends' / 'cocoindex' / 'projects' / project_b / '.cocoindex_code'}",
+    )
+    run_cli(
+        context,
+        "configure-runtime",
+        "--backend",
+        "code_intelligence.cocoindex.enabled=true",
+        "--backend",
+        "code_intelligence.cocoindex.mode=cli",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_a)
+    run_cli(context, "set-current-project", "--project", project_a)
+
+    explicit = json.loads(
+        run_cli(context, "code-search", "--root", str(repo_b), "--query", "app label", "--format", "json").stdout
+    )
+    backend = explicit["backend_results"]
+    assert backend["storage"]["project_ref"] == project_b
+    assert backend["storage"]["workspace_ref"] == workspace_b
+    assert backend["storage"]["db_path_mapping"] == os.environ["TEP_TEST_EXPECTED_MAPPING"]
+    assert backend["results"][0]["cix_candidates"][0]["id"] == implicit_payload["results"][0]["id"]
+
+
 def test_cocoindex_status_distinguishes_storage_from_cli_search_readiness(tmp_path: Path, monkeypatch) -> None:
     context = bootstrap_context(tmp_path)
     repo = tmp_path / "repo"

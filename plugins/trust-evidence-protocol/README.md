@@ -242,6 +242,8 @@ Pass `--root` and, when useful, `--scope project|workspace` to make scoped stora
 Backend output may guide lookup, indexing, validation, and candidate generation, but a user-facing proof chain must still cite canonical `SRC-*` and `CLM-*` records.
 External code-intelligence backends such as CocoIndex should be accessed through TEP `code-search` / MCP `code_search`, not as parallel direct MCP entrypoints in normal operation.
 TEP scopes CocoIndex storage by default under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code`; workspace scope uses `<context>/backends/cocoindex/workspaces/<WSP-ID>/.cocoindex_code`.
+Code paths are always project-relative: the workdir-local `.tep` file selects the active focus only, while `--root` or the selected project `root_refs` selects the repository root used for CIX freshness, backend path mapping, and CocoIndex storage.
+When an agent inspects a repository different from its cwd, it must pass `--root <repo>` or use a `.tep` anchor whose project points at that repository.
 The default search scope is project; workspace scope is an explicit outward glance, not the normal search boundary.
 Current CocoIndex CLI `ccc search` still requires repo-local `.cocoindex_code/settings.yml` discovery marker.
 When that marker is absent but scoped storage has `settings.yml` and `target_sqlite.db`, TEP `code-search` uses a direct scoped-DB runtime path instead of creating markers in the checkout.
@@ -613,10 +615,11 @@ Commands:
   - skips `already-present` files when the current file matches the archive hash
   - refuses to overwrite conflicting existing files
 
-- `init-code-index --root .`
+- `init-code-index [--root <repo>]`
   - initializes generated `CIX-*` code-index entries from `git ls-files`
   - indexes Python with AST metadata, JS/TS with lightweight import/symbol regexes, and Markdown with heading/link/code-block outline metadata
   - writes `.codex_context/code_index/entries/`, `by_path.json`, `by_ref.json`, and `summary.md`
+  - stores file targets as paths relative to the resolved project root, not relative to the agent cwd or `.tep` anchor directory
   - defaults to tracked files only; use `--include-untracked` deliberately
   - bounded by `--max-files` and `--max-bytes-per-file`
 
@@ -636,6 +639,7 @@ Commands:
 
 - `code-search`
   - searches CIX entries by path, language, code kind, import, symbol, feature, linked ref, or stale state
+  - resolves paths against `--root`; if `--root` is omitted, uses the active project `root_refs` selected by the nearest `.tep` anchor, then falls back to cwd only when no focused project root exists
   - can filter annotations with `--annotation-kind smell` and `--annotation-category ...`
   - can use `--query "..."` to proxy a semantic code search through the configured TEP backend, such as CocoIndex, while returning navigation-only TEP-normalized `backend_results`
   - accepts `--scope project|workspace`; project is the default, workspace is an explicit broader glance

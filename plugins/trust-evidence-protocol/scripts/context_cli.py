@@ -890,6 +890,93 @@ def _path_contains(root_value: str, target: Path) -> bool:
     return target == root_path or target.is_relative_to(root_path)
 
 
+def _record_root_refs(record: dict | None) -> list[str]:
+    if not isinstance(record, dict):
+        return []
+    return [str(item).strip() for item in record.get("root_refs", []) if str(item).strip()]
+
+
+def _resolve_root_ref(value: str) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return path.resolve()
+
+
+def repo_scope_for_root(root: Path, repo_root: Path) -> tuple[str, str]:
+    """Return workspace/project refs whose root_refs contain repo_root.
+
+    The agent's cwd only selects the local .tep anchor. Code paths and backend
+    storage must be scoped to the repository root being inspected.
+    """
+
+    records, errors = load_records(root)
+    if errors:
+        return "", ""
+    target = repo_root.expanduser().resolve()
+    matching_projects = [
+        record
+        for record in records.values()
+        if record.get("record_type") == "project"
+        and str(record.get("status", "active")) == "active"
+        and any(_path_contains(root_ref, target) for root_ref in _record_root_refs(record))
+    ]
+    current_project = current_project_ref(root)
+    project_ref = ""
+    if current_project and any(record.get("id") == current_project for record in matching_projects):
+        project_ref = current_project
+    elif matching_projects:
+        project_ref = str(sorted(matching_projects, key=lambda item: str(item.get("id", "")))[0].get("id", ""))
+
+    matching_workspaces = [
+        record
+        for record in records.values()
+        if record.get("record_type") == "workspace"
+        and str(record.get("status", "active")) == "active"
+        and (
+            any(_path_contains(root_ref, target) for root_ref in _record_root_refs(record))
+            or (project_ref and project_ref in record.get("project_refs", []))
+        )
+    ]
+    current_workspace = current_workspace_ref(root)
+    workspace_ref = ""
+    if current_workspace and any(record.get("id") == current_workspace for record in matching_workspaces):
+        workspace_ref = current_workspace
+    elif matching_workspaces:
+        workspace_ref = str(sorted(matching_workspaces, key=lambda item: str(item.get("id", "")))[0].get("id", ""))
+    return workspace_ref, project_ref
+
+
+def focused_repo_root(root: Path) -> Path | None:
+    records, errors = load_records(root)
+    if errors:
+        return None
+    for record_ref in (current_project_ref(root), current_workspace_ref(root)):
+        record = records.get(record_ref)
+        for root_ref in _record_root_refs(record):
+            return _resolve_root_ref(root_ref)
+    return None
+
+
+def resolve_code_repo_root(root: Path, requested_root: str | Path | None, *, fallback_to_cwd: bool = True) -> Path | None:
+    if requested_root is not None and str(requested_root).strip():
+        return Path(str(requested_root)).expanduser().resolve()
+    focused = focused_repo_root(root)
+    if focused is not None:
+        return focused
+    return Path.cwd().resolve() if fallback_to_cwd else None
+
+
+def code_entry_matches_repo_scope(entry: dict, workspace_ref: str, project_ref: str) -> bool:
+    entry_project = str(entry.get("project_ref", "") or "").strip()
+    entry_workspace = str(entry.get("workspace_ref", "") or "").strip()
+    if project_ref and entry_project and entry_project != project_ref:
+        return False
+    if workspace_ref and entry_workspace and entry_workspace != workspace_ref:
+        return False
+    return True
+
+
 def workspace_admission_payload(root: Path, records: dict[str, dict], repo: Path) -> dict:
     current_workspace = current_workspace_ref(root)
     current_project = current_project_ref(root)
@@ -4484,6 +4571,7 @@ def cmd_init_code_index(root: Path, repo_root: Path, max_files: int, max_bytes: 
     if errors:
         print_errors(errors)
         return 1
+    workspace_ref, project_ref = repo_scope_for_root(root, repo_root)
     try:
         files = discover_files(repo_root, [], [], git_tracked=not include_untracked, max_files=max_files)
     except RuntimeError as exc:
@@ -4492,10 +4580,12 @@ def cmd_init_code_index(root: Path, repo_root: Path, max_files: int, max_bytes: 
     changed = []
     seen_paths = {code_index_rel_path(repo_root, path) for path in files}
     for path in files:
-        entry, _ = code_index_entry_for_file(root, entries, repo_root, path, max_bytes)
+        entry, _ = code_index_entry_for_file(root, entries, repo_root, path, max_bytes, workspace_ref=workspace_ref, project_ref=project_ref)
         changed.append(entry)
         entries[entry["id"]] = entry
     for entry in entries.values():
+        if not code_entry_matches_repo_scope(entry, workspace_ref, project_ref):
+            continue
         target = entry.get("target", {})
         if isinstance(target, dict) and target.get("kind") == "file" and target.get("path") not in seen_paths and entry.get("target_state") == "present":
             payload = public_code_index_entry(entry)
@@ -4511,6 +4601,7 @@ def cmd_index_code(root: Path, repo_root: Path, includes: list[str], excludes: l
     if errors:
         print_errors(errors)
         return 1
+    workspace_ref, project_ref = repo_scope_for_root(root, repo_root)
     try:
         files = discover_files(repo_root, includes, excludes, git_tracked=False, max_files=max_files)
     except RuntimeError as exc:
@@ -4518,7 +4609,7 @@ def cmd_index_code(root: Path, repo_root: Path, includes: list[str], excludes: l
         return 1
     changed = []
     for path in files:
-        entry, _ = code_index_entry_for_file(root, entries, repo_root, path, max_bytes)
+        entry, _ = code_index_entry_for_file(root, entries, repo_root, path, max_bytes, workspace_ref=workspace_ref, project_ref=project_ref)
         changed.append(entry)
         entries[entry["id"]] = entry
     return persist_code_index_entries(root, entries, changed, f"Indexed {len(files)} code file(s)")
@@ -4529,9 +4620,12 @@ def cmd_code_refresh(root: Path, repo_root: Path, paths: list[str], max_bytes: i
     if errors:
         print_errors(errors)
         return 1
+    workspace_ref, project_ref = repo_scope_for_root(root, repo_root)
     patterns = paths or ["**/*"]
     changed = []
     for entry in list(entries.values()):
+        if not code_entry_matches_repo_scope(entry, workspace_ref, project_ref):
+            continue
         target = entry.get("target", {})
         if not isinstance(target, dict) or target.get("kind") != "file":
             continue
@@ -4540,7 +4634,7 @@ def cmd_code_refresh(root: Path, repo_root: Path, paths: list[str], max_bytes: i
             continue
         file_path = repo_root / rel
         if file_path.exists() and file_path.is_file():
-            entry_payload, created = code_index_entry_for_file(root, entries, repo_root, file_path, max_bytes)
+            entry_payload, created = code_index_entry_for_file(root, entries, repo_root, file_path, max_bytes, workspace_ref=workspace_ref, project_ref=project_ref)
             changed.append(entry_payload)
             entries[entry_payload["id"]] = entry_payload
             if created:
@@ -4569,7 +4663,9 @@ def cmd_code_info(root: Path, repo_root: Path, entry_ref: str | None, path: str 
     if errors:
         print_errors(errors)
         return 1
-    entry = resolve_code_entry(entries, entry_ref, path)
+    workspace_ref, project_ref = repo_scope_for_root(root, repo_root)
+    scoped_entries = {key: entry for key, entry in entries.items() if code_entry_matches_repo_scope(entry, workspace_ref, project_ref)}
+    entry = resolve_code_entry(scoped_entries, entry_ref, path)
     if not entry:
         print("missing code index entry")
         return 1
@@ -4615,6 +4711,7 @@ def cmd_code_search(
     if errors:
         print_errors(errors)
         return 1
+    workspace_ref, project_ref = repo_scope_for_root(root, repo_root)
     try:
         fields = parse_code_fields(fields_value)
     except ValueError as exc:
@@ -4641,6 +4738,8 @@ def cmd_code_search(
     results = []
     if not (query and not cix_filter_present):
         for entry in entries.values():
+            if not code_entry_matches_repo_scope(entry, workspace_ref, project_ref):
+                continue
             status = str(entry.get("status", ""))
             if status == "missing" and not include_missing:
                 continue
@@ -4712,6 +4811,7 @@ def cmd_code_search(
             if ref not in link_candidates[ref_key]:
                 link_candidates[ref_key].append(ref)
     if query:
+        scoped_entries = {key: entry for key, entry in entries.items() if code_entry_matches_repo_scope(entry, workspace_ref, project_ref)}
         backend_payload = cocoindex_search_payload(
             root,
             repo_root,
@@ -4720,12 +4820,12 @@ def cmd_code_search(
             path_patterns=path_patterns,
             limit=limit,
             scope=scope,
-            workspace_ref=current_workspace_ref(root) or None,
-            project_ref=current_project_ref(root) or None,
+            workspace_ref=workspace_ref or None,
+            project_ref=project_ref or None,
         )
         backend_payload = enrich_backend_results_with_cix(
             backend_payload,
-            entries,
+            scoped_entries,
             repo_root,
             link_candidates=link_candidates,
         )
@@ -4791,6 +4891,7 @@ def code_feedback_review_payload(
     if errors:
         print_errors(errors)
         return None, 1
+    workspace_ref, project_ref = repo_scope_for_root(root, repo_root)
     link_candidates, exit_code = code_link_candidates_for_refs(root, link_candidate_refs)
     if exit_code or link_candidates is None:
         return None, 1
@@ -4801,12 +4902,13 @@ def code_feedback_review_payload(
         language=language,
         path_patterns=path_patterns,
         limit=limit,
-        workspace_ref=current_workspace_ref(root) or None,
-        project_ref=current_project_ref(root) or None,
+        workspace_ref=workspace_ref or None,
+        project_ref=project_ref or None,
     )
+    scoped_entries = {key: entry for key, entry in entries.items() if code_entry_matches_repo_scope(entry, workspace_ref, project_ref)}
     backend_payload = enrich_backend_results_with_cix(
         backend_payload,
-        entries,
+        scoped_entries,
         repo_root,
         link_candidates=link_candidates,
     )
@@ -4938,7 +5040,9 @@ def cmd_code_smell_report(
     if invalid_severities:
         print(f"invalid smell severity: {invalid_severities[0]}")
         return 1
-    rows = code_smell_rows(repo_root, entries, categories, severities, include_stale)[: max(1, limit)]
+    workspace_ref, project_ref = repo_scope_for_root(root, repo_root)
+    scoped_entries = {key: entry for key, entry in entries.items() if code_entry_matches_repo_scope(entry, workspace_ref, project_ref)}
+    rows = code_smell_rows(repo_root, scoped_entries, categories, severities, include_stale)[: max(1, limit)]
     if output_format == "json":
         print(json.dumps(code_smell_report_payload(rows, categories, severities, include_stale), indent=2, ensure_ascii=False))
         return 0
@@ -4969,6 +5073,12 @@ def cmd_code_entry_create(root: Path, target_kind: str, path: str | None, name: 
         manual_features=manual_features,
         note=note,
     )
+    workspace_ref = current_workspace_ref(root)
+    project_ref = current_project_ref(root)
+    if workspace_ref:
+        payload["workspace_ref"] = workspace_ref
+    if project_ref:
+        payload["project_ref"] = project_ref
     return persist_code_index_entries(root, entries, [payload], f"Created code index entry {entry_id}")
 
 
@@ -6150,7 +6260,7 @@ def parse_args() -> argparse.Namespace:
         "init-code-index",
         help="Initialize generated CIX-* code index entries from git-tracked files.",
     )
-    init_code_index.add_argument("--root", default=".")
+    init_code_index.add_argument("--root")
     init_code_index.add_argument("--include-untracked", action="store_true")
     init_code_index.add_argument("--max-files", type=int, default=1000)
     init_code_index.add_argument("--max-bytes-per-file", type=int, default=512 * 1024)
@@ -6158,7 +6268,7 @@ def parse_args() -> argparse.Namespace:
         "index-code",
         help="Index code files by include/exclude globs into CIX-* entries.",
     )
-    index_code.add_argument("--root", default=".")
+    index_code.add_argument("--root")
     index_code.add_argument("--include", dest="includes", action="append", default=[])
     index_code.add_argument("--exclude", dest="excludes", action="append", default=[])
     index_code.add_argument("--max-files", type=int, default=1000)
@@ -6167,14 +6277,14 @@ def parse_args() -> argparse.Namespace:
         "code-refresh",
         help="Refresh existing CIX-* metadata for path globs and mark missing files.",
     )
-    code_refresh.add_argument("--root", default=".")
+    code_refresh.add_argument("--root")
     code_refresh.add_argument("--path", dest="paths", action="append", default=[])
     code_refresh.add_argument("--max-bytes-per-file", type=int, default=512 * 1024)
     code_info = subparsers.add_parser(
         "code-info",
         help="Show projected metadata for one CIX-* entry or path.",
     )
-    code_info.add_argument("--root", default=".")
+    code_info.add_argument("--root")
     code_info.add_argument("--entry", dest="entry_ref")
     code_info.add_argument("--path")
     code_info.add_argument("--fields")
@@ -6183,7 +6293,7 @@ def parse_args() -> argparse.Namespace:
         "code-search",
         help="Search CIX-* entries with explicit filters and projection fields.",
     )
-    code_search.add_argument("--root", default=".")
+    code_search.add_argument("--root")
     code_search.add_argument("--query", help="Optional semantic code query proxied through the configured TEP code backend.")
     code_search.add_argument("--scope", choices=sorted(COCOINDEX_SCOPES), help="Backend index scope. Defaults to CocoIndex settings.")
     code_search.add_argument("--path", dest="path_patterns", action="append", default=[])
@@ -6215,7 +6325,7 @@ def parse_args() -> argparse.Namespace:
         "code-feedback",
         help="Review or apply backend-hit feedback links through TEP CIX records.",
     )
-    code_feedback.add_argument("--root", default=".")
+    code_feedback.add_argument("--root")
     code_feedback.add_argument("--query", help="Semantic code query to review through the configured TEP code backend.")
     code_feedback.add_argument("--path", dest="path_patterns", action="append", default=[])
     code_feedback.add_argument("--language")
@@ -6236,7 +6346,7 @@ def parse_args() -> argparse.Namespace:
         "code-smell-report",
         help="Read-only report of active CIX smell annotations.",
     )
-    code_smell_report.add_argument("--root", default=".")
+    code_smell_report.add_argument("--root")
     code_smell_report.add_argument("--category", dest="categories", action="append", default=[])
     code_smell_report.add_argument("--severity", dest="severities", action="append", default=[])
     code_smell_report.add_argument("--include-stale", action="store_true")
@@ -7321,20 +7431,28 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
     if args.command == "logic-conflict-candidates":
         raise SystemExit(cmd_logic_conflict_candidates(root, limit=args.limit, output_format=args.output_format))
     if args.command == "init-code-index":
+        repo_root = resolve_code_repo_root(root, args.root)
+        if repo_root is None:
+            print("missing repository root")
+            raise SystemExit(1)
         raise SystemExit(
             cmd_init_code_index(
                 root,
-                repo_root=Path(args.root).expanduser().resolve(),
+                repo_root=repo_root,
                 max_files=args.max_files,
                 max_bytes=args.max_bytes_per_file,
                 include_untracked=args.include_untracked,
             )
         )
     if args.command == "index-code":
+        repo_root = resolve_code_repo_root(root, args.root)
+        if repo_root is None:
+            print("missing repository root")
+            raise SystemExit(1)
         raise SystemExit(
             cmd_index_code(
                 root,
-                repo_root=Path(args.root).expanduser().resolve(),
+                repo_root=repo_root,
                 includes=args.includes,
                 excludes=args.excludes,
                 max_files=args.max_files,
@@ -7342,19 +7460,27 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "code-refresh":
+        repo_root = resolve_code_repo_root(root, args.root)
+        if repo_root is None:
+            print("missing repository root")
+            raise SystemExit(1)
         raise SystemExit(
             cmd_code_refresh(
                 root,
-                repo_root=Path(args.root).expanduser().resolve(),
+                repo_root=repo_root,
                 paths=args.paths,
                 max_bytes=args.max_bytes_per_file,
             )
         )
     if args.command == "code-info":
+        repo_root = resolve_code_repo_root(root, args.root)
+        if repo_root is None:
+            print("missing repository root")
+            raise SystemExit(1)
         raise SystemExit(
             cmd_code_info(
                 root,
-                repo_root=Path(args.root).expanduser().resolve(),
+                repo_root=repo_root,
                 entry_ref=args.entry_ref,
                 path=args.path,
                 fields_value=args.fields,
@@ -7362,10 +7488,14 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "code-search":
+        repo_root = resolve_code_repo_root(root, args.root)
+        if repo_root is None:
+            print("missing repository root")
+            raise SystemExit(1)
         raise SystemExit(
             cmd_code_search(
                 root,
-                repo_root=Path(args.root).expanduser().resolve(),
+                repo_root=repo_root,
                 query=args.query,
                 path_patterns=args.path_patterns,
                 language=args.language,
@@ -7390,10 +7520,14 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "code-feedback":
+        repo_root = resolve_code_repo_root(root, args.root)
+        if repo_root is None:
+            print("missing repository root")
+            raise SystemExit(1)
         raise SystemExit(
             cmd_code_feedback(
                 root,
-                repo_root=Path(args.root).expanduser().resolve(),
+                repo_root=repo_root,
                 query=args.query,
                 path_patterns=args.path_patterns,
                 language=args.language,
@@ -7407,10 +7541,14 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "code-smell-report":
+        repo_root = resolve_code_repo_root(root, args.root)
+        if repo_root is None:
+            print("missing repository root")
+            raise SystemExit(1)
         raise SystemExit(
             cmd_code_smell_report(
                 root,
-                repo_root=Path(args.root).expanduser().resolve(),
+                repo_root=repo_root,
                 categories=args.categories,
                 severities=args.severities,
                 include_stale=args.include_stale,
@@ -7678,10 +7816,10 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "backend-status":
-        repo_root = args.root.expanduser().resolve() if args.root else None
+        repo_root = resolve_code_repo_root(root, args.root, fallback_to_cwd=False)
         raise SystemExit(cmd_backend_status(root, output_format=args.output_format, repo_root=repo_root, scope=args.scope))
     if args.command == "backend-check":
-        repo_root = args.root.expanduser().resolve() if args.root else None
+        repo_root = resolve_code_repo_root(root, args.root, fallback_to_cwd=False)
         raise SystemExit(
             cmd_backend_check(root, backend=args.backend, output_format=args.output_format, repo_root=repo_root, scope=args.scope)
         )
