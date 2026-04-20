@@ -71,6 +71,7 @@ from context_lib import (
     RESTRICTION_STATUSES,
     SOURCE_KINDS,
     ATTENTION_SCOPES,
+    CURIOSITY_MAP_VOLUMES,
     TAP_KINDS,
     TASK_STATUSES,
     TASK_TYPES,
@@ -89,6 +90,8 @@ from context_lib import (
     backend_status_payload,
     backend_status_text_lines,
     build_attention_index,
+    curiosity_map_payload,
+    curiosity_map_text_lines,
     build_action_payload,
     build_claim_payload,
     build_comparison_payload,
@@ -3275,6 +3278,23 @@ def cmd_attention_diagram_compare(root: Path, limit: int, output_format: str, sc
     return 0
 
 
+def cmd_curiosity_map(root: Path, volume: str, output_format: str, scope: str) -> int:
+    _, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload = load_attention_payload(root)
+    if not payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    scoped_payload = scoped_attention_payload(root, payload, scope)
+    map_payload = curiosity_map_payload(scoped_payload, volume=volume)
+    if output_format == "json":
+        print(json.dumps(map_payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(curiosity_map_text_lines(map_payload)))
+    return 0
+
+
 def cmd_curiosity_probes(root: Path, budget: int, output_format: str, scope: str) -> int:
     payload = load_attention_payload(root)
     if not payload:
@@ -6037,6 +6057,13 @@ def parse_args() -> argparse.Namespace:
     attention_diagram_compare.add_argument("--limit", type=int, default=8)
     attention_diagram_compare.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     attention_diagram_compare.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    curiosity_map = subparsers.add_parser(
+        "curiosity-map",
+        help="Show a generated visual-thinking curiosity map with heat, cold zones, bridges, and probes. Not proof.",
+    )
+    curiosity_map.add_argument("--volume", choices=sorted(CURIOSITY_MAP_VOLUMES), default="normal")
+    curiosity_map.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    curiosity_map.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     curiosity_probes = subparsers.add_parser(
         "curiosity-probes",
         help="Show generated bounded curiosity probes. Not proof.",
@@ -7242,6 +7269,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 scope=args.scope,
             )
         )
+    if args.command == "curiosity-map":
+        raise SystemExit(cmd_curiosity_map(root, volume=args.volume, output_format=args.output_format, scope=args.scope))
     if args.command == "curiosity-probes":
         raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format, scope=args.scope))
     if args.command == "probe-inspect":

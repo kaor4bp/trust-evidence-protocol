@@ -348,6 +348,7 @@ Exposed tools:
 - `attention_map`: generated attention-map clusters and cold zones; defaults to current `.tep` workspace/project/task focus
 - `attention_diagram`: generated Mermaid attention graph over clusters, top records, established bridges, and curiosity probes; defaults to `detail=compact`
 - `attention_diagram_compare`: compact/full diagram metric comparison for deciding whether summary labels are worth requesting
+- `curiosity_map`: generated visual-thinking map with heat, cold zones, established bridges, candidate probes, and next inspection commands; `volume=compact|normal|wide`
 - `curiosity_probes`: generated bounded curiosity questions; defaults to current `.tep` workspace/project/task focus
 - `probe_inspect`: generated probe context with canonical record summaries, source quotes, direct link status, and follow-up commands
 - `probe_chain_draft`: generated evidence-chain skeleton for one probe; validates/augments the draft but does not make it proof

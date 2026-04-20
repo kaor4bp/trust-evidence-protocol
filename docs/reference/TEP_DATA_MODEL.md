@@ -423,6 +423,7 @@ Allowed use:
 - propose bounded curiosity probes over uncertain cross-cluster relationships
 - report bounded no-link observations for review
 - manage context budget with partial map views
+- render compact, normal, or wide visual-thinking maps that combine heat, cold zones, bridges, and curiosity prompts
 
 Forbidden use:
 

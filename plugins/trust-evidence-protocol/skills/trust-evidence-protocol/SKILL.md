@@ -77,6 +77,8 @@ Persistence write boundary:
 - Use `attention-diagram` / MCP `attention_diagram` when a Mermaid cluster/link map is a cheaper way to orient than reading multiple textual reports.
 - Prefer `attention-diagram detail=compact` first; request `detail=full` only when record-summary labels are needed.
 - Use `attention-diagram-compare` / MCP `attention_diagram_compare` when deciding mechanically whether full diagram labels are worth the payload.
+- Use `curiosity-map` / MCP `curiosity_map` when the agent needs one visual-thinking map with heat, cold zones, established bridges, candidate curiosity links, and recommended next probes.
+- Prefer `curiosity-map volume=compact` first; expand to `normal` or `wide` only when the compact map hides relevant neighboring clusters or probes.
 - Attention lookup defaults to current `.tep` workspace/project/task focus; only use `scope=all` when deliberately doing cross-scope triage.
 - Curiosity probe scores/explanations rank inspection priority only; they are not confidence, support, or contradiction strength.
 - After choosing a curiosity probe, prefer `probe-inspect` / MCP `probe_inspect` to mechanically fetch summaries, source quotes, direct link status, and follow-up commands before spending tokens on manual exploration.

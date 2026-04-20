@@ -1450,6 +1450,23 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert diagram_compare["compact"]["omitted_fields"] == ["record_summaries"]
     assert diagram_compare["full"]["omitted_fields"] == []
     assert diagram_compare["delta"]["payload_char_count"] > 0
+    curiosity_map = json.loads(run_cli(context, "curiosity-map", "--volume", "compact", "--scope", "all", "--format", "json").stdout)
+    assert curiosity_map["map_is_proof"] is False
+    assert curiosity_map["attention_index_is_proof"] is False
+    assert curiosity_map["volume"] == "compact"
+    assert curiosity_map["metrics"]["metrics_are_proof"] is False
+    assert curiosity_map["metrics"]["cluster_count"] <= curiosity_map["budget"]["clusters"]
+    assert curiosity_map["metrics"]["probe_count"] <= curiosity_map["budget"]["probes"]
+    assert "graph TD" in curiosity_map["mermaid"]
+    assert any(
+        {facility_claim_id, program_claim_id}.issubset(set(prompt["record_refs"]))
+        for prompt in curiosity_map["curiosity_prompts"]
+    )
+    curiosity_map_text = run_cli(context, "curiosity-map", "--volume", "compact", "--scope", "all").stdout
+    assert "# Curiosity Map" in curiosity_map_text
+    assert "visual-thinking map" in curiosity_map_text
+    assert "Curiosity Prompts" in curiosity_map_text
+    assert "Use the map to decide what to inspect next" in curiosity_map_text
     probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
     assert probes_payload["attention_index_is_proof"] is False
     assert all(ref.startswith("CLM-") for probe in probes_payload["probes"] for ref in probe["record_refs"])

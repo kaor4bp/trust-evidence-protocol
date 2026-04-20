@@ -31,6 +31,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `attention_map`: equivalent to `attention-map`; defaults to current `.tep` focus
 - `attention_diagram`: equivalent to `attention-diagram`; renders a Mermaid cluster/link map, defaulting to compact labels
 - `attention_diagram_compare`: equivalent to `attention-diagram-compare`; compares compact/full diagram metrics
+- `curiosity_map`: equivalent to `curiosity-map`; renders a visual-thinking map with heat, cold zones, bridges, candidate probes, and volume control
 - `telemetry_report`: equivalent to `telemetry-report`; reports MCP/CLI/hook lookup telemetry and raw claim read counts
 - `curiosity_probes`: equivalent to `curiosity-probes`; defaults to current `.tep` focus
 - `probe_inspect`: equivalent to `probe-inspect`; expands one generated probe into canonical inspection context
@@ -100,6 +101,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-map --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-diagram --scope current --limit 8 --detail compact
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context attention-diagram-compare --scope current --limit 8
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context curiosity-map --scope current --volume compact
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context curiosity-probes --budget 5 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-inspect --index 1 --scope current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context probe-chain-draft --index 1 --scope current --format json
@@ -137,6 +139,7 @@ Use `attention-map` and `curiosity-probes` to reduce token-heavy context explora
 Use `attention-diagram` when a Mermaid cluster/link map is a cheaper orientation aid than reading several textual reports.
 Use `attention-diagram --detail full` only when compact node labels are not enough.
 Use `attention-diagram-compare` to compare compact/full diagram payload cost mechanically before requesting full labels.
+Use `curiosity-map --volume compact|normal|wide` when the agent needs one visual orientation view with heat, cold zones, bridges, curiosity prompts, and next inspection commands.
 They default to `--scope current`, using the current workspace/project/task from settings or `.tep`; use `--scope all` only for deliberate cross-scope triage.
 Probe `score` and `explanation` fields are mechanical ranking hints for what to inspect first, not evidence confidence.
 Use `probe-inspect` to mechanically fetch record summaries, source quotes, direct link status, and suggested follow-up commands for a selected probe.

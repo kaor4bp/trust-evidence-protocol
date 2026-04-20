@@ -73,6 +73,7 @@ from tep_runtime.code_backends import (
 from tep_runtime.actions import build_action_payload
 from tep_runtime.attention import (
     ATTENTION_SCOPES,
+    CURIOSITY_MAP_VOLUMES,
     TAP_KINDS,
     append_tap_event,
     attention_diagram_mermaid_lines,
@@ -81,6 +82,8 @@ from tep_runtime.attention import (
     attention_diagram_text_lines,
     attention_map_text_lines,
     build_attention_index,
+    curiosity_map_payload,
+    curiosity_map_text_lines,
     curiosity_probe_text_lines,
     filter_attention_payload,
     load_attention_payload,

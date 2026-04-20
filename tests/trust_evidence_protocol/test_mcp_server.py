@@ -401,6 +401,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
             },
             {
                 "jsonrpc": "2.0",
+                "id": 30,
+                "method": "tools/call",
+                "params": {
+                    "name": "curiosity_map",
+                    "arguments": {"context": str(context), "volume": "compact", "scope": "all", "format": "json"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
                 "id": 21,
                 "method": "tools/call",
                 "params": {
@@ -515,6 +524,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "attention_map",
         "attention_diagram",
         "attention_diagram_compare",
+        "curiosity_map",
         "curiosity_probes",
         "probe_inspect",
         "probe_chain_draft",
@@ -656,6 +666,13 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert '"comparison_is_proof": false' in attention_diagram_compare["content"][0]["text"]
     assert '"record_summaries"' in attention_diagram_compare["content"][0]["text"]
     assert '"payload_char_count"' in attention_diagram_compare["content"][0]["text"]
+
+    curiosity_map = by_id[30]["result"]
+    assert curiosity_map["isError"] is False
+    assert '"map_is_proof": false' in curiosity_map["content"][0]["text"]
+    assert '"volume": "compact"' in curiosity_map["content"][0]["text"]
+    assert '"curiosity_prompts"' in curiosity_map["content"][0]["text"]
+    assert "graph TD" in curiosity_map["content"][0]["text"]
 
     next_step = by_id[21]["result"]
     assert next_step["isError"] is False

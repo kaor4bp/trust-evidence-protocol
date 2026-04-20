@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.77"
+SERVER_VERSION = "0.1.78"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -461,6 +461,21 @@ TOOLS: list[JsonObject] = [
             {
                 "context": context_property(),
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 8},
+                "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "curiosity_map",
+        "description": (
+            "Read a generated visual-thinking curiosity map with heat, cold zones, established bridges, "
+            "candidate probes, and next inspection commands. Map data is navigation only, not proof."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "volume": {"type": "string", "enum": ["compact", "normal", "wide"], "default": "normal"},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
@@ -1144,6 +1159,21 @@ def tool_attention_diagram_compare(args: JsonObject) -> tuple[bool, str]:
     )
 
 
+def tool_curiosity_map(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "curiosity-map",
+            "--volume",
+            str(args.get("volume") or "normal"),
+            "--scope",
+            str(args.get("scope") or "current"),
+            "--format",
+            as_format(args.get("format")),
+        ],
+    )
+
+
 def tool_curiosity_probes(args: JsonObject) -> tuple[bool, str]:
     return run_cli(
         args,
@@ -1353,6 +1383,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "attention_map": tool_attention_map,
     "attention_diagram": tool_attention_diagram,
     "attention_diagram_compare": tool_attention_diagram_compare,
+    "curiosity_map": tool_curiosity_map,
     "curiosity_probes": tool_curiosity_probes,
     "probe_inspect": tool_probe_inspect,
     "probe_chain_draft": tool_probe_chain_draft,

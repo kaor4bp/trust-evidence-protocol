@@ -36,6 +36,12 @@ ACCESS_WEIGHTS = {
 }
 DEFAULT_HALF_LIFE_DAYS = 7.0
 ATTENTION_SCOPES = {"current", "all"}
+CURIOSITY_MAP_VOLUMES = {"compact", "normal", "wide"}
+CURIOSITY_MAP_BUDGETS = {
+    "compact": {"clusters": 4, "records_per_cluster": 2, "bridges": 4, "probes": 3, "cold_zones": 4},
+    "normal": {"clusters": 8, "records_per_cluster": 3, "bridges": 8, "probes": 6, "cold_zones": 8},
+    "wide": {"clusters": 14, "records_per_cluster": 4, "bridges": 14, "probes": 10, "cold_zones": 14},
+}
 PROBE_RECORD_TYPE_WEIGHTS = {
     "claim": 5,
     "model": 4,
@@ -702,6 +708,241 @@ def attention_diagram_text_lines(payload: dict, *, limit: int, detail: str = "co
     ]
     lines.extend(mermaid.splitlines())
     lines.extend(["```", "", "Inspect canonical records before citing any diagram relationship."])
+    return lines
+
+
+def curiosity_map_budget(volume: str) -> dict[str, int]:
+    return CURIOSITY_MAP_BUDGETS.get(volume, CURIOSITY_MAP_BUDGETS["normal"])
+
+
+def curiosity_map_payload(payload: dict, *, volume: str = "normal") -> dict:
+    budget = curiosity_map_budget(volume)
+    active_clusters = sorted(
+        payload.get("clusters", {}).values(),
+        key=lambda item: (-float(item.get("activity_score", 0)), -int(item.get("record_count", 0)), str(item.get("term", ""))),
+    )
+    cold_topic_ids = [
+        str(zone.get("topic_id", ""))
+        for zone in payload.get("cold_zones", [])
+        if isinstance(zone, dict) and str(zone.get("topic_id", ""))
+    ]
+    clusters_by_id = {
+        str(cluster.get("id", "")): cluster
+        for cluster in active_clusters
+        if str(cluster.get("id", ""))
+    }
+    clusters = []
+    seen_cluster_ids: set[str] = set()
+    cold_quota = max(1, budget["clusters"] // 2)
+    for topic_id in cold_topic_ids[:cold_quota]:
+        cluster = clusters_by_id.get(topic_id)
+        if cluster is not None and topic_id not in seen_cluster_ids:
+            clusters.append(cluster)
+            seen_cluster_ids.add(topic_id)
+    for cluster in active_clusters:
+        cluster_id = str(cluster.get("id", ""))
+        if cluster_id in seen_cluster_ids:
+            continue
+        clusters.append(cluster)
+        seen_cluster_ids.add(cluster_id)
+        if len(clusters) >= budget["clusters"]:
+            break
+    clusters = clusters[: budget["clusters"]]
+    cluster_ids = {str(cluster.get("id", "")) for cluster in clusters}
+    records = payload.get("records", {}) if isinstance(payload.get("records"), dict) else {}
+    selected_record_ids: set[str] = set()
+    for cluster in clusters:
+        selected_record_ids.update(
+            str(record_id)
+            for record_id in cluster.get("top_records", [])[: budget["records_per_cluster"]]
+            if str(record_id) in records
+        )
+
+    bridges = [
+        bridge
+        for bridge in payload.get("bridges", [])
+        if isinstance(bridge, dict)
+        and str(bridge.get("from_topic", "")) in cluster_ids
+        and str(bridge.get("to_topic", "")) in cluster_ids
+    ][: budget["bridges"]]
+    probes = [
+        probe
+        for probe in payload.get("probes", [])
+        if isinstance(probe, dict) and any(str(cluster_ref) in cluster_ids for cluster_ref in probe.get("cluster_refs", []))
+    ][: budget["probes"]]
+    for probe in probes:
+        selected_record_ids.update(str(record_id) for record_id in probe.get("record_refs", []) if str(record_id) in records)
+
+    selected_records = {
+        record_id: {
+            "id": record.get("id", record_id),
+            "record_type": record.get("record_type", ""),
+            "status": record.get("status", ""),
+            "summary": record.get("summary", ""),
+            "activity_score": record.get("activity_score", 0.0),
+            "tap_count": record.get("tap_count", 0),
+            "access_count": record.get("access_count", 0),
+            "top_topic_id": record.get("top_topic_id", ""),
+            "top_topic_term": record.get("top_topic_term", ""),
+            "attention_index_is_proof": False,
+        }
+        for record_id, record in sorted(records.items())
+        if record_id in selected_record_ids
+    }
+    cold_zones = [
+        zone
+        for zone in payload.get("cold_zones", [])
+        if isinstance(zone, dict) and str(zone.get("topic_id", "")) in cluster_ids
+    ][: budget["cold_zones"]]
+
+    visual_payload = {
+        "map_is_proof": False,
+        "attention_index_is_proof": False,
+        "scope": payload.get("scope", "all"),
+        "workspace_ref": payload.get("workspace_ref", ""),
+        "project_ref": payload.get("project_ref", ""),
+        "task_ref": payload.get("task_ref", ""),
+        "volume": volume,
+        "budget": budget,
+        "clusters": clusters,
+        "records": selected_records,
+        "bridges": bridges,
+        "cold_zones": cold_zones,
+        "probes": probes,
+        "curiosity_prompts": [
+            {
+                "probe_index": index,
+                "record_refs": probe.get("record_refs", []),
+                "cluster_refs": probe.get("cluster_refs", []),
+                "score": probe.get("score", 0),
+                "question": probe.get("explanation") or probe.get("reason", ""),
+                "link_state": probe.get("link_state", "candidate"),
+                "prompt_is_proof": False,
+            }
+            for index, probe in enumerate(probes, start=1)
+        ],
+        "recommended_commands": [
+            f"probe-route --index {index} --scope {payload.get('scope', 'current')}"
+            for index, _probe in enumerate(probes[:3], start=1)
+        ],
+        "note": "Generated visual-thinking curiosity map. Navigation only; not proof.",
+    }
+    visual_payload["mermaid"] = "\n".join(curiosity_map_mermaid_lines(visual_payload))
+    visual_payload["metrics"] = curiosity_map_metrics(visual_payload)
+    return visual_payload
+
+
+def curiosity_map_mermaid_lines(payload: dict) -> list[str]:
+    lines = [
+        "%% TEP curiosity map. Generated navigation only; not proof.",
+        "graph TD",
+        '  meta["Not proof: use this map to choose inspection, then cite canonical records"]',
+    ]
+    records = payload.get("records", {}) if isinstance(payload.get("records"), dict) else {}
+    declared_records: set[str] = set()
+    cold_topic_ids = {str(zone.get("topic_id", "")) for zone in payload.get("cold_zones", []) if isinstance(zone, dict)}
+    for cluster in payload.get("clusters", []):
+        cluster_id = str(cluster.get("id", ""))
+        node_id = mermaid_node_id("cluster", cluster_id)
+        heat = float(cluster.get("activity_score", 0.0))
+        label = mermaid_label(
+            f"{cluster.get('term', '')}\\nrecords={cluster.get('record_count', 0)} heat={heat} taps/access={cluster.get('access_count', 0)}"
+        )
+        style = "cold" if cluster_id in cold_topic_ids else "active"
+        lines.append(f'  {node_id}["{label}"]')
+        lines.append(f"  {node_id}:::cluster_{style}")
+        for record_ref in cluster.get("top_records", [])[: int(payload.get("budget", {}).get("records_per_cluster", 3))]:
+            record_ref = str(record_ref)
+            if record_ref not in records:
+                continue
+            record_node = mermaid_node_id("record", record_ref)
+            if record_ref not in declared_records:
+                record = records[record_ref]
+                label = mermaid_label(
+                    f"{record_ref}\\n{record.get('record_type', '')} heat={record.get('activity_score', 0)}\\n{record_diagram_summary(record)}",
+                    limit=100,
+                )
+                lines.append(f'  {record_node}["{label}"]')
+                lines.append(f"  {record_node}:::record")
+                declared_records.add(record_ref)
+            lines.append(f"  {node_id} --> {record_node}")
+    for record_ref, record in records.items():
+        if record_ref in declared_records:
+            continue
+        record_node = mermaid_node_id("record", record_ref)
+        label = mermaid_label(
+            f"{record_ref}\\n{record.get('record_type', '')} heat={record.get('activity_score', 0)}\\n{record_diagram_summary(record)}",
+            limit=100,
+        )
+        lines.append(f'  {record_node}["{label}"]')
+        lines.append(f"  {record_node}:::record")
+        declared_records.add(record_ref)
+    for bridge in payload.get("bridges", []):
+        from_node = mermaid_node_id("cluster", str(bridge.get("from_topic", "")))
+        to_node = mermaid_node_id("cluster", str(bridge.get("to_topic", "")))
+        lines.append(f"  {from_node} == established ==> {to_node}")
+    for probe in payload.get("probes", []):
+        refs = [str(record_ref) for record_ref in probe.get("record_refs", []) if str(record_ref) in records]
+        if len(refs) != 2:
+            continue
+        left = mermaid_node_id("record", refs[0])
+        right = mermaid_node_id("record", refs[1])
+        lines.append(f"  {left} -. curiosity? score={probe.get('score', 0)} .- {right}")
+    lines.extend(
+        [
+            "  classDef cluster_active fill:#d7ecff,stroke:#2862a8,color:#111",
+            "  classDef cluster_cold fill:#fff3bf,stroke:#b7791f,color:#111",
+            "  classDef record fill:#f8f9fa,stroke:#495057,color:#111",
+        ]
+    )
+    return lines
+
+
+def curiosity_map_metrics(payload: dict) -> dict:
+    payload_without_metrics = {key: value for key, value in payload.items() if key != "metrics"}
+    return {
+        "metrics_are_proof": False,
+        "cluster_count": len(payload.get("clusters", [])),
+        "record_count": len(payload.get("records", {})),
+        "bridge_count": len(payload.get("bridges", [])),
+        "cold_zone_count": len(payload.get("cold_zones", [])),
+        "probe_count": len(payload.get("probes", [])),
+        "mermaid_char_count": len(str(payload.get("mermaid", ""))),
+        "payload_char_count": len(json.dumps(payload_without_metrics, ensure_ascii=False, sort_keys=True)),
+    }
+
+
+def curiosity_map_text_lines(payload: dict) -> list[str]:
+    metrics = payload.get("metrics", {})
+    lines = [
+        "# Curiosity Map",
+        "",
+        "Mode: generated visual-thinking map for bounded curiosity. Not proof.",
+        f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"volume: `{payload.get('volume')}` clusters=`{metrics.get('cluster_count', 0)}` records=`{metrics.get('record_count', 0)}` cold_zones=`{metrics.get('cold_zone_count', 0)}` probes=`{metrics.get('probe_count', 0)}` payload_chars=`{metrics.get('payload_char_count', 0)}`",
+        "",
+        "```mermaid",
+    ]
+    lines.extend(str(payload.get("mermaid", "")).splitlines())
+    lines.extend(["```", "", "## Curiosity Prompts"])
+    for prompt in payload.get("curiosity_prompts", []):
+        refs = ", ".join(f"`{ref}`" for ref in prompt.get("record_refs", []))
+        lines.append(
+            f"- probe `{prompt.get('probe_index')}` score=`{prompt.get('score')}` refs={refs}: {prompt.get('question')}"
+        )
+    if not payload.get("curiosity_prompts"):
+        lines.append("- none")
+    lines.extend(["", "## Recommended Next Commands"])
+    for command in payload.get("recommended_commands", []):
+        lines.append(f"- `{command}`")
+    if not payload.get("recommended_commands"):
+        lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "Use the map to decide what to inspect next; do not cite map links, heat, cold zones, or probes as proof.",
+        ]
+    )
     return lines
 
 
