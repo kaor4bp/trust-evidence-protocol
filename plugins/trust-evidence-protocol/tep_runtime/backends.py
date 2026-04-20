@@ -113,6 +113,8 @@ def _cocoindex_diagnostics(
     storage_marker_exists = bool(storage_marker and storage_marker.is_file())
     storage_index_exists = bool(storage_index and storage_index.exists())
     repo_marker_exists = bool(repo_marker and repo_marker.is_file())
+    runtime_search_ready = storage_index_exists and storage_marker_exists
+    cli_search_ready = runtime_search_ready and repo_marker_exists
     return {
         "default_scope": default_scope,
         "effective_scope": effective_scope,
@@ -123,11 +125,17 @@ def _cocoindex_diagnostics(
             "workspace_ref": workspace_ref,
             "project_ref": project_ref,
             "scoped_db_dir": str(storage_dir) if storage_dir else "",
+            "target_sqlite_db": str(storage_index) if storage_index else "",
+            "settings_path": str(storage_marker) if storage_marker else "",
+            "repo_marker_path": str(repo_marker) if repo_marker else "",
             "db_path_mapping": f"{repo}={storage_dir}" if repo and storage_dir else "",
             "index_exists": storage_index_exists,
             "storage_marker_exists": storage_marker_exists,
             "repo_marker_exists": repo_marker_exists,
-            "search_ready": storage_index_exists and storage_marker_exists and repo_marker_exists,
+            "cli_search_ready": cli_search_ready,
+            "runtime_search_ready": runtime_search_ready,
+            "search_ready": runtime_search_ready,
+            "runtime_path": "repo-marker-cli" if cli_search_ready else ("direct-scoped-db" if runtime_search_ready else ""),
         },
     }
 
@@ -258,8 +266,8 @@ def backend_status_payload(root: Path, *, repo_root: Path | None = None, scope: 
                 "warnings": (
                     ([] if command_available else ["CocoIndex command was not found on PATH"])
                     + (
-                        ["CocoIndex storage exists but `ccc search` requires repo-local .cocoindex_code/settings.yml marker."]
-                        if coco_diagnostics["storage"]["index_exists"]
+                        ["CocoIndex repo marker is absent; TEP code-search will use direct scoped DB runtime path."]
+                        if coco_diagnostics["storage"]["runtime_search_ready"]
                         and not coco_diagnostics["storage"]["repo_marker_exists"]
                         else []
                     )
@@ -391,6 +399,7 @@ def backend_status_text_lines(payload: dict, *, selected: list[dict] | None = No
                     f"  scope: effective=`{item.get('effective_scope')}` default=`{item.get('default_scope')}` "
                     f"index_exists=`{str(storage.get('index_exists')).lower()}` "
                     f"repo_marker=`{str(storage.get('repo_marker_exists')).lower()}` "
+                    f"runtime_path=`{storage.get('runtime_path') or '<none>'}` "
                     f"search_ready=`{str(storage.get('search_ready')).lower()}`"
                 )
                 if storage.get("scoped_db_dir"):

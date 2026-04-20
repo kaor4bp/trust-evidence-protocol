@@ -2815,7 +2815,28 @@ def test_cocoindex_status_distinguishes_storage_from_cli_search_readiness(tmp_pa
     ccc = fake_bin / "ccc"
     ccc.write_text("#!/usr/bin/env bash\necho should-not-run >&2\nexit 99\n", encoding="utf-8")
     ccc.chmod(0o755)
+    helper = fake_bin / "direct-helper"
+    helper.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "import sys\n"
+        "payload = json.loads(sys.stdin.read())\n"
+        "assert payload['storage_dir'].endswith('/.cocoindex_code')\n"
+        "assert payload['target_db'].endswith('/target_sqlite.db')\n"
+        "assert payload['query'] == 'semantic lookup'\n"
+        "print(json.dumps([{\n"
+        "  'file_path': 'src/runtime.py',\n"
+        "  'language': 'python',\n"
+        "  'content': 'def runtime_path():\\n    return \"direct-scoped-db\"',\n"
+        "  'start_line': 7,\n"
+        "  'end_line': 8,\n"
+        "  'score': 0.73\n"
+        "}]))\n",
+        encoding="utf-8",
+    )
+    helper.chmod(0o755)
     monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("TEP_COCOINDEX_DIRECT_SEARCH_HELPER", str(helper))
     run_cli(
         context,
         "configure-runtime",
@@ -2832,15 +2853,22 @@ def test_cocoindex_status_distinguishes_storage_from_cli_search_readiness(tmp_pa
     assert coco["storage"]["index_exists"] is True
     assert coco["storage"]["storage_marker_exists"] is True
     assert coco["storage"]["repo_marker_exists"] is False
-    assert coco["storage"]["search_ready"] is False
-    assert any("repo-local .cocoindex_code/settings.yml marker" in warning for warning in coco["warnings"])
+    assert coco["storage"]["cli_search_ready"] is False
+    assert coco["storage"]["runtime_search_ready"] is True
+    assert coco["storage"]["search_ready"] is True
+    assert coco["storage"]["runtime_path"] == "direct-scoped-db"
+    assert any("direct scoped DB runtime path" in warning for warning in coco["warnings"])
 
     search = json.loads(
         run_cli(context, "code-search", "--root", str(repo), "--query", "semantic lookup", "--format", "json").stdout
     )
-    assert "returncode" not in search["backend_results"]
-    assert search["backend_results"]["results"] == []
-    assert any("TEP will not create repo-local CocoIndex markers" in warning for warning in search["backend_results"]["warnings"])
+    backend = search["backend_results"]
+    assert backend["returncode"] == 0
+    assert backend["runtime_path"] == "direct-scoped-db"
+    assert backend["storage"]["repo_marker_exists"] is False
+    assert backend["storage"]["runtime_search_ready"] is True
+    assert backend["results"][0]["target"] == {"path": "src/runtime.py", "line_start": 7, "line_end": 8}
+    assert backend["results"][0]["runtime_path"] == "direct-scoped-db"
 
 
 def test_code_index_supports_ast_search_refresh_annotations_and_links(tmp_path: Path) -> None:

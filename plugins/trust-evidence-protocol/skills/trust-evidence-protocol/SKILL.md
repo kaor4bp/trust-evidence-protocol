@@ -103,7 +103,7 @@ Persistence write boundary:
 - CocoIndex backend storage is scoped by TEP settings under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code` by default; workspace storage is an explicit broader scope.
 - Backend status and backend output are navigation/diagnostic data only; cite canonical `SRC-*` and `CLM-*` records before using a backend result as proof.
 - Use `backend-status` / `backend-check` before relying on an optional backend, pass repo root/scope when checking code intelligence, and degrade cleanly when dependencies are missing.
-- For CocoIndex, distinguish `index_exists` from `search_ready`; TEP must not create repo-local `.cocoindex_code` markers just to satisfy CLI discovery.
+- For CocoIndex, distinguish `index_exists`, `cli_search_ready`, and `runtime_search_ready`; TEP must not create repo-local `.cocoindex_code` markers just to satisfy CLI discovery, and `code_search` should use the direct scoped-DB runtime path when available.
 - Prefer MCP `backend_status` / `backend_check` when available so selected backend, WSP/PRJ/TASK focus, CocoIndex storage path, and per-scope index state are visible without reading settings or raw backend files.
 - Use `validate-facts` for backend-produced validation candidates; candidates can guide review but cannot support claims or appear as proof-chain facts.
 - Use `export-rdf` only as a backend projection for validation/debugging; the export is not canonical memory and not proof.

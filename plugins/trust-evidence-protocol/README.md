@@ -243,7 +243,8 @@ Backend output may guide lookup, indexing, validation, and candidate generation,
 External code-intelligence backends such as CocoIndex should be accessed through TEP `code-search` / MCP `code_search`, not as parallel direct MCP entrypoints in normal operation.
 TEP scopes CocoIndex storage by default under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code`; workspace scope uses `<context>/backends/cocoindex/workspaces/<WSP-ID>/.cocoindex_code`.
 The default search scope is project; workspace scope is an explicit outward glance, not the normal search boundary.
-Current CocoIndex CLI `ccc search` still requires repo-local `.cocoindex_code/settings.yml` discovery marker; TEP reports `search_ready=false` instead of creating markers in the checkout.
+Current CocoIndex CLI `ccc search` still requires repo-local `.cocoindex_code/settings.yml` discovery marker.
+When that marker is absent but scoped storage has `settings.yml` and `target_sqlite.db`, TEP `code-search` uses a direct scoped-DB runtime path instead of creating markers in the checkout.
 TEP normalizes backend output into navigation-only projections, records telemetry, and keeps `WSP-*` / `PRJ-*` / `TASK-*` scope visible.
 The first fact-validation backend exposes fake RDF/SHACL-shaped checks so agents can debug the flow without installing pySHACL.
 Validation candidates are not proof and do not make a claim supported.
@@ -638,7 +639,7 @@ Commands:
   - can filter annotations with `--annotation-kind smell` and `--annotation-category ...`
   - can use `--query "..."` to proxy a semantic code search through the configured TEP backend, such as CocoIndex, while returning navigation-only TEP-normalized `backend_results`
   - accepts `--scope project|workspace`; project is the default, workspace is an explicit broader glance
-  - when CocoIndex is enabled, TEP passes `COCOINDEX_CODE_DB_PATH_MAPPING` so backend databases live under scoped `<context>/backends/cocoindex/...` storage instead of becoming a separate source of truth
+  - when CocoIndex is enabled, TEP uses scoped `<context>/backends/cocoindex/...` storage and can search it through the direct scoped-DB runtime path when repo-local CocoIndex markers are absent
   - enriches backend hits with matching `cix_candidates` when the hit path is indexed
   - returns an `index_suggestion` when a backend hit has no matching CIX entry yet
   - can use `--link-candidate <REF>` to return non-mutating `link_suggestions`; apply a suggestion with `link-code` only after verifying the hit is relevant

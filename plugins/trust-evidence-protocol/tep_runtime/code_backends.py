@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,8 @@ _CCC_RESULT_RE = re.compile(r"^--- Result (?P<rank>\d+) \(score: (?P<score>[0-9.
 _CCC_FILE_RE = re.compile(
     r"^File: (?P<path>.*?):(?P<start>\d+)(?:-(?P<end>\d+))? \[(?P<language>[^\]]+)\]$"
 )
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+DIRECT_SEARCH_HELPER = PLUGIN_ROOT / "scripts" / "cocoindex_direct_search.py"
 
 
 def _cocoindex_command() -> str | None:
@@ -31,6 +35,19 @@ def _cocoindex_command() -> str | None:
         if path:
             return path
     return None
+
+
+def _python_for_cocoindex_command(command: str | None) -> str:
+    if command:
+        try:
+            first_line = Path(command).read_text(encoding="utf-8", errors="replace").splitlines()[0]
+        except (OSError, IndexError):
+            first_line = ""
+        if first_line.startswith("#!"):
+            executable = first_line[2:].strip().split()[0]
+            if executable and Path(executable).is_absolute() and Path(executable).exists():
+                return executable
+    return sys.executable
 
 
 def _compact_snippet(lines: list[str], *, max_chars: int = 700) -> str:
@@ -80,6 +97,31 @@ def parse_cocoindex_search_output(stdout: str) -> list[dict[str, Any]]:
     return results
 
 
+def parse_cocoindex_direct_output(stdout: str) -> list[dict[str, Any]]:
+    raw_items = json.loads(stdout or "[]")
+    results = []
+    for rank, item in enumerate(raw_items if isinstance(raw_items, list) else [], start=1):
+        if not isinstance(item, dict):
+            continue
+        results.append(
+            {
+                "rank": rank,
+                "score": float(item.get("score") or 0.0),
+                "backend": "cocoindex",
+                "backend_output_is_proof": BACKEND_OUTPUT_IS_PROOF,
+                "target": {
+                    "path": str(item.get("file_path") or ""),
+                    "line_start": int(item.get("start_line") or 0),
+                    "line_end": int(item.get("end_line") or item.get("start_line") or 0),
+                },
+                "language": str(item.get("language") or ""),
+                "snippet": _compact_snippet(str(item.get("content") or "").splitlines()),
+                "runtime_path": "direct-scoped-db",
+            }
+        )
+    return results
+
+
 def resolve_cocoindex_storage_dir(
     context_root: Path,
     *,
@@ -102,6 +144,63 @@ def resolve_cocoindex_storage_dir(
     if scope == "workspace":
         return base / "workspaces" / workspace_ref / ".cocoindex_code" if workspace_ref else None
     return None
+
+
+def _cocoindex_runtime_storage(storage_dir: Path | None, repo_root: Path) -> dict[str, Any]:
+    target_db = storage_dir / "target_sqlite.db" if storage_dir else None
+    storage_marker = storage_dir / "settings.yml" if storage_dir else None
+    repo_marker = repo_root / ".cocoindex_code" / "settings.yml"
+    index_exists = bool(target_db and target_db.exists())
+    storage_marker_exists = bool(storage_marker and storage_marker.is_file())
+    repo_marker_exists = repo_marker.is_file()
+    runtime_search_ready = index_exists and storage_marker_exists
+    cli_search_ready = runtime_search_ready and repo_marker_exists
+    return {
+        "scoped_db_dir": str(storage_dir) if storage_dir else "",
+        "target_sqlite_db": str(target_db) if target_db else "",
+        "settings_path": str(storage_marker) if storage_marker else "",
+        "repo_marker_path": str(repo_marker),
+        "db_path_mapping": f"{repo_root}={storage_dir}" if storage_dir else "",
+        "index_exists": index_exists,
+        "storage_marker_exists": storage_marker_exists,
+        "repo_marker_exists": repo_marker_exists,
+        "cli_search_ready": cli_search_ready,
+        "runtime_search_ready": runtime_search_ready,
+        "search_ready": runtime_search_ready,
+        "runtime_path": "repo-marker-cli" if cli_search_ready else ("direct-scoped-db" if runtime_search_ready else ""),
+    }
+
+
+def _run_cocoindex_direct_search(
+    command: str | None,
+    *,
+    storage_dir: Path,
+    query: str,
+    language: str | None,
+    path_patterns: list[str] | None,
+    limit: int,
+) -> subprocess.CompletedProcess[str]:
+    helper = os.environ.get("TEP_COCOINDEX_DIRECT_SEARCH_HELPER")
+    if helper:
+        args = [helper]
+    else:
+        args = [_python_for_cocoindex_command(command), str(DIRECT_SEARCH_HELPER)]
+    payload = {
+        "storage_dir": str(storage_dir),
+        "target_db": str(storage_dir / "target_sqlite.db"),
+        "query": query,
+        "languages": [language] if language else None,
+        "paths": [pattern for pattern in path_patterns or [] if pattern],
+        "limit": limit,
+    }
+    return subprocess.run(
+        args,
+        input=json.dumps(payload, ensure_ascii=False),
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
 
 
 def cocoindex_search_payload(
@@ -147,11 +246,7 @@ def cocoindex_search_payload(
             "repo_root": str(repo_root),
             "workspace_ref": workspace_ref or "",
             "project_ref": project_ref or "",
-            "scoped_db_dir": str(storage_dir) if storage_dir else "",
-            "db_path_mapping": f"{repo_root}={storage_dir}" if storage_dir else "",
-            "index_exists": bool(storage_dir and (storage_dir / "target_sqlite.db").exists()),
-            "storage_marker_exists": bool(storage_dir and (storage_dir / "settings.yml").is_file()),
-            "repo_marker_exists": bool((repo_root / ".cocoindex_code" / "settings.yml").is_file()),
+            **_cocoindex_runtime_storage(storage_dir, repo_root),
         },
         "results": [],
     }
@@ -173,11 +268,30 @@ def cocoindex_search_payload(
         payload["warnings"].append("project-scoped CocoIndex search has no current project ref")
     if effective_scope == "workspace" and not workspace_ref:
         payload["warnings"].append("workspace-scoped CocoIndex search has no current workspace ref")
-    if payload["storage"]["index_exists"] and not payload["storage"]["repo_marker_exists"]:
-        payload["warnings"].append(
-            "CocoIndex index exists in TEP storage, but `ccc search` requires a repo-local "
-            ".cocoindex_code/settings.yml marker. TEP will not create repo-local CocoIndex markers."
-        )
+    if storage_dir and payload["storage"]["runtime_search_ready"] and not payload["storage"]["repo_marker_exists"]:
+        try:
+            result = _run_cocoindex_direct_search(
+                command,
+                storage_dir=storage_dir,
+                query=query,
+                language=language,
+                path_patterns=path_patterns,
+                limit=effective_limit,
+            )
+        except subprocess.TimeoutExpired:
+            payload["available"] = False
+            payload["warnings"].append("CocoIndex direct runtime search timed out")
+            return payload
+        payload["returncode"] = result.returncode
+        payload["runtime_path"] = "direct-scoped-db"
+        if result.returncode != 0:
+            payload["warnings"].append((result.stderr or result.stdout or "CocoIndex direct runtime search failed").strip())
+            return payload
+        try:
+            payload["results"] = parse_cocoindex_direct_output(result.stdout)[:effective_limit]
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            payload["warnings"].append(f"CocoIndex direct runtime output was not parseable: {exc}")
+            return payload
         return payload
 
     args = [command, "search", query, "--limit", str(effective_limit)]
@@ -211,6 +325,7 @@ def cocoindex_search_payload(
     if result.returncode != 0:
         payload["warnings"].append((result.stderr or result.stdout or "CocoIndex search failed").strip())
         return payload
+    payload["runtime_path"] = "repo-marker-cli"
     payload["results"] = parse_cocoindex_search_output(result.stdout)[:effective_limit]
     return payload
 
@@ -283,6 +398,8 @@ def cocoindex_search_text_lines(payload: dict[str, Any]) -> list[str]:
     storage = payload.get("storage") if isinstance(payload.get("storage"), dict) else {}
     if storage.get("scoped_db_dir"):
         lines.append(f"Scoped DB: {storage.get('scoped_db_dir')}")
+    if storage.get("runtime_path") or payload.get("runtime_path"):
+        lines.append(f"Runtime path: {payload.get('runtime_path') or storage.get('runtime_path')}")
     for warning in payload.get("warnings") or []:
         lines.append(f"Warning: {warning}")
     for item in payload.get("results") or []:
