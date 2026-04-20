@@ -85,7 +85,7 @@ Persistence write boundary:
 - Use `curiosity-map` / MCP `curiosity_map` when the agent needs one visual-thinking map with heat, cold zones, established bridges, candidate curiosity links, and recommended next probes.
 - Treat `curiosity-map.map_graph.format=tep.map_graph.v1` as the generated typed map contract: it may contain topic and topology cluster layers, weighted relation edges, and probes, but remains navigation-only.
 - Prefer `map-brief` / MCP `map_brief` before reading the full map graph; it summarizes topology islands, bridge pressure, candidate probes, cold zones, and recommended inspection commands.
-- Use `curiosity-map --html` when a human should see the generated graph; the HTML goes under `<context>/views/curiosity/` and remains navigation-only.
+- Use `curiosity-map --html` when a human should see the generated graph; the HTML renders from `map_graph`, goes under `<context>/views/curiosity/`, and remains navigation-only.
 - Prefer `curiosity-map volume=compact` first; expand to `normal` or `wide` only when the compact map hides relevant neighboring clusters or probes.
 - Pick an attention mode before visual exploration: `research` for broad investigation, `theory` for claim/model/flow reasoning, and `code` for implementation or test navigation. Mode filters reduce irrelevant record types but remain navigation-only.
 - Attention lookup defaults to current `.tep` workspace/project/task focus; only use `scope=all` when deliberately doing cross-scope triage.

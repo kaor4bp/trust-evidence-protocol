@@ -1600,7 +1600,13 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert "vis-network@10.0.2" in html_text
     assert "new vis.Network" in html_text
     assert "navigationButtons: true" in html_text
+    assert "tep.map_graph.v1" in html_text
+    assert "mapGraph" in html_text
     assert "Focus cold zones" in html_text
+    assert "Focus topology" in html_text
+    assert "Focus bridges" in html_text
+    assert "topologyCluster" in html_text
+    assert "Map edge" in html_text
     assert "cluster-list" in html_text
     assert "graph-data" in html_text
     assert "network.setOptions({ physics: false })" in html_text

@@ -178,5 +178,10 @@ actions, or permission requests.
 - cold zones
 - recommended inspection commands
 
+`curiosity-map --html` renders from this same `map_graph` object. The HTML
+view must treat `map_graph.nodes`, `map_graph.edges`, `map_graph.clusters`, and
+`map_graph.topology_analysis` as the source for topology, bridge, and probe
+controls instead of deriving a separate visual model from legacy fields.
+
 Use `curiosity-map --format json` only when a caller needs the full typed graph
 payload for visualization, export, or algorithm debugging.

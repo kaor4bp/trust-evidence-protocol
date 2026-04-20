@@ -1450,64 +1450,137 @@ def curiosity_map_html(payload: dict) -> str:
     payload metadata and uses a CDN graph library for interaction.
     """
 
-    clusters = payload.get("clusters", []) if isinstance(payload.get("clusters"), list) else []
+    legacy_clusters = payload.get("clusters", []) if isinstance(payload.get("clusters"), list) else []
     records = payload.get("records", {}) if isinstance(payload.get("records"), dict) else {}
-    bridges = payload.get("bridges", []) if isinstance(payload.get("bridges"), list) else []
-    probes = payload.get("probes", []) if isinstance(payload.get("probes"), list) else []
+    legacy_bridges = payload.get("bridges", []) if isinstance(payload.get("bridges"), list) else []
+    legacy_probes = payload.get("probes", []) if isinstance(payload.get("probes"), list) else []
+    map_graph = payload.get("map_graph") if isinstance(payload.get("map_graph"), dict) else {}
+    graph_nodes = map_graph.get("nodes", []) if isinstance(map_graph.get("nodes"), list) else []
+    graph_edges = map_graph.get("edges", []) if isinstance(map_graph.get("edges"), list) else []
+    graph_clusters = map_graph.get("clusters", []) if isinstance(map_graph.get("clusters"), list) else []
+    topology = map_graph.get("topology_analysis") if isinstance(map_graph.get("topology_analysis"), dict) else {}
     cold_topic_ids = {str(zone.get("topic_id", "")) for zone in payload.get("cold_zones", []) if isinstance(zone, dict)}
 
     nodes: list[dict] = []
     edges: list[dict] = []
-    record_to_clusters: dict[str, set[str]] = {}
-    for cluster in clusters:
+    record_to_clusters: dict[str, list[dict]] = {}
+    cluster_node_ids: dict[str, str] = {}
+    topic_cluster_node_ids: dict[str, str] = {}
+    topology_node_ids: list[str] = []
+
+    if not graph_nodes:
+        graph_nodes = [
+            {
+                "id": str(record_ref),
+                "kind": str(record.get("record_type", "") or "record"),
+                "status": record.get("status", ""),
+                "summary": record_diagram_summary(record),
+                "scores": {
+                    "heat": float(record.get("activity_score", 0.0) or 0.0),
+                    "tap_count": int(record.get("tap_count", 0) or 0),
+                    "access_count": int(record.get("access_count", 0) or 0),
+                },
+            }
+            for record_ref, record in records.items()
+        ]
+    graph_node_refs = {str(node.get("id", "")) for node in graph_nodes if isinstance(node, dict)}
+
+    if not graph_clusters:
+        graph_clusters = [
+            {
+                "id": f"MCL-topic-{str(cluster.get('id', ''))}",
+                "kind": "topic",
+                "algorithm": "legacy-topic",
+                "label": str(cluster.get("term", "") or cluster.get("id", "")),
+                "source_cluster_ref": str(cluster.get("id", "")),
+                "node_refs": [str(record_ref) for record_ref in cluster.get("top_records", [])],
+                "scores": {
+                    "heat": float(cluster.get("activity_score", 0.0) or 0.0),
+                    "record_count": int(cluster.get("record_count", 0) or 0),
+                },
+            }
+            for cluster in legacy_clusters
+            if cluster.get("id")
+        ]
+
+    for cluster in graph_clusters:
         cluster_id = str(cluster.get("id", ""))
         if not cluster_id:
             continue
-        label = str(cluster.get("term", "") or cluster_id)
-        heat = float(cluster.get("activity_score", 0.0) or 0.0)
-        is_cold = cluster_id in cold_topic_ids
+        cluster_kind = str(cluster.get("kind", "") or "topic")
+        label = str(cluster.get("label") or cluster.get("term") or cluster_id)
+        scores = cluster.get("scores", {}) if isinstance(cluster.get("scores"), dict) else {}
+        node_refs = [str(ref) for ref in cluster.get("node_refs", [])]
+        if not node_refs:
+            node_refs = [str(ref) for ref in cluster.get("top_records", [])]
+        heat = float(scores.get("heat", cluster.get("activity_score", 0.0)) or 0.0)
+        source_cluster_ref = str(cluster.get("source_cluster_ref", cluster_id) or cluster_id)
+        is_cold = cluster_kind == "topic" and source_cluster_ref in cold_topic_ids
+        node_id = f"cluster:{cluster_id}"
+        cluster_node_ids[cluster_id] = node_id
+        if cluster_kind == "topic":
+            topic_cluster_node_ids[source_cluster_ref] = node_id
+        if cluster_kind == "topology":
+            topology_node_ids.append(node_id)
         nodes.append(
             {
-                "id": f"cluster:{cluster_id}",
+                "id": node_id,
                 "label": label,
-                "title": f"{cluster_id}\\nrecords={cluster.get('record_count', 0)} heat={heat}",
-                "group": "coldCluster" if is_cold else "cluster",
-                "value": max(20, 18 + int(cluster.get("record_count", 0) or 0) * 2 + min(heat, 10)),
+                "title": f"{cluster_id}\\nkind={cluster_kind}\\nrecords={len(node_refs)} heat={heat}",
+                "group": "topologyCluster" if cluster_kind == "topology" else ("coldCluster" if is_cold else "topicCluster"),
+                "value": max(20, 18 + len(node_refs) * 2 + min(heat, 10)),
                 "shape": "dot",
                 "kind": "cluster",
                 "record_ref": cluster_id,
                 "meta": {
                     "id": cluster_id,
+                    "kind": cluster_kind,
                     "term": label,
-                    "record_count": cluster.get("record_count", 0),
+                    "algorithm": cluster.get("algorithm", ""),
+                    "source_cluster_ref": source_cluster_ref,
+                    "record_count": len(node_refs),
                     "activity_score": heat,
                     "cold": is_cold,
-                    "top_records": cluster.get("top_records", []),
+                    "node_refs": node_refs,
+                    "edge_refs": cluster.get("edge_refs", []),
+                    "scores": scores,
+                    "boundary": cluster.get("boundary", {}),
+                    "top_records": node_refs,
                 },
             }
         )
-        for record_ref in cluster.get("top_records", []):
-            record_ref = str(record_ref)
-            if record_ref not in records:
+        for record_ref in node_refs:
+            if record_ref not in records and record_ref not in graph_node_refs:
                 continue
-            record_to_clusters.setdefault(record_ref, set()).add(cluster_id)
+            record_to_clusters.setdefault(record_ref, []).append(
+                {"id": cluster_id, "label": label, "kind": cluster_kind, "source_cluster_ref": source_cluster_ref}
+            )
             edges.append(
                 {
                     "id": f"membership:{cluster_id}:{record_ref}",
-                    "from": f"cluster:{cluster_id}",
+                    "from": node_id,
                     "to": f"record:{record_ref}",
-                    "label": "contains",
+                    "label": cluster_kind,
                     "kind": "membership",
-                    "color": {"color": "#9aa7b4", "opacity": 0.45},
-                    "width": 1,
+                    "color": {"color": "#8b98a8" if cluster_kind == "topic" else "#9c6ade", "opacity": 0.42},
+                    "width": 1 if cluster_kind == "topic" else 2,
+                    "meta": {"cluster_id": cluster_id, "cluster_kind": cluster_kind, "record_ref": record_ref},
                 }
             )
 
-    for record_ref, record in records.items():
+    for graph_node in graph_nodes:
+        record_ref = str(graph_node.get("id", ""))
+        if not record_ref:
+            continue
+        record = records.get(record_ref, {})
         summary = record_diagram_summary(record)
-        record_type = str(record.get("record_type", "") or "record")
-        heat = float(record.get("activity_score", 0.0) or 0.0)
-        cluster_terms = ", ".join(sorted(record_to_clusters.get(record_ref, set()))) or "unclustered"
+        if not summary:
+            summary = str(graph_node.get("summary", ""))
+        record_type = str(graph_node.get("kind") or record.get("record_type", "") or "record")
+        node_scores = graph_node.get("scores", {}) if isinstance(graph_node.get("scores"), dict) else {}
+        heat = float(node_scores.get("heat", record.get("activity_score", 0.0)) or 0.0)
+        cluster_labels = [str(item.get("label") or item.get("id")) for item in record_to_clusters.get(record_ref, [])]
+        cluster_terms = ", ".join(cluster_labels) or "unclustered"
         label = f"{record_ref}\\n{record_type}"
         nodes.append(
             {
@@ -1522,34 +1595,68 @@ def curiosity_map_html(payload: dict) -> str:
                 "meta": {
                     "id": record_ref,
                     "record_type": record_type,
-                    "status": record.get("status", ""),
+                    "status": graph_node.get("status", record.get("status", "")),
                     "summary": summary,
                     "activity_score": heat,
-                    "tap_count": record.get("tap_count", 0),
-                    "access_count": record.get("access_count", 0),
-                    "clusters": sorted(record_to_clusters.get(record_ref, set())),
+                    "tap_count": node_scores.get("tap_count", record.get("tap_count", 0)),
+                    "access_count": node_scores.get("access_count", record.get("access_count", 0)),
+                    "clusters": record_to_clusters.get(record_ref, []),
                     "cluster_terms": cluster_terms,
                 },
             }
         )
 
-    for bridge in bridges:
+    for graph_edge in graph_edges:
+        left = str(graph_edge.get("from_ref", ""))
+        right = str(graph_edge.get("to_ref", ""))
+        if not left or not right:
+            continue
+        relation = str(graph_edge.get("relation", "related"))
+        weight = float(graph_edge.get("weight", 1.0) or 1.0)
+        edge_id = str(graph_edge.get("id") or f"map-edge:{left}:{right}:{relation}")
+        edges.append(
+            {
+                "id": edge_id,
+                "from": f"record:{left}",
+                "to": f"record:{right}",
+                "label": relation,
+                "kind": "map_edge",
+                "color": {"color": "#2b8a3e" if relation in TOPOLOGY_ESTABLISHED_RELATIONS else "#6f42c1", "opacity": 0.78},
+                "width": max(1, min(6, 1 + weight * 2.5)),
+                "dashes": relation == "candidate_link",
+                "title": f"{relation} weight={weight}",
+                "meta": {
+                    "id": edge_id,
+                    "relation": relation,
+                    "weight": weight,
+                    "from_ref": left,
+                    "to_ref": right,
+                    "source_fields": graph_edge.get("source_fields", []),
+                    "source_records": graph_edge.get("source_records", []),
+                },
+            }
+        )
+
+    for bridge in legacy_bridges:
         left = str(bridge.get("from_topic", ""))
         right = str(bridge.get("to_topic", ""))
         if left and right:
+            from_node = topic_cluster_node_ids.get(left, f"cluster:{left}")
+            to_node = topic_cluster_node_ids.get(right, f"cluster:{right}")
             edges.append(
                 {
                     "id": f"bridge:{left}:{right}",
-                    "from": f"cluster:{left}",
-                    "to": f"cluster:{right}",
+                    "from": from_node,
+                    "to": to_node,
                     "label": "bridge",
                     "kind": "bridge",
                     "color": {"color": "#2b8a3e", "opacity": 0.86},
                     "width": 4,
                     "dashes": False,
+                    "meta": bridge,
                 }
             )
-    for index, probe in enumerate(probes, start=1):
+    for index, probe in enumerate(legacy_probes, start=1):
         refs = [str(ref) for ref in probe.get("record_refs", []) if str(ref) in records]
         if len(refs) == 2:
             edges.append(
@@ -1587,13 +1694,18 @@ def curiosity_map_html(payload: dict) -> str:
     title = f"TEP Curiosity Map - {payload.get('mode', 'general')} / {payload.get('volume', 'normal')}"
     metadata = (
         f"scope={payload.get('scope', '')} workspace={payload.get('workspace_ref', '')} "
-        f"project={payload.get('project_ref', '')} task={payload.get('task_ref', '')}"
+        f"project={payload.get('project_ref', '')} task={payload.get('task_ref', '')} "
+        f"graph={payload.get('map_graph_version', map_graph.get('format', 'legacy'))}"
     )
     graph_payload = {
         "nodes": nodes,
         "edges": edges,
+        "mapGraph": map_graph,
         "payload": payload,
-        "coldNodeIds": [f"cluster:{topic_id}" for topic_id in sorted(cold_topic_ids)],
+        "coldNodeIds": [topic_cluster_node_ids.get(topic_id, f"cluster:{topic_id}") for topic_id in sorted(cold_topic_ids)],
+        "topologyNodeIds": topology_node_ids,
+        "bridgeNodeIds": [f"record:{ref}" for ref in topology.get("bridge_node_refs", [])],
+        "bridgeEdgeIds": list(topology.get("bridge_edge_refs", [])) + [edge["id"] for edge in edges if edge.get("kind") == "bridge"],
         "probeEdgeIds": [edge["id"] for edge in edges if edge.get("kind") == "probe"],
     }
     graph_json = json.dumps(graph_payload, ensure_ascii=False, sort_keys=True).replace("<", "\\u003c")
@@ -1630,6 +1742,7 @@ def curiosity_map_html(payload: dict) -> str:
     .dot {{ width:12px; height:12px; border-radius:50%; display:inline-block; border:1px solid #53606d; }}
     .dot.cluster {{ background:var(--cluster); }}
     .dot.cold {{ background:var(--cold); }}
+    .dot.topology {{ background:#eadcff; }}
     .dot.record {{ background:var(--record); }}
     .dot.probe {{ background:var(--probe); }}
     .dot.bridge {{ background:var(--bridge); }}
@@ -1666,6 +1779,7 @@ def curiosity_map_html(payload: dict) -> str:
         <div class="legend">
           <span><i class="dot cluster"></i>Active cluster</span>
           <span><i class="dot cold"></i>Cold cluster</span>
+          <span><i class="dot topology"></i>Topology cluster</span>
           <span><i class="dot record"></i>Record</span>
           <span><i class="dot bridge"></i>Established bridge</span>
           <span><i class="dot probe"></i>Curiosity probe</span>
@@ -1679,6 +1793,8 @@ def curiosity_map_html(payload: dict) -> str:
         <button id="fit">Fit</button>
         <button id="stabilize">Stabilize</button>
         <button id="cold">Focus cold zones</button>
+        <button id="topology">Focus topology</button>
+        <button id="bridges">Focus bridges</button>
         <button id="probes">Focus probes</button>
         <button id="reset">Reset filter</button>
       </div>
@@ -1735,6 +1851,8 @@ def curiosity_map_html(payload: dict) -> str:
       }},
       groups: {{
         cluster: {{ color: {{ background: "#d7ecff", border: "#2862a8" }}, font: {{ color: "#17202a", size: 15 }}, borderWidth: 2 }},
+        topicCluster: {{ color: {{ background: "#d7ecff", border: "#2862a8" }}, font: {{ color: "#17202a", size: 15 }}, borderWidth: 2 }},
+        topologyCluster: {{ color: {{ background: "#eadcff", border: "#6f42c1" }}, font: {{ color: "#17202a", size: 15 }}, borderWidth: 3 }},
         coldCluster: {{ color: {{ background: "#fff1a8", border: "#b7791f" }}, font: {{ color: "#17202a", size: 15 }}, borderWidth: 3 }},
         record: {{ color: {{ background: "#f8f9fa", border: "#68737f" }}, font: {{ color: "#17202a", size: 12, multi: true }}, margin: 10, borderWidth: 1 }},
       }},
@@ -1765,7 +1883,7 @@ def curiosity_map_html(payload: dict) -> str:
         return;
       }}
       if (item.kind === "cluster") {{
-        details.innerHTML = `<strong>${{html(item.meta.term)}}</strong><code>${{html(item.meta.id)}}</code><p>records=${{html(item.meta.record_count)}} heat=${{html(item.meta.activity_score)}} cold=${{html(item.meta.cold)}}</p>`;
+        details.innerHTML = `<strong>${{html(item.meta.term)}}</strong><code>${{html(item.meta.id)}}</code><p>kind=${{html(item.meta.kind)}} algorithm=${{html(item.meta.algorithm)}} records=${{html(item.meta.record_count)}} heat=${{html(item.meta.activity_score)}} cold=${{html(item.meta.cold)}}</p><p><small>boundary: ${{html(JSON.stringify(item.meta.boundary || {{}}))}}</small></p>`;
         return;
       }}
       if (item.kind === "record") {{
@@ -1774,6 +1892,10 @@ def curiosity_map_html(payload: dict) -> str:
       }}
       if (item.kind === "probe") {{
         details.innerHTML = `<strong>Curiosity probe ${{html(item.meta.probe_index)}}</strong><p>score=${{html(item.meta.score)}} refs=${{html(item.meta.record_refs.join(", "))}}</p><p>${{html(item.meta.reason)}}</p>`;
+        return;
+      }}
+      if (item.kind === "map_edge") {{
+        details.innerHTML = `<strong>Map edge ${{html(item.meta.relation)}}</strong><p>${{html(item.meta.from_ref)}} &lt;-&gt; ${{html(item.meta.to_ref)}} weight=${{html(item.meta.weight)}}</p><p><small>fields: ${{html((item.meta.source_fields || []).join(", "))}}</small></p>`;
         return;
       }}
       details.innerHTML = `<strong>${{html(item.kind || "edge")}}</strong><pre>${{html(JSON.stringify(item.meta || item, null, 2))}}</pre>`;
@@ -1829,6 +1951,17 @@ def curiosity_map_html(payload: dict) -> str:
       network.stabilize(120);
     }});
     document.getElementById("cold").addEventListener("click", () => focusNodes(graph.coldNodeIds || []));
+    document.getElementById("topology").addEventListener("click", () => focusNodes(graph.topologyNodeIds || []));
+    document.getElementById("bridges").addEventListener("click", () => {{
+      const edgeIds = graph.bridgeEdgeIds || [];
+      const ids = new Set(graph.bridgeNodeIds || []);
+      edgeIds.forEach(edgeId => {{
+        const edge = edges.get(edgeId);
+        if (edge) {{ ids.add(edge.from); ids.add(edge.to); }}
+      }});
+      network.selectEdges(edgeIds.filter(edgeId => edges.get(edgeId)));
+      focusNodes(Array.from(ids));
+    }});
     document.getElementById("probes").addEventListener("click", () => {{
       const edgeIds = graph.probeEdgeIds || [];
       const ids = new Set();
