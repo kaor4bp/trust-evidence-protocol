@@ -156,6 +156,8 @@ from context_lib import (
     next_step_text_lines,
     code_index_entries_root,
     code_index_entry_path,
+    cocoindex_index_payload,
+    cocoindex_index_text_lines,
     cocoindex_search_payload,
     cocoindex_search_text_lines,
     enrich_backend_results_with_cix,
@@ -4684,7 +4686,33 @@ def cmd_record_artifact(root: Path, path: Path) -> int:
     return 0
 
 
-def cmd_init_code_index(root: Path, repo_root: Path, max_files: int, max_bytes: int, include_untracked: bool) -> int:
+def maybe_index_code_backends(
+    root: Path,
+    repo_root: Path,
+    *,
+    backend_index: str,
+    workspace_ref: str,
+    project_ref: str,
+) -> None:
+    payload = cocoindex_index_payload(
+        root,
+        repo_root,
+        scope_mode=backend_index,
+        workspace_ref=workspace_ref,
+        project_ref=project_ref,
+    )
+    for line in cocoindex_index_text_lines(payload):
+        print(line)
+
+
+def cmd_init_code_index(
+    root: Path,
+    repo_root: Path,
+    max_files: int,
+    max_bytes: int,
+    include_untracked: bool,
+    backend_index: str,
+) -> int:
     entries, errors = load_code_index_entries(root)
     if errors:
         print_errors(errors)
@@ -4711,10 +4739,21 @@ def cmd_init_code_index(root: Path, repo_root: Path, max_files: int, max_bytes: 
             payload["status"] = "missing"
             payload["updated_at"] = now_timestamp()
             changed.append(payload)
-    return persist_code_index_entries(root, entries, changed, f"Indexed {len(files)} git-tracked code file(s)")
+    result = persist_code_index_entries(root, entries, changed, f"Indexed {len(files)} git-tracked code file(s)")
+    if result == 0:
+        maybe_index_code_backends(root, repo_root, backend_index=backend_index, workspace_ref=workspace_ref, project_ref=project_ref)
+    return result
 
 
-def cmd_index_code(root: Path, repo_root: Path, includes: list[str], excludes: list[str], max_files: int, max_bytes: int) -> int:
+def cmd_index_code(
+    root: Path,
+    repo_root: Path,
+    includes: list[str],
+    excludes: list[str],
+    max_files: int,
+    max_bytes: int,
+    backend_index: str,
+) -> int:
     entries, errors = load_code_index_entries(root)
     if errors:
         print_errors(errors)
@@ -4730,10 +4769,13 @@ def cmd_index_code(root: Path, repo_root: Path, includes: list[str], excludes: l
         entry, _ = code_index_entry_for_file(root, entries, repo_root, path, max_bytes, workspace_ref=workspace_ref, project_ref=project_ref)
         changed.append(entry)
         entries[entry["id"]] = entry
-    return persist_code_index_entries(root, entries, changed, f"Indexed {len(files)} code file(s)")
+    result = persist_code_index_entries(root, entries, changed, f"Indexed {len(files)} code file(s)")
+    if result == 0:
+        maybe_index_code_backends(root, repo_root, backend_index=backend_index, workspace_ref=workspace_ref, project_ref=project_ref)
+    return result
 
 
-def cmd_code_refresh(root: Path, repo_root: Path, paths: list[str], max_bytes: int) -> int:
+def cmd_code_refresh(root: Path, repo_root: Path, paths: list[str], max_bytes: int, backend_index: str) -> int:
     entries, errors = load_code_index_entries(root)
     if errors:
         print_errors(errors)
@@ -4768,7 +4810,10 @@ def cmd_code_refresh(root: Path, repo_root: Path, paths: list[str], max_bytes: i
             payload["updated_at"] = now_timestamp()
             changed.append(payload)
             entries[payload["id"]] = payload
-    return persist_code_index_entries(root, entries, changed, f"Refreshed {len(changed)} code index entry update(s)")
+    result = persist_code_index_entries(root, entries, changed, f"Refreshed {len(changed)} code index entry update(s)")
+    if result == 0:
+        maybe_index_code_backends(root, repo_root, backend_index=backend_index, workspace_ref=workspace_ref, project_ref=project_ref)
+    return result
 
 
 def print_code_entries(entries: list[dict], fields: list[str], repo_root: Path) -> None:
@@ -6810,6 +6855,7 @@ def parse_args() -> argparse.Namespace:
     init_code_index.add_argument("--include-untracked", action="store_true")
     init_code_index.add_argument("--max-files", type=int, default=1000)
     init_code_index.add_argument("--max-bytes-per-file", type=int, default=512 * 1024)
+    init_code_index.add_argument("--backend-index", choices=("auto", "none", "project", "workspace", "both"), default="auto")
     index_code = subparsers.add_parser(
         "index-code",
         help="Index code files by include/exclude globs into CIX-* entries.",
@@ -6819,6 +6865,7 @@ def parse_args() -> argparse.Namespace:
     index_code.add_argument("--exclude", dest="excludes", action="append", default=[])
     index_code.add_argument("--max-files", type=int, default=1000)
     index_code.add_argument("--max-bytes-per-file", type=int, default=512 * 1024)
+    index_code.add_argument("--backend-index", choices=("auto", "none", "project", "workspace", "both"), default="auto")
     code_refresh = subparsers.add_parser(
         "code-refresh",
         help="Refresh existing CIX-* metadata for path globs and mark missing files.",
@@ -6826,6 +6873,7 @@ def parse_args() -> argparse.Namespace:
     code_refresh.add_argument("--root")
     code_refresh.add_argument("--path", dest="paths", action="append", default=[])
     code_refresh.add_argument("--max-bytes-per-file", type=int, default=512 * 1024)
+    code_refresh.add_argument("--backend-index", choices=("auto", "none", "project", "workspace", "both"), default="auto")
     code_info = subparsers.add_parser(
         "code-info",
         help="Show projected metadata for one CIX-* entry or path.",
@@ -8025,6 +8073,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 max_files=args.max_files,
                 max_bytes=args.max_bytes_per_file,
                 include_untracked=args.include_untracked,
+                backend_index=args.backend_index,
             )
         )
     if args.command == "index-code":
@@ -8037,6 +8086,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 excludes=args.excludes,
                 max_files=args.max_files,
                 max_bytes=args.max_bytes_per_file,
+                backend_index=args.backend_index,
             )
         )
     if args.command == "code-refresh":
@@ -8047,6 +8097,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 repo_root=repo_root,
                 paths=args.paths,
                 max_bytes=args.max_bytes_per_file,
+                backend_index=args.backend_index,
             )
         )
     if args.command == "code-info":

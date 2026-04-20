@@ -44,6 +44,7 @@ When MCP tools are available, prefer them for read-only lookup:
 - use `guidelines_for` before sizeable code/test edits
 - use `code_search` and `code_info` to find relevant files or code areas, then read code or cite `SRC-*`/`CLM-*` before making truth claims
 - if semantic code search is needed, use TEP `code_search(query=...)`; do not call CocoIndex or another code backend directly unless debugging the backend itself
+- if code indexing is needed, use TEP `init-code-index`, `index-code`, or `code-refresh`; do not run CocoIndex indexing directly because TEP refreshes enabled project/workspace backend indexes behind those commands
 - keep semantic code search project-scoped by default; use workspace scope only as an explicit broader glance across related projects/services
 - when a backend hit is useful, inspect its `cix_candidates`, `index_suggestion`, and optional `link_suggestions`; persist the relationship with `link-code` only after verifying relevance
 - use `code_feedback` when you need a dedicated review/apply loop for backend hits; apply mode must only record reviewed navigation links, never proof
@@ -108,6 +109,7 @@ Persistence write boundary:
 - `<context>/settings.json.backends` controls optional external adapters for fact validation, code intelligence, and derivation.
 - Use `configure-runtime --backend-preset minimal` for a no-external-backends baseline and `configure-runtime --backend-preset recommended` for the normal Serena + CocoIndex setup.
 - CocoIndex backend storage is scoped by TEP settings under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code` by default; workspace storage is an explicit broader scope.
+- Enabled CocoIndex indexing is a TEP implementation detail behind `init-code-index`, `index-code`, and `code-refresh`; users and agents should see TEP indexing, not CocoIndex indexing.
 - Backend status and backend output are navigation/diagnostic data only; cite canonical `SRC-*` and `CLM-*` records before using a backend result as proof.
 - Use `backend-status` / `backend-check` before relying on an optional backend, pass repo root/scope when checking code intelligence, and degrade cleanly when dependencies are missing.
 - For CocoIndex, distinguish `index_exists`, `cli_search_ready`, and `runtime_search_ready`; TEP must not create repo-local `.cocoindex_code` markers just to satisfy CLI discovery, and `code_search` should use the direct scoped-DB runtime path when available.

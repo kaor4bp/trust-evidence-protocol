@@ -1583,6 +1583,8 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert "Focus cold zones" in html_text
     assert "cluster-list" in html_text
     assert "graph-data" in html_text
+    assert "network.setOptions({ physics: false })" in html_text
+    assert "stabilizationIterationsDone" in html_text
     assert "Generated navigation view only" in html_text
     assert facility_claim_id in html_text
     research_map = json.loads(
@@ -2930,6 +2932,128 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     assert telemetry["by_tool"]["code-search"] >= 2
     assert telemetry["by_access_kind"]["backend_code_search"] >= 1
     assert telemetry["by_access_kind"]["backend_code_feedback"] >= 1
+
+
+def test_code_index_commands_refresh_project_and_workspace_cocoindex_storage(tmp_path: Path, monkeypatch) -> None:
+    context = bootstrap_context(tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "src").mkdir()
+    (repo / "src" / "app.py").write_text("def indexed_by_tep():\n    return True\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "add", "src/app.py"], cwd=repo, check=True, capture_output=True, text=True)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "backend-index-workspace",
+            "--title",
+            "Backend index workspace",
+            "--root-ref",
+            str(repo),
+            "--note",
+            "backend index workspace fixture",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    project_id = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "backend-index-project",
+            "--title",
+            "Backend index project",
+            "--root-ref",
+            str(repo),
+            "--note",
+            "backend index project fixture",
+        ),
+        "project",
+    )
+    run_cli(context, "set-current-project", "--project", project_id)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log_path = tmp_path / "cocoindex.log"
+    ccc = fake_bin / "ccc"
+    ccc.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "import pathlib\n"
+        "import sys\n"
+        "assert sys.argv[1] == 'index'\n"
+        "mapping = os.environ['COCOINDEX_CODE_DB_PATH_MAPPING']\n"
+        "repo, storage = mapping.split('=', 1)\n"
+        "assert repo == os.environ['TEP_COCOINDEX_REPO_ROOT']\n"
+        "storage_path = pathlib.Path(storage)\n"
+        "storage_path.mkdir(parents=True, exist_ok=True)\n"
+        "(storage_path / 'settings.yml').write_text('fixture: true\\n', encoding='utf-8')\n"
+        "(storage_path / 'target_sqlite.db').write_text('fixture db\\n', encoding='utf-8')\n"
+        "with open(os.environ['TEP_TEST_LOG'], 'a', encoding='utf-8') as handle:\n"
+        "    handle.write(os.environ['TEP_COCOINDEX_SCOPE'] + '=' + mapping + '\\n')\n",
+        encoding="utf-8",
+    )
+    ccc.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("TEP_TEST_LOG", str(log_path))
+    run_cli(
+        context,
+        "configure-runtime",
+        "--backend",
+        "code_intelligence.cocoindex.enabled=true",
+        "--backend",
+        "code_intelligence.cocoindex.mode=cli",
+    )
+
+    result = run_cli(context, "init-code-index", "--root", str(repo))
+
+    assert "Indexed 1 git-tracked code file(s)" in result.stdout
+    assert "Backend index: cocoindex scope=project indexed" in result.stdout
+    assert "Backend index: cocoindex scope=workspace indexed" in result.stdout
+    project_storage = context / "backends" / "cocoindex" / "projects" / project_id / ".cocoindex_code"
+    workspace_storage = context / "backends" / "cocoindex" / "workspaces" / workspace_id / ".cocoindex_code"
+    assert (project_storage / "settings.yml").is_file()
+    assert (project_storage / "target_sqlite.db").is_file()
+    assert (workspace_storage / "settings.yml").is_file()
+    assert (workspace_storage / "target_sqlite.db").is_file()
+    log_lines = log_path.read_text(encoding="utf-8").splitlines()
+    assert f"project={repo}={project_storage}" in log_lines
+    assert f"workspace={repo}={workspace_storage}" in log_lines
+    assert not (repo / ".cocoindex_code").exists()
+
+    project_status = json.loads(
+        run_cli(
+            context,
+            "backend-check",
+            "--backend",
+            "code_intelligence.cocoindex",
+            "--root",
+            str(repo),
+            "--scope",
+            "project",
+            "--format",
+            "json",
+        ).stdout
+    )["matches"][0]
+    workspace_status = json.loads(
+        run_cli(
+            context,
+            "backend-check",
+            "--backend",
+            "code_intelligence.cocoindex",
+            "--root",
+            str(repo),
+            "--scope",
+            "workspace",
+            "--format",
+            "json",
+        ).stdout
+    )["matches"][0]
+    assert project_status["storage"]["runtime_search_ready"] is True
+    assert workspace_status["storage"]["runtime_search_ready"] is True
 
 
 def test_code_search_resolves_paths_from_project_root_not_agent_cwd(tmp_path: Path, monkeypatch) -> None:

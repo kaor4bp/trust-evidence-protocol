@@ -203,6 +203,159 @@ def _run_cocoindex_direct_search(
     )
 
 
+def _run_cocoindex_index(
+    command: str,
+    *,
+    repo_root: Path,
+    storage_dir: Path,
+    scope: str,
+    timeout: int,
+) -> subprocess.CompletedProcess[str]:
+    env = {
+        **os.environ,
+        "COCOINDEX_CODE_DB_PATH_MAPPING": f"{repo_root}={storage_dir}",
+        "TEP_COCOINDEX_SCOPE": scope,
+        "TEP_COCOINDEX_STORAGE_DIR": str(storage_dir),
+        "TEP_COCOINDEX_REPO_ROOT": str(repo_root),
+    }
+    return subprocess.run(
+        [command, "index"],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def _cocoindex_index_scopes(mode: str, *, workspace_ref: str | None, project_ref: str | None) -> list[str]:
+    if mode == "none":
+        return []
+    if mode == "project":
+        return ["project"] if project_ref else []
+    if mode == "workspace":
+        return ["workspace"] if workspace_ref else []
+    scopes: list[str] = []
+    if project_ref:
+        scopes.append("project")
+    if workspace_ref:
+        scopes.append("workspace")
+    return scopes
+
+
+def cocoindex_index_payload(
+    context_root: Path,
+    repo_root: Path,
+    *,
+    scope_mode: str = "auto",
+    workspace_ref: str | None = None,
+    project_ref: str | None = None,
+    timeout: int = 120,
+) -> dict[str, Any]:
+    """Run optional CocoIndex indexing behind TEP code-index commands.
+
+    Backend indexes are navigation only. CIX remains the canonical TEP-owned
+    code index; this function only refreshes optional semantic storage when it
+    is enabled in runtime settings.
+    """
+
+    settings = load_settings(context_root)
+    code_settings = settings.get("backends", {}).get("code_intelligence", {})
+    coco_settings = code_settings.get("cocoindex", {}) if isinstance(code_settings, dict) else {}
+    enabled = bool(coco_settings.get("enabled"))
+    mode = str(coco_settings.get("mode") or "cli")
+    storage_root = str(coco_settings.get("storage_root") or "<context>/backends/cocoindex")
+    payload: dict[str, Any] = {
+        "backend": "cocoindex",
+        "mode": mode,
+        "enabled": enabled,
+        "available": False,
+        "attempted": False,
+        "backend_output_is_proof": BACKEND_OUTPUT_IS_PROOF,
+        "scope_mode": scope_mode,
+        "workspace_ref": workspace_ref or "",
+        "project_ref": project_ref or "",
+        "scopes": [],
+        "warnings": [],
+    }
+    if scope_mode == "none":
+        return payload
+    if not enabled:
+        return payload
+    if mode not in {"cli", "mcp"}:
+        payload["warnings"].append(f"unsupported cocoindex mode for TEP indexing: {mode}")
+        return payload
+    command = _cocoindex_command()
+    if command is None:
+        payload["warnings"].append("CocoIndex command was not found on PATH")
+        return payload
+    if mode == "mcp":
+        payload["warnings"].append("CocoIndex MCP indexing is not implemented by the TEP runtime yet")
+        return payload
+
+    payload["available"] = True
+    selected_scopes = _cocoindex_index_scopes(scope_mode, workspace_ref=workspace_ref, project_ref=project_ref)
+    if not selected_scopes:
+        payload["warnings"].append("CocoIndex indexing has no project/workspace scope for this repo")
+        return payload
+
+    for scope in selected_scopes:
+        storage_dir = resolve_cocoindex_storage_dir(
+            context_root,
+            scope=scope,
+            workspace_ref=workspace_ref,
+            project_ref=project_ref,
+            storage_root=storage_root,
+        )
+        scope_payload: dict[str, Any] = {
+            "scope": scope,
+            "storage": {
+                "repo_root": str(repo_root),
+                "workspace_ref": workspace_ref or "",
+                "project_ref": project_ref or "",
+                **_cocoindex_runtime_storage(storage_dir, repo_root),
+            },
+            "status": "skipped",
+            "returncode": None,
+            "warnings": [],
+        }
+        if storage_dir is None:
+            scope_payload["warnings"].append(f"{scope}-scoped CocoIndex indexing has no current {scope} ref")
+            payload["scopes"].append(scope_payload)
+            continue
+        payload["attempted"] = True
+        try:
+            result = _run_cocoindex_index(
+                command,
+                repo_root=repo_root,
+                storage_dir=storage_dir,
+                scope=scope,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            scope_payload["status"] = "failed"
+            scope_payload["warnings"].append("CocoIndex indexing timed out")
+            payload["scopes"].append(scope_payload)
+            continue
+        scope_payload["returncode"] = result.returncode
+        if result.returncode != 0:
+            scope_payload["status"] = "failed"
+            scope_payload["warnings"].append((result.stderr or result.stdout or "CocoIndex indexing failed").strip())
+        else:
+            scope_payload["status"] = "indexed"
+        scope_payload["storage"] = {
+            "repo_root": str(repo_root),
+            "workspace_ref": workspace_ref or "",
+            "project_ref": project_ref or "",
+            **_cocoindex_runtime_storage(storage_dir, repo_root),
+        }
+        if scope_payload["status"] == "indexed" and not scope_payload["storage"].get("runtime_search_ready"):
+            scope_payload["warnings"].append("CocoIndex command completed but scoped runtime search is not ready")
+        payload["scopes"].append(scope_payload)
+    return payload
+
+
 def cocoindex_search_payload(
     context_root: Path,
     repo_root: Path,
@@ -389,6 +542,28 @@ def enrich_backend_results_with_cix(
         if suggestions:
             result["link_suggestions"] = suggestions
     return payload
+
+
+def cocoindex_index_text_lines(payload: dict[str, Any]) -> list[str]:
+    if not payload.get("enabled") and not payload.get("warnings"):
+        return []
+    status = "available" if payload.get("available") else "unavailable"
+    lines = [
+        f"Backend index: cocoindex ({status}, mode={payload.get('mode', 'unknown')}, proof=false)"
+    ]
+    for warning in payload.get("warnings") or []:
+        lines.append(f"Backend index warning: {warning}")
+    for item in payload.get("scopes") or []:
+        storage = item.get("storage") if isinstance(item.get("storage"), dict) else {}
+        line = f"Backend index: cocoindex scope={item.get('scope')} {item.get('status')}"
+        if storage.get("scoped_db_dir"):
+            line += f" storage={storage.get('scoped_db_dir')}"
+        if storage.get("runtime_search_ready"):
+            line += " runtime_search_ready=true"
+        lines.append(line)
+        for warning in item.get("warnings") or []:
+            lines.append(f"Backend index warning: scope={item.get('scope')} {warning}")
+    return lines
 
 
 def cocoindex_search_text_lines(payload: dict[str, Any]) -> list[str]:

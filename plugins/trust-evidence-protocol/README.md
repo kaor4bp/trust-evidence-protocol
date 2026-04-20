@@ -249,6 +249,7 @@ Backend output may guide lookup, indexing, validation, and candidate generation,
 External code-intelligence backends such as CocoIndex should be accessed through TEP `code-search` / MCP `code_search`, not as parallel direct MCP entrypoints in normal operation.
 TEP scopes CocoIndex storage by default under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code`; workspace scope uses `<context>/backends/cocoindex/workspaces/<WSP-ID>/.cocoindex_code`.
 Code paths are always project-relative: the workdir-local `.tep` file selects the active focus only, while `--root` or the selected project `root_refs` selects the repository root used for CIX freshness, backend path mapping, and CocoIndex storage.
+When CocoIndex is enabled, normal TEP code-index commands refresh optional scoped backend indexes for project and workspace storage; users and agents should not run CocoIndex indexing directly during normal work.
 `WSP-*` and `PRJ-*` `root_refs` are stored as absolute paths; CLI record commands normalize relative input at write time, while raw record validation rejects relative `root_refs`.
 When an agent inspects a repository different from its cwd, it must pass `--root <repo>` or use a `.tep` anchor whose project points at that repository.
 The default search scope is project; workspace scope is an explicit outward glance, not the normal search boundary.
@@ -656,16 +657,19 @@ Commands:
   - stores file targets as paths relative to the resolved project root, not relative to the agent cwd or `.tep` anchor directory
   - defaults to tracked files only; use `--include-untracked` deliberately
   - bounded by `--max-files` and `--max-bytes-per-file`
+  - when CocoIndex is enabled, also refreshes TEP-owned project and workspace backend indexes; use `--backend-index none` only for debugging or offline fallback
 
 - `index-code --root . --include "src/**/*.py" --include "tests/**/*.py"`
   - indexes a scoped file set into `CIX-*` entries
   - preserves manual annotations, manual features, and manual links on refresh
   - excludes common cache/build directories by default
+  - triggers the same optional backend-index refresh as `init-code-index`
 
 - `code-refresh --root . --path "tests/**/*.py"`
   - refreshes existing CIX metadata for matching paths
   - marks missing files as `status=missing`
   - when a missing path reappears, creates a new `CIX-*` and links it to the old entry with `supersedes_refs`
+  - triggers the same optional backend-index refresh as `init-code-index`
 
 - `code-info --path <path> --fields target,imports,symbols,features,freshness`
   - shows one CIX entry with explicit projection fields

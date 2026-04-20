@@ -1299,11 +1299,17 @@ def curiosity_map_html(payload: dict) -> str:
       }},
     }};
     const network = new vis.Network(container, {{ nodes, edges }}, options);
+    let physicsFrozen = false;
     const details = document.getElementById("details");
     const clusterList = document.getElementById("cluster-list");
     const allNodeIds = nodes.getIds();
     const allEdgeIds = edges.getIds();
 
+    function freezePhysics() {{
+      if (physicsFrozen) return;
+      physicsFrozen = true;
+      network.setOptions({{ physics: false }});
+    }}
     function html(text) {{
       return String(text ?? "").replace(/[&<>"']/g, ch => ({{ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\\"": "&quot;", "'": "&#39;" }}[ch]));
     }}
@@ -1371,7 +1377,11 @@ def curiosity_map_html(payload: dict) -> str:
     network.on("selectNode", params => renderDetails(nodes.get(params.nodes[0])));
     network.on("selectEdge", params => renderDetails(edges.get(params.edges[0])));
     document.getElementById("fit").addEventListener("click", () => network.fit({{ animation: true }}));
-    document.getElementById("stabilize").addEventListener("click", () => network.stabilize(180));
+    document.getElementById("stabilize").addEventListener("click", () => {{
+      physicsFrozen = false;
+      network.setOptions({{ physics: {{ enabled: true }} }});
+      network.stabilize(120);
+    }});
     document.getElementById("cold").addEventListener("click", () => focusNodes(graph.coldNodeIds || []));
     document.getElementById("probes").addEventListener("click", () => {{
       const edgeIds = graph.probeEdgeIds || [];
@@ -1386,7 +1396,11 @@ def curiosity_map_html(payload: dict) -> str:
     document.getElementById("reset").addEventListener("click", resetVisibility);
     document.getElementById("search").addEventListener("input", event => filterGraph(event.target.value));
     renderClusterList();
-    network.once("stabilizationIterationsDone", () => network.fit({{ animation: true }}));
+    network.on("stabilizationIterationsDone", () => {{
+      freezePhysics();
+      network.fit({{ animation: true }});
+    }});
+    setTimeout(freezePhysics, 1800);
   }})();
   </script>
 </body>
