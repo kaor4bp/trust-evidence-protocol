@@ -333,7 +333,7 @@ def context_brief_text_lines(payload: dict, icon: str, detail: str = "compact") 
         lines.append("## Current Task")
         lines.extend(task_detail_lines(current_task))
         lines.append("")
-    lines.extend([f"Requested Task: {payload.get('task', '')}", ""])
+    lines.extend([f"- requested: {concise(payload.get('task', ''), 260)}", ""])
     project_ref = payload.get("project_ref", "")
     if project_ref:
         lines.extend([f"Project filter: `{project_ref}`. Unassigned records are excluded from relevance sections.", ""])
