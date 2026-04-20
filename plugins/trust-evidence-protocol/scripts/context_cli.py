@@ -19,6 +19,7 @@ from context_lib import (
     ALLOWED_FREEDOM,
     ACTION_STATUSES,
     ACTION_SAFETY_CLASSES,
+    ATTENTION_MODES,
     ANALYSIS_INSTALL_POLICIES,
     ANALYSIS_MISSING_DEPENDENCY_POLICIES,
     BACKEND_MODES,
@@ -2346,7 +2347,7 @@ def cmd_help(topic: str) -> int:
             "working-context create|fork|show|close|check-drift",
             "workspace-admission check --repo path [--format json]",
             "topic-index build --method lexical | topic-search --query ...",
-            "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | attention-map | curiosity-probes --budget 5 | probe-inspect --index 1 | probe-chain-draft --index 1 | probe-pack --budget 3",
+            "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | curiosity-map --mode research|theory|code | curiosity-probes --mode theory --budget 5 | probe-pack --mode theory --budget 3",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]",
             "validate-facts --backend rdf_shacl [--format json]",
@@ -3213,22 +3214,23 @@ def cmd_attention_index_build(root: Path, probe_limit: int) -> int:
     return 0
 
 
-def scoped_attention_payload(root: Path, payload: dict, scope: str) -> dict:
+def scoped_attention_payload(root: Path, payload: dict, scope: str, mode: str = "general") -> dict:
     return filter_attention_payload(
         payload,
         scope=scope,
+        mode=mode,
         workspace_ref=current_workspace_ref(root),
         project_ref=current_project_ref(root),
         task_ref=current_task_ref(root),
     )
 
 
-def cmd_attention_map(root: Path, limit: int, output_format: str, scope: str) -> int:
+def cmd_attention_map(root: Path, limit: int, output_format: str, scope: str, mode: str) -> int:
     payload = load_attention_payload(root)
     if not payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
-    payload = scoped_attention_payload(root, payload, scope)
+    payload = scoped_attention_payload(root, payload, scope, mode)
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
@@ -3236,7 +3238,7 @@ def cmd_attention_map(root: Path, limit: int, output_format: str, scope: str) ->
     return 0
 
 
-def cmd_attention_diagram(root: Path, limit: int, output_format: str, scope: str, detail: str) -> int:
+def cmd_attention_diagram(root: Path, limit: int, output_format: str, scope: str, detail: str, mode: str) -> int:
     _, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3244,7 +3246,7 @@ def cmd_attention_diagram(root: Path, limit: int, output_format: str, scope: str
     if not payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
-    payload = scoped_attention_payload(root, payload, scope)
+    payload = scoped_attention_payload(root, payload, scope, mode)
     if output_format == "json":
         diagram = attention_diagram_payload(payload, limit=limit, detail=detail)
         mermaid = "\n".join(attention_diagram_mermaid_lines(payload, limit=limit, detail=detail))
@@ -3307,7 +3309,7 @@ def attention_diagram_compare_text_lines(payload: dict) -> list[str]:
     ]
 
 
-def cmd_attention_diagram_compare(root: Path, limit: int, output_format: str, scope: str) -> int:
+def cmd_attention_diagram_compare(root: Path, limit: int, output_format: str, scope: str, mode: str) -> int:
     _, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3315,7 +3317,7 @@ def cmd_attention_diagram_compare(root: Path, limit: int, output_format: str, sc
     if not payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
-    scoped_payload = scoped_attention_payload(root, payload, scope)
+    scoped_payload = scoped_attention_payload(root, payload, scope, mode)
     comparison = attention_diagram_compare_payload(scoped_payload, limit=limit)
     if output_format == "json":
         print(json.dumps(comparison, indent=2, ensure_ascii=False))
@@ -3324,7 +3326,7 @@ def cmd_attention_diagram_compare(root: Path, limit: int, output_format: str, sc
     return 0
 
 
-def cmd_curiosity_map(root: Path, volume: str, output_format: str, scope: str) -> int:
+def cmd_curiosity_map(root: Path, volume: str, output_format: str, scope: str, mode: str) -> int:
     _, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3332,7 +3334,7 @@ def cmd_curiosity_map(root: Path, volume: str, output_format: str, scope: str) -
     if not payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
-    scoped_payload = scoped_attention_payload(root, payload, scope)
+    scoped_payload = scoped_attention_payload(root, payload, scope, mode)
     map_payload = curiosity_map_payload(scoped_payload, volume=volume)
     if output_format == "json":
         print(json.dumps(map_payload, indent=2, ensure_ascii=False))
@@ -3341,12 +3343,12 @@ def cmd_curiosity_map(root: Path, volume: str, output_format: str, scope: str) -
     return 0
 
 
-def cmd_curiosity_probes(root: Path, budget: int, output_format: str, scope: str) -> int:
+def cmd_curiosity_probes(root: Path, budget: int, output_format: str, scope: str, mode: str) -> int:
     payload = load_attention_payload(root)
     if not payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
-    payload = scoped_attention_payload(root, payload, scope)
+    payload = scoped_attention_payload(root, payload, scope, mode)
     limited_payload = {**payload, "probes": payload.get("probes", [])[: max(1, budget)]}
     if output_format == "json":
         print(
@@ -3354,6 +3356,7 @@ def cmd_curiosity_probes(root: Path, budget: int, output_format: str, scope: str
                 {
                     "attention_index_is_proof": False,
                     "scope": limited_payload.get("scope", scope),
+                    "mode": limited_payload.get("mode", mode),
                     "workspace_ref": limited_payload.get("workspace_ref", ""),
                     "project_ref": limited_payload.get("project_ref", ""),
                     "task_ref": limited_payload.get("task_ref", ""),
@@ -3385,7 +3388,7 @@ def probe_inspect_text_lines(payload: dict) -> list[str]:
         "# Curiosity Probe Inspection",
         "",
         "Mode: mechanical navigation context. Not proof.",
-        f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"scope: `{payload.get('scope')}` mode: `{payload.get('mode', 'general')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         f"probe_index: `{payload.get('probe_index')}` score: `{probe.get('score', 0)}` score_is_proof=`{probe.get('score_is_proof', False)}`",
         f"record_refs: {', '.join(f'`{ref}`' for ref in refs)}",
         f"reason: {probe.get('reason', '')}",
@@ -3473,6 +3476,7 @@ def build_probe_chain_draft_payload(root: Path, records: dict[str, dict], scoped
         "probe_index": probe_index,
         "probe": probe,
         "scope": scoped_payload.get("scope", ""),
+        "mode": scoped_payload.get("mode", "general"),
         "workspace_ref": scoped_payload.get("workspace_ref", ""),
         "project_ref": scoped_payload.get("project_ref", ""),
         "task_ref": scoped_payload.get("task_ref", ""),
@@ -3508,6 +3512,7 @@ def build_probe_inspection_payload(records: dict[str, dict], scoped_payload: dic
         "attention_index_is_proof": False,
         "inspection_is_proof": False,
         "scope": scoped_payload.get("scope", ""),
+        "mode": scoped_payload.get("mode", "general"),
         "workspace_ref": scoped_payload.get("workspace_ref", ""),
         "project_ref": scoped_payload.get("project_ref", ""),
         "task_ref": scoped_payload.get("task_ref", ""),
@@ -3548,7 +3553,7 @@ def probe_chain_draft_text_lines(payload: dict) -> list[str]:
     return lines
 
 
-def cmd_probe_inspect(root: Path, probe_index: int, output_format: str, scope: str) -> int:
+def cmd_probe_inspect(root: Path, probe_index: int, output_format: str, scope: str, mode: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3556,7 +3561,7 @@ def cmd_probe_inspect(root: Path, probe_index: int, output_format: str, scope: s
     if not attention_payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
-    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+    scoped_payload = scoped_attention_payload(root, attention_payload, scope, mode)
     try:
         payload = build_probe_inspection_payload(records, scoped_payload, probe_index)
     except ValueError as exc:
@@ -3575,7 +3580,7 @@ def probe_pack_text_lines(payload: dict) -> list[str]:
         "# Curiosity Reasoning Pack",
         "",
         "Mode: compact mechanical pack. Not proof.",
-        f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"scope: `{payload.get('scope')}` mode: `{payload.get('mode', 'general')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         f"budget: `{payload.get('budget')}` detail: `{payload.get('detail', 'compact')}` pack_is_proof=`{payload.get('pack_is_proof')}`",
         f"metrics: returned=`{metrics.get('returned_items', 0)}` available=`{metrics.get('available_probes', 0)}` records=`{metrics.get('record_summary_count', 0)}` omitted=`{', '.join(metrics.get('omitted_fields', [])) or 'none'}` payload_chars=`{metrics.get('payload_char_count', 0)}`",
         "",
@@ -3658,6 +3663,7 @@ def build_probe_pack_payload(root: Path, records: dict, scoped_payload: dict, bu
         "inspection_is_proof": False,
         "draft_is_proof": False,
         "scope": scoped_payload.get("scope", ""),
+        "mode": scoped_payload.get("mode", "general"),
         "workspace_ref": scoped_payload.get("workspace_ref", ""),
         "project_ref": scoped_payload.get("project_ref", ""),
         "task_ref": scoped_payload.get("task_ref", ""),
@@ -3687,6 +3693,7 @@ def probe_pack_compare_payload(compact_payload: dict, full_payload: dict) -> dic
         "workspace_ref": compact_payload.get("workspace_ref", ""),
         "project_ref": compact_payload.get("project_ref", ""),
         "task_ref": compact_payload.get("task_ref", ""),
+        "mode": compact_payload.get("mode", "general"),
         "budget": compact_payload.get("budget", 0),
         "compact": compact_metrics,
         "full": full_metrics,
@@ -3706,7 +3713,7 @@ def probe_pack_compare_text_lines(payload: dict) -> list[str]:
         "# Probe Pack Detail Comparison",
         "",
         "Mode: mechanical compact/full comparison. Not proof.",
-        f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"scope: `{payload.get('scope')}` mode: `{payload.get('mode', 'general')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         f"budget: `{payload.get('budget')}` comparison_is_proof=`{payload.get('comparison_is_proof')}` metrics_are_proof=`{payload.get('metrics_are_proof')}`",
         "",
         f"- compact: chars=`{compact.get('payload_char_count', 0)}` quotes=`{compact.get('source_quote_count', 0)}` chain_nodes=`{compact.get('chain_node_count', 0)}` omitted=`{', '.join(compact.get('omitted_fields', [])) or 'none'}`",
@@ -3718,7 +3725,7 @@ def probe_pack_compare_text_lines(payload: dict) -> list[str]:
     return lines
 
 
-def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, detail: str) -> int:
+def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, detail: str, mode: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3726,7 +3733,7 @@ def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, deta
     if not attention_payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
-    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+    scoped_payload = scoped_attention_payload(root, attention_payload, scope, mode)
     payload = build_probe_pack_payload(root, records, scoped_payload, budget, detail)
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -3735,7 +3742,7 @@ def cmd_probe_pack(root: Path, budget: int, output_format: str, scope: str, deta
     return 0
 
 
-def cmd_probe_pack_compare(root: Path, budget: int, output_format: str, scope: str) -> int:
+def cmd_probe_pack_compare(root: Path, budget: int, output_format: str, scope: str, mode: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3743,7 +3750,7 @@ def cmd_probe_pack_compare(root: Path, budget: int, output_format: str, scope: s
     if not attention_payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
-    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+    scoped_payload = scoped_attention_payload(root, attention_payload, scope, mode)
     compact_payload = build_probe_pack_payload(root, records, scoped_payload, budget, "compact")
     full_payload = build_probe_pack_payload(root, records, scoped_payload, budget, "full")
     payload = probe_pack_compare_payload(compact_payload, full_payload)
@@ -3762,22 +3769,23 @@ def build_probe_route_payload(root: Path, records: dict, scoped_payload: dict, p
     comparison = probe_pack_compare_payload(compact_pack, full_pack)
     diagram_comparison = attention_diagram_compare_payload(scoped_payload, limit=8)
     scope = scoped_payload.get("scope", "current")
+    mode = scoped_payload.get("mode", "general")
     probe = inspection["probe"]
     refs = [str(ref) for ref in probe.get("record_refs", [])]
     commands = [
-        f"attention-diagram --scope {scope} --limit 8 --detail compact",
-        f"attention-diagram-compare --scope {scope} --limit 8",
-        f"probe-inspect --index {probe_index} --scope {scope}",
-        f"probe-chain-draft --index {probe_index} --scope {scope} --format json",
-        f"probe-pack-compare --budget {max(1, probe_index)} --scope {scope}",
+        f"attention-diagram --scope {scope} --mode {mode} --limit 8 --detail compact",
+        f"attention-diagram-compare --scope {scope} --mode {mode} --limit 8",
+        f"probe-inspect --index {probe_index} --scope {scope} --mode {mode}",
+        f"probe-chain-draft --index {probe_index} --scope {scope} --mode {mode} --format json",
+        f"probe-pack-compare --budget {max(1, probe_index)} --scope {scope} --mode {mode}",
         *(f"record-detail --record {record_ref}" for record_ref in refs),
         *(f"linked-records --record {record_ref} --depth 1" for record_ref in refs),
         'build-reasoning-case --task "inspect whether the probed records should be linked"',
     ]
     if diagram_comparison["delta"].get("payload_char_count", 0) > 0:
-        commands.append(f"attention-diagram --scope {scope} --limit 8 --detail full")
+        commands.append(f"attention-diagram --scope {scope} --mode {mode} --limit 8 --detail full")
     if comparison["delta"].get("source_quote_count", 0) > 0:
-        commands.append(f"probe-pack --budget {max(1, probe_index)} --scope {scope} --detail full")
+        commands.append(f"probe-pack --budget {max(1, probe_index)} --scope {scope} --mode {mode} --detail full")
     return {
         "route_is_proof": False,
         "attention_index_is_proof": False,
@@ -3785,6 +3793,7 @@ def build_probe_route_payload(root: Path, records: dict, scoped_payload: dict, p
         "draft_is_proof": False,
         "comparison_is_proof": False,
         "scope": scope,
+        "mode": mode,
         "workspace_ref": scoped_payload.get("workspace_ref", ""),
         "project_ref": scoped_payload.get("project_ref", ""),
         "task_ref": scoped_payload.get("task_ref", ""),
@@ -3814,7 +3823,7 @@ def probe_route_text_lines(payload: dict) -> list[str]:
         "# Probe Inspection Route",
         "",
         "Mode: generated route for bounded probe inspection. Not proof.",
-        f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"scope: `{payload.get('scope')}` mode: `{payload.get('mode', 'general')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         f"probe_index: `{payload.get('probe_index')}` route_is_proof=`{payload.get('route_is_proof')}` score=`{probe.get('score', 0)}` score_is_proof=`{probe.get('score_is_proof', False)}`",
         f"record_refs: {', '.join(f'`{ref}`' for ref in payload.get('record_refs', []))}",
         f"direct_links: `{payload.get('direct_link_count', 0)}` chain_validation_ok: `{validation.get('ok')}`",
@@ -3833,7 +3842,7 @@ def probe_route_text_lines(payload: dict) -> list[str]:
     return lines
 
 
-def cmd_probe_route(root: Path, probe_index: int, output_format: str, scope: str) -> int:
+def cmd_probe_route(root: Path, probe_index: int, output_format: str, scope: str, mode: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3841,7 +3850,7 @@ def cmd_probe_route(root: Path, probe_index: int, output_format: str, scope: str
     if not attention_payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
-    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+    scoped_payload = scoped_attention_payload(root, attention_payload, scope, mode)
     try:
         payload = build_probe_route_payload(root, records, scoped_payload, probe_index)
     except ValueError as exc:
@@ -3854,7 +3863,7 @@ def cmd_probe_route(root: Path, probe_index: int, output_format: str, scope: str
     return 0
 
 
-def cmd_probe_chain_draft(root: Path, probe_index: int, output_format: str, scope: str) -> int:
+def cmd_probe_chain_draft(root: Path, probe_index: int, output_format: str, scope: str, mode: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3862,7 +3871,7 @@ def cmd_probe_chain_draft(root: Path, probe_index: int, output_format: str, scop
     if not attention_payload:
         print("attention index is missing or empty; run `attention-index build` first")
         return 1
-    scoped_payload = scoped_attention_payload(root, attention_payload, scope)
+    scoped_payload = scoped_attention_payload(root, attention_payload, scope, mode)
     try:
         payload = build_probe_chain_draft_payload(root, records, scoped_payload, probe_index)
     except ValueError as exc:
@@ -6518,6 +6527,7 @@ def parse_args() -> argparse.Namespace:
     attention_map.add_argument("--limit", type=int, default=12)
     attention_map.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     attention_map.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    attention_map.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     attention_diagram = subparsers.add_parser(
         "attention-diagram",
         help="Show generated Mermaid attention graph over clusters, records, bridges, and probes. Not proof.",
@@ -6525,6 +6535,7 @@ def parse_args() -> argparse.Namespace:
     attention_diagram.add_argument("--limit", type=int, default=8)
     attention_diagram.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     attention_diagram.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    attention_diagram.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     attention_diagram.add_argument("--detail", choices=("compact", "full"), default="compact")
     attention_diagram_compare = subparsers.add_parser(
         "attention-diagram-compare",
@@ -6533,6 +6544,7 @@ def parse_args() -> argparse.Namespace:
     attention_diagram_compare.add_argument("--limit", type=int, default=8)
     attention_diagram_compare.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     attention_diagram_compare.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    attention_diagram_compare.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     curiosity_map = subparsers.add_parser(
         "curiosity-map",
         help="Show a generated visual-thinking curiosity map with heat, cold zones, bridges, and probes. Not proof.",
@@ -6540,6 +6552,7 @@ def parse_args() -> argparse.Namespace:
     curiosity_map.add_argument("--volume", choices=sorted(CURIOSITY_MAP_VOLUMES), default="normal")
     curiosity_map.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     curiosity_map.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    curiosity_map.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     curiosity_probes = subparsers.add_parser(
         "curiosity-probes",
         help="Show generated bounded curiosity probes. Not proof.",
@@ -6547,6 +6560,7 @@ def parse_args() -> argparse.Namespace:
     curiosity_probes.add_argument("--budget", type=int, default=8)
     curiosity_probes.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     curiosity_probes.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    curiosity_probes.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     probe_inspect = subparsers.add_parser(
         "probe-inspect",
         help="Inspect one curiosity probe with canonical record details and link status. Not proof.",
@@ -6554,6 +6568,7 @@ def parse_args() -> argparse.Namespace:
     probe_inspect.add_argument("--index", dest="probe_index", type=int, default=1)
     probe_inspect.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     probe_inspect.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    probe_inspect.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     probe_chain_draft = subparsers.add_parser(
         "probe-chain-draft",
         help="Draft an evidence-chain skeleton from one curiosity probe. Draft is not proof.",
@@ -6561,6 +6576,7 @@ def parse_args() -> argparse.Namespace:
     probe_chain_draft.add_argument("--index", dest="probe_index", type=int, default=1)
     probe_chain_draft.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     probe_chain_draft.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    probe_chain_draft.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     probe_route = subparsers.add_parser(
         "probe-route",
         help="Generate an ordered inspection route for one curiosity probe. Route is not proof.",
@@ -6568,6 +6584,7 @@ def parse_args() -> argparse.Namespace:
     probe_route.add_argument("--index", dest="probe_index", type=int, default=1)
     probe_route.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     probe_route.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    probe_route.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     probe_pack = subparsers.add_parser(
         "probe-pack",
         help="Compactly bundle top curiosity probes with inspection summaries and chain drafts. Not proof.",
@@ -6575,6 +6592,7 @@ def parse_args() -> argparse.Namespace:
     probe_pack.add_argument("--budget", type=int, default=3)
     probe_pack.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     probe_pack.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    probe_pack.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     probe_pack.add_argument("--detail", choices=("compact", "full"), default="compact")
     probe_pack_compare = subparsers.add_parser(
         "probe-pack-compare",
@@ -6583,6 +6601,7 @@ def parse_args() -> argparse.Namespace:
     probe_pack_compare.add_argument("--budget", type=int, default=3)
     probe_pack_compare.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     probe_pack_compare.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    probe_pack_compare.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     logic_index = subparsers.add_parser(
         "logic-index",
         help="Build generated predicate logic indexes over CLM.logic blocks.",
@@ -7742,7 +7761,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         if args.attention_index_command == "build":
             raise SystemExit(cmd_attention_index_build(root, probe_limit=args.probe_limit))
     if args.command == "attention-map":
-        raise SystemExit(cmd_attention_map(root, limit=args.limit, output_format=args.output_format, scope=args.scope))
+        raise SystemExit(cmd_attention_map(root, limit=args.limit, output_format=args.output_format, scope=args.scope, mode=args.mode))
     if args.command == "attention-diagram":
         raise SystemExit(
             cmd_attention_diagram(
@@ -7751,6 +7770,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 output_format=args.output_format,
                 scope=args.scope,
                 detail=args.detail,
+                mode=args.mode,
             )
         )
     if args.command == "attention-diagram-compare":
@@ -7760,22 +7780,23 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 limit=args.limit,
                 output_format=args.output_format,
                 scope=args.scope,
+                mode=args.mode,
             )
         )
     if args.command == "curiosity-map":
-        raise SystemExit(cmd_curiosity_map(root, volume=args.volume, output_format=args.output_format, scope=args.scope))
+        raise SystemExit(cmd_curiosity_map(root, volume=args.volume, output_format=args.output_format, scope=args.scope, mode=args.mode))
     if args.command == "curiosity-probes":
-        raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format, scope=args.scope))
+        raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format, scope=args.scope, mode=args.mode))
     if args.command == "probe-inspect":
-        raise SystemExit(cmd_probe_inspect(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
+        raise SystemExit(cmd_probe_inspect(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope, mode=args.mode))
     if args.command == "probe-chain-draft":
-        raise SystemExit(cmd_probe_chain_draft(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
+        raise SystemExit(cmd_probe_chain_draft(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope, mode=args.mode))
     if args.command == "probe-route":
-        raise SystemExit(cmd_probe_route(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope))
+        raise SystemExit(cmd_probe_route(root, probe_index=args.probe_index, output_format=args.output_format, scope=args.scope, mode=args.mode))
     if args.command == "probe-pack":
-        raise SystemExit(cmd_probe_pack(root, budget=args.budget, output_format=args.output_format, scope=args.scope, detail=args.detail))
+        raise SystemExit(cmd_probe_pack(root, budget=args.budget, output_format=args.output_format, scope=args.scope, detail=args.detail, mode=args.mode))
     if args.command == "probe-pack-compare":
-        raise SystemExit(cmd_probe_pack_compare(root, budget=args.budget, output_format=args.output_format, scope=args.scope))
+        raise SystemExit(cmd_probe_pack_compare(root, budget=args.budget, output_format=args.output_format, scope=args.scope, mode=args.mode))
     if args.command == "logic-index":
         if args.logic_index_command == "build":
             raise SystemExit(cmd_logic_index_build(root, candidate_limit=args.candidate_limit))

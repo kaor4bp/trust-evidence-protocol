@@ -350,6 +350,7 @@ Exposed tools:
 - `topic_info`: generated topic terms and similar records for one record
 - `topic_conflict_candidates`: generated lexical overlap candidates for review
 - `attention_map`: generated attention-map clusters and cold zones; defaults to current `.tep` workspace/project/task focus
+- `attention_map` / `curiosity_map` accept `mode=general|research|theory|code` to mechanically filter noisy record types for the current work mode
 - `attention_diagram`: generated Mermaid attention graph over clusters, top records, established bridges, and curiosity probes; defaults to `detail=compact`
 - `attention_diagram_compare`: compact/full diagram metric comparison for deciding whether summary labels are worth requesting
 - `curiosity_map`: generated visual-thinking map with heat, cold zones, established bridges, candidate probes, and next inspection commands; `volume=compact|normal|wide`
@@ -372,6 +373,8 @@ Rules:
 - Prefer MCP read-only tools when available for lookup-heavy work.
 - Pass `cwd` when the caller knows the active workdir so MCP can resolve the nearest `.tep` anchor instead of the MCP server's own cwd.
 - For attention tools, use default `scope=current` during normal work; use `scope=all` only for cross-workspace/project triage.
+- For visual-thinking mode, use `mode=research` during broad investigation, `mode=theory` when assembling claims/models/flows, and `mode=code` when looking for implementation/test/code-index context.
+- Mode filtering is navigation only: for example `research` hides policy records such as `GLD-*`, `theory` hides raw inputs and policy/execution records, and `code` hides raw `INP-*` / `SRC-*` / plain `CLM-*` proof noise unless the record is code-linked.
 - Use `attention_diagram` when a visual cluster/link map is cheaper than reading several textual reports; Mermaid output is navigation only, not proof.
 - `attention_diagram` defaults to `detail=compact` and omits record summaries; request `detail=full` only when node labels need summaries.
 - Use `attention_diagram_compare` to compare compact/full diagram payload cost mechanically; comparison output is not proof.

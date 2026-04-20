@@ -72,6 +72,7 @@ from tep_runtime.code_backends import (
 )
 from tep_runtime.actions import build_action_payload
 from tep_runtime.attention import (
+    ATTENTION_MODES,
     ATTENTION_SCOPES,
     CURIOSITY_MAP_VOLUMES,
     TAP_KINDS,

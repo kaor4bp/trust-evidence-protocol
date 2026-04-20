@@ -324,7 +324,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "attention_map",
-                    "arguments": {"context": str(context), "format": "json"},
+                    "arguments": {"context": str(context), "mode": "research", "format": "json"},
                 },
             },
             {
@@ -405,7 +405,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "curiosity_map",
-                    "arguments": {"context": str(context), "volume": "compact", "scope": "all", "format": "json"},
+                    "arguments": {"context": str(context), "volume": "compact", "scope": "all", "mode": "theory", "format": "json"},
                 },
             },
             {
@@ -617,6 +617,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     attention_map = by_id[12]["result"]
     assert attention_map["isError"] is False
     assert '"attention_index_is_proof": false' in attention_map["content"][0]["text"]
+    assert '"mode": "research"' in attention_map["content"][0]["text"]
 
     curiosity = by_id[13]["result"]
     assert curiosity["isError"] is False
@@ -671,6 +672,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert curiosity_map["isError"] is False
     assert '"map_is_proof": false' in curiosity_map["content"][0]["text"]
     assert '"volume": "compact"' in curiosity_map["content"][0]["text"]
+    assert '"mode": "theory"' in curiosity_map["content"][0]["text"]
     assert '"curiosity_prompts"' in curiosity_map["content"][0]["text"]
     assert "graph TD" in curiosity_map["content"][0]["text"]
 

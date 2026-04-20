@@ -1472,6 +1472,48 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
         ),
         "claim",
     )
+    input_id = recorded_id(
+        run_cli(
+            context,
+            "record-input",
+            "--scope",
+            "attention.demo",
+            "--input-kind",
+            "user_prompt",
+            "--origin-kind",
+            "user",
+            "--origin-ref",
+            "pytest",
+            "--text",
+            "Please inspect the attention map.",
+            "--derived-record",
+            tapped_claim_id,
+            "--note",
+            "input should be hidden in code/theory visual modes",
+        ),
+        "input",
+    )
+    guideline_id = recorded_id(
+        run_cli(
+            context,
+            "record-guideline",
+            "--scope",
+            "attention.demo",
+            "--domain",
+            "agent-behavior",
+            "--applies-to",
+            "global",
+            "--priority",
+            "preferred",
+            "--rule",
+            "Use curiosity-map before spending tokens on broad manual exploration.",
+            "--source",
+            source_id,
+            "--note",
+            "guideline should be hidden in research/theory visual modes",
+        ),
+        "guideline",
+    )
 
     tap = run_cli(context, "tap-record", "--record", tapped_claim_id, "--kind", "cited", "--intent", "support")
     assert "not proof" in tap.stdout
@@ -1512,6 +1554,7 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     curiosity_map = json.loads(run_cli(context, "curiosity-map", "--volume", "compact", "--scope", "all", "--format", "json").stdout)
     assert curiosity_map["map_is_proof"] is False
     assert curiosity_map["attention_index_is_proof"] is False
+    assert curiosity_map["mode"] == "general"
     assert curiosity_map["volume"] == "compact"
     assert curiosity_map["metrics"]["metrics_are_proof"] is False
     assert curiosity_map["metrics"]["cluster_count"] <= curiosity_map["budget"]["clusters"]
@@ -1526,6 +1569,19 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert "visual-thinking map" in curiosity_map_text
     assert "Curiosity Prompts" in curiosity_map_text
     assert "Use the map to decide what to inspect next" in curiosity_map_text
+    research_map = json.loads(
+        run_cli(context, "curiosity-map", "--volume", "compact", "--scope", "all", "--mode", "research", "--format", "json").stdout
+    )
+    assert research_map["mode"] == "research"
+    assert guideline_id not in research_map["records"]
+    theory_attention = json.loads(run_cli(context, "attention-map", "--scope", "all", "--mode", "theory", "--format", "json").stdout)
+    assert theory_attention["mode"] == "theory"
+    assert input_id not in theory_attention["records"]
+    assert guideline_id not in theory_attention["records"]
+    code_attention = json.loads(run_cli(context, "attention-map", "--scope", "all", "--mode", "code", "--format", "json").stdout)
+    assert code_attention["mode"] == "code"
+    assert input_id not in code_attention["records"]
+    assert tapped_claim_id not in code_attention["records"]
     probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
     assert probes_payload["attention_index_is_proof"] is False
     assert all(ref.startswith("CLM-") for probe in probes_payload["probes"] for ref in probe["record_refs"])

@@ -36,6 +36,7 @@ ACCESS_WEIGHTS = {
 }
 DEFAULT_HALF_LIFE_DAYS = 7.0
 ATTENTION_SCOPES = {"current", "all"}
+ATTENTION_MODES = {"general", "research", "theory", "code"}
 CURIOSITY_MAP_VOLUMES = {"compact", "normal", "wide"}
 CURIOSITY_MAP_BUDGETS = {
     "compact": {"clusters": 4, "records_per_cluster": 2, "bridges": 4, "probes": 3, "cold_zones": 4},
@@ -52,6 +53,32 @@ PROBE_RECORD_TYPE_WEIGHTS = {
     "debt": 2,
 }
 PROBE_RECORD_TYPES = set(PROBE_RECORD_TYPE_WEIGHTS)
+ATTENTION_MODE_DESCRIPTIONS = {
+    "general": "balanced navigation across all record types",
+    "research": "investigation view; hides policy records that rarely help exploration",
+    "theory": "theory-building view over claims, models, flows, open questions, and proposals",
+    "code": "code-navigation view; hides raw inputs and source/claim proof noise unless records are code-linked",
+}
+ATTENTION_MODE_EXCLUDED_TYPES = {
+    "general": set(),
+    "research": {"guideline", "permission", "restriction"},
+    "theory": {
+        "input",
+        "source",
+        "guideline",
+        "permission",
+        "restriction",
+        "action",
+        "task",
+        "plan",
+        "debt",
+        "workspace",
+        "project",
+        "working_context",
+    },
+    "code": {"input", "source", "claim", "permission", "restriction"},
+}
+ATTENTION_CODE_OPERATIONAL_TYPES = {"guideline", "proposal", "plan", "debt", "open_question", "model", "flow", "action", "task", "working_context"}
 
 
 def activity_root(root: Path) -> Path:
@@ -196,6 +223,16 @@ def probe_candidate(record: dict) -> bool:
     return str(record.get("record_type", "")).strip() in PROBE_RECORD_TYPES
 
 
+def record_matches_attention_mode(record: dict, mode: str) -> bool:
+    mode = mode if mode in ATTENTION_MODES else "general"
+    record_type = str(record.get("record_type", "")).strip()
+    if mode == "code":
+        if record.get("has_code_index_refs"):
+            return True
+        return record_type in ATTENTION_CODE_OPERATIONAL_TYPES
+    return record_type not in ATTENTION_MODE_EXCLUDED_TYPES.get(mode, set())
+
+
 def probe_score(left: dict, right: dict, cluster: dict) -> float:
     type_score = probe_record_weight(left) + probe_record_weight(right)
     focus_score = int(left.get("focus_score", 0)) + int(right.get("focus_score", 0))
@@ -311,6 +348,7 @@ def build_attention_index(
             "id": record_id,
             "record_type": str(data.get("record_type", "")).strip(),
             "summary": public_record_summary(data),
+            "status": str(data.get("status", "")).strip(),
             "activity_score": round(tap_scores.get(record_id, 0.0) + access_scores.get(record_id, 0.0), 4),
             "tap_count": tap_counts.get(record_id, 0),
             "access_count": access_counts.get(record_id, 0),
@@ -319,6 +357,7 @@ def build_attention_index(
             "workspace_refs": list_refs(data, "workspace_refs"),
             "project_refs": list_refs(data, "project_refs"),
             "task_refs": list_refs(data, "task_refs"),
+            "has_code_index_refs": bool(list_refs(data, "code_index_refs")),
             "attention_index_is_proof": False,
         }
 
@@ -401,19 +440,26 @@ def filter_attention_payload(
     payload: dict,
     *,
     scope: str = "current",
+    mode: str = "general",
     workspace_ref: str = "",
     project_ref: str = "",
     task_ref: str = "",
 ) -> dict:
-    if scope == "all" or not any([workspace_ref, project_ref, task_ref]):
-        return {**payload, "scope": "all"}
+    mode = mode if mode in ATTENTION_MODES else "general"
+    focus_all = scope == "all" or not any([workspace_ref, project_ref, task_ref])
 
     records = payload.get("records", {}) if isinstance(payload.get("records"), dict) else {}
     kept_records = {
-        record_id: {**record, "focus_score": record_focus_score(record, workspace_ref=workspace_ref, project_ref=project_ref, task_ref=task_ref)}
+        record_id: {
+            **record,
+            "focus_score": 0
+            if focus_all
+            else record_focus_score(record, workspace_ref=workspace_ref, project_ref=project_ref, task_ref=task_ref),
+        }
         for record_id, record in records.items()
         if isinstance(record, dict)
-        and record_matches_focus(record, workspace_ref=workspace_ref, project_ref=project_ref, task_ref=task_ref)
+        and (focus_all or record_matches_focus(record, workspace_ref=workspace_ref, project_ref=project_ref, task_ref=task_ref))
+        and record_matches_attention_mode(record, mode)
     }
     kept_ids = set(kept_records)
 
@@ -465,10 +511,12 @@ def filter_attention_payload(
 
     return {
         **payload,
-        "scope": "current",
-        "workspace_ref": workspace_ref,
-        "project_ref": project_ref,
-        "task_ref": task_ref,
+        "scope": "all" if focus_all else "current",
+        "mode": mode,
+        "mode_description": ATTENTION_MODE_DESCRIPTIONS.get(mode, ""),
+        "workspace_ref": "" if focus_all else workspace_ref,
+        "project_ref": "" if focus_all else project_ref,
+        "task_ref": "" if focus_all else task_ref,
         "records": kept_records,
         "clusters": clusters,
         "record_count": len(kept_records),
@@ -543,7 +591,7 @@ def attention_map_text_lines(payload: dict, *, limit: int) -> list[str]:
         "# Attention Map",
         "",
         "Mode: generated attention/navigation map. Not proof.",
-        f"scope: `{payload.get('scope', 'all')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"scope: `{payload.get('scope', 'all')}` mode: `{payload.get('mode', 'general')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         f"records: `{payload.get('record_count', len(payload.get('records', {})))}` clusters: `{payload.get('cluster_count', len(payload.get('clusters', {})))}` taps: `{payload.get('tap_count', 0)}` access_events: `{payload.get('access_event_count', 0)}` record_accesses: `{payload.get('record_access_count', 0)}`",
         "",
         "## Active Clusters",
@@ -638,6 +686,7 @@ def attention_diagram_payload(payload: dict, *, limit: int, detail: str = "compa
         "attention_index_is_proof": False,
         "detail": detail,
         "scope": payload.get("scope", "all"),
+        "mode": payload.get("mode", "general"),
         "workspace_ref": payload.get("workspace_ref", ""),
         "project_ref": payload.get("project_ref", ""),
         "task_ref": payload.get("task_ref", ""),
@@ -701,7 +750,7 @@ def attention_diagram_text_lines(payload: dict, *, limit: int, detail: str = "co
         "# Attention Diagram",
         "",
         "Mode: generated Mermaid attention/navigation diagram. Not proof.",
-        f"scope: `{payload.get('scope', 'all')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"scope: `{payload.get('scope', 'all')}` mode: `{payload.get('mode', 'general')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         f"detail: `{detail}` metrics_are_proof=`{metrics['metrics_are_proof']}` omitted=`{', '.join(metrics['omitted_fields']) or 'none'}` payload_chars=`{metrics['payload_char_count']}`",
         "",
         "```mermaid",
@@ -799,6 +848,7 @@ def curiosity_map_payload(payload: dict, *, volume: str = "normal") -> dict:
         "map_is_proof": False,
         "attention_index_is_proof": False,
         "scope": payload.get("scope", "all"),
+        "mode": payload.get("mode", "general"),
         "workspace_ref": payload.get("workspace_ref", ""),
         "project_ref": payload.get("project_ref", ""),
         "task_ref": payload.get("task_ref", ""),
@@ -918,7 +968,7 @@ def curiosity_map_text_lines(payload: dict) -> list[str]:
         "# Curiosity Map",
         "",
         "Mode: generated visual-thinking map for bounded curiosity. Not proof.",
-        f"scope: `{payload.get('scope')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"scope: `{payload.get('scope')}` mode: `{payload.get('mode', 'general')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         f"volume: `{payload.get('volume')}` clusters=`{metrics.get('cluster_count', 0)}` records=`{metrics.get('record_count', 0)}` cold_zones=`{metrics.get('cold_zone_count', 0)}` probes=`{metrics.get('probe_count', 0)}` payload_chars=`{metrics.get('payload_char_count', 0)}`",
         "",
         "```mermaid",
@@ -952,7 +1002,7 @@ def curiosity_probe_text_lines(payload: dict, *, limit: int) -> list[str]:
         "# Curiosity Probes",
         "",
         "Mode: generated questions for bounded inspection. Not proof.",
-        f"scope: `{payload.get('scope', 'all')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"scope: `{payload.get('scope', 'all')}` mode: `{payload.get('mode', 'general')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
         "",
     ]
     for probe in probes[: max(1, limit)]:
