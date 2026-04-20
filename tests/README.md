@@ -76,9 +76,10 @@ plugin runtime is installed.
 runtime canary. It installs the full plugin bundle into isolated
 `CODEX_HOME/plugins/cache/home-local-plugins/...`, enables the plugin in
 `config.toml`, creates an anchored `.tep_context`, and requires the live agent
-to run plugin runtime commands such as `context_cli.py`. This test should fail
-if the environment only has a copied standalone skill or if the runtime image
-cannot execute the plugin.
+to run plugin runtime commands such as `context_cli.py`, `map-brief`,
+`probe-inspect`, and `probe-route`. This test should fail if the environment
+only has a copied standalone skill, if the runtime image cannot execute the
+plugin, or if curiosity-map navigation cannot drive a bounded inspection route.
 
 `tests/trust_evidence_protocol/test_hypothesis_reasoning_behavior.py` contains
 live-agent behavior cases for hypothesis diversity. These tests intentionally

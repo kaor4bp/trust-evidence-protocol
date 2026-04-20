@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 import hashlib
 import re
@@ -268,7 +269,11 @@ def run_case(
         return verdict
 
 
-def run_plugin_runtime_case(prompt: str) -> dict[str, object]:
+def run_plugin_runtime_case(
+    prompt: str,
+    *,
+    setup_context: Callable[[Path], None] | None = None,
+) -> dict[str, object]:
     """Run a real Codex agent with the full plugin bundle installed in CODEX_HOME."""
     global _LAST_RUN_CHECKSUM, _LAST_RESULT_PAYLOAD, _LAST_STDOUT, _LAST_STDERR
 
@@ -285,6 +290,8 @@ def run_plugin_runtime_case(prompt: str) -> dict[str, object]:
         context_root = workspace / ".tep_context"
         workspace_ref, project_ref = _bootstrap_context(context_root)
         _write_workspace_anchor(workspace, workspace_ref=workspace_ref, project_ref=project_ref)
+        if setup_context is not None:
+            setup_context(context_root)
 
         prompt_path = workspace / "prompt.txt"
         output_path = workspace / "plugin-result.json"
@@ -353,6 +360,12 @@ def run_plugin_runtime_case(prompt: str) -> dict[str, object]:
         _LAST_RESULT_PAYLOAD = payload
         _LAST_RUN_CHECKSUM = sha256sum_path(output_path)
         return dict(payload)
+
+
+def run_curiosity_map_runtime_case(prompt: str) -> dict[str, object]:
+    """Run a live plugin case with a seeded context that produces curiosity probes."""
+
+    return run_plugin_runtime_case(prompt, setup_context=_seed_curiosity_map_context)
 
 
 def get_last_run_checksum() -> str:
@@ -623,18 +636,6 @@ def _bootstrap_context(context_root: Path) -> tuple[str, str]:
     project_ref = _record_project(context_root, workspace_ref)
     _run_context_cli(context_root, "set-current-workspace", "--workspace", workspace_ref)
     _run_context_cli(context_root, "set-current-project", "--project", project_ref)
-    subprocess.run(
-        [
-            "python3",
-            str(PLUGIN_ROOT / "scripts" / "runtime_gate.py"),
-            "--context",
-            str(context_root),
-            "hydrate-context",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
     return workspace_ref, project_ref
 
 
@@ -692,6 +693,52 @@ def _record_project(context_root: Path, workspace_ref: str) -> str:
         "Ephemeral live-agent plugin conformance project.",
     )
     return _extract_record_id(result.stdout, "PRJ")
+
+
+def _seed_curiosity_map_context(context_root: Path) -> None:
+    source = _extract_record_id(
+        _run_context_cli(
+            context_root,
+            "record-source",
+            "--scope",
+            "live.curiosity",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "fixture",
+            "--origin-ref",
+            "live-curiosity-map",
+            "--quote",
+            "Facility and Program records are live curiosity fixture inputs.",
+            "--note",
+            "Seed source for live curiosity map conformance.",
+        ).stdout,
+        "SRC",
+    )
+    for statement, note in (
+        ("Facility inventory reaches Program marketplace listings.", "facility claim"),
+        ("Program marketplace listings imply Facility inventory dependency.", "program claim"),
+        ("Marketplace listing checks require bounded inspection before treating Facility and Program as linked.", "candidate-link guard claim"),
+    ):
+        _run_context_cli(
+            context_root,
+            "record-claim",
+            "--scope",
+            "live.curiosity",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            statement,
+            "--source",
+            source,
+            "--note",
+            note,
+        )
+    _run_context_cli(context_root, "attention-index", "build", "--probe-limit", "10")
 
 
 def _run_context_cli(context_root: Path, *args: str) -> subprocess.CompletedProcess[str]:

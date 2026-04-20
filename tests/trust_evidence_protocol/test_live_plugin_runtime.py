@@ -1,4 +1,9 @@
-from codex_harness import get_last_run_checksum, get_last_stdout, run_plugin_runtime_case
+from codex_harness import (
+    get_last_run_checksum,
+    get_last_stdout,
+    run_curiosity_map_runtime_case,
+    run_plugin_runtime_case,
+)
 
 
 def test_live_agent_checks_installed_tep_runtime_plugin():
@@ -108,3 +113,37 @@ def test_live_agent_checks_compact_lookup_help_route():
     assert "guidelines-for" in markers, payload
     assert "code-search" in markers, payload
     assert "telemetry-report" in markers, payload
+
+
+def test_live_agent_uses_curiosity_map_brief_probe_route():
+    payload = run_curiosity_map_runtime_case(
+        """
+        Verify the installed TEP Runtime plugin can guide curiosity-driven inspection mechanically:
+        1. Run `map-brief --scope all --mode theory --volume compact --format json`
+           against `/workspace/.tep_context`.
+        2. Choose the first available candidate probe from that output.
+        3. Run `probe-inspect --index 1 --scope all --mode theory --format json`.
+        4. Run `probe-route --index 1 --scope all --mode theory --format json`.
+        5. Report observed literal markers from command output: `map_graph_version`,
+           `candidate_probes`, `inspection_is_proof`, `route_is_proof`,
+           and `recommended_commands`.
+        Do not conclude Facility and Program are linked from the probe itself; this test
+        checks the TEP route, not the truth of the candidate link.
+        """
+    )
+
+    checks = payload["plugin_checks"]
+    commands = " ".join(payload["commands_run"])
+    markers = " ".join(payload["observed_markers"])
+    assert payload["verdict"] == "plugin-active", payload
+    assert checks["plugin_root_exists"] is True, payload
+    assert checks["context_cli_works"] is True, payload
+    assert checks["hydration_or_review_works"] is True, payload
+    assert "map-brief" in commands, payload
+    assert "probe-inspect" in commands, payload
+    assert "probe-route" in commands, payload
+    assert "map_graph_version" in markers, payload
+    assert "candidate_probes" in markers, payload
+    assert "inspection_is_proof" in markers, payload
+    assert "route_is_proof" in markers, payload
+    assert "recommended_commands" in markers, payload
