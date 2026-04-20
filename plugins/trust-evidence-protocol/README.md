@@ -401,6 +401,8 @@ Commands:
   - shows or updates optional external backend registry policy
   - useful examples:
     - `configure-runtime --show`
+    - `configure-runtime --backend-preset minimal`
+    - `configure-runtime --backend-preset recommended`
     - `configure-runtime --hook-verbosity quiet --context-budget hydration=compact`
     - `configure-runtime --analysis logic_solver.backend=z3 --analysis logic_solver.install_policy=ask`
     - `configure-runtime --analysis topic_prefilter.backend=nmf --analysis topic_prefilter.missing_dependency=warn`

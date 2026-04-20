@@ -97,6 +97,7 @@ Persistence write boundary:
 - `<context>/settings.json.analysis` controls optional mechanical helpers such as Z3 solver policy and NMF topic prefilter policy.
 - Analysis helper settings are not proof and are not permission to silently install dependencies; respect `missing_dependency` and `install_policy`.
 - `<context>/settings.json.backends` controls optional external adapters for fact validation, code intelligence, and derivation.
+- Use `configure-runtime --backend-preset minimal` for a no-external-backends baseline and `configure-runtime --backend-preset recommended` for the normal Serena + CocoIndex setup.
 - CocoIndex backend storage is scoped by TEP settings under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code` by default; workspace storage is an explicit broader scope.
 - Backend status and backend output are navigation/diagnostic data only; cite canonical `SRC-*` and `CLM-*` records before using a backend result as proof.
 - Use `backend-status` / `backend-check` before relying on an optional backend, pass repo root/scope when checking code intelligence, and degrade cleanly when dependencies are missing.

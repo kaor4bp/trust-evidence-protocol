@@ -799,6 +799,7 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]" in commands_help
     assert "validate-facts --backend rdf_shacl [--format json]" in commands_help
     assert "export-rdf --format turtle|jsonld [--output path]" in commands_help
+    assert "configure-runtime --backend-preset minimal|recommended" in commands_help
     assert "working-context create|fork|show|close|check-drift" in commands_help
     assert "workspace-admission check --repo path [--format json]" in commands_help
 
@@ -984,6 +985,34 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert f"Switched current task to {second_id}" in switched
     assert load_record(context, "task", third_id)["status"] == "paused"
     assert load_record(context, "task", second_id)["status"] == "active"
+
+
+def test_configure_runtime_backend_presets_make_backend_sets_explicit(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    recommended = run_cli(context, "configure-runtime", "--backend-preset", "recommended").stdout
+    assert "backends.code_intelligence.backend=serena" in recommended
+    assert "backends.code_intelligence.serena.enabled=true" in recommended
+    assert "backends.code_intelligence.cocoindex.enabled=true" in recommended
+    assert "backends.code_intelligence.cocoindex.default_scope=project" in recommended
+    status = json.loads(run_cli(context, "backend-status", "--format", "json").stdout)
+    assert status["groups"]["code_intelligence"]["selected"] == "serena"
+    assert any(item["id"] == "serena" and item["selected"] is True for item in status["backends"])
+    assert any(item["id"] == "cocoindex" and item["enabled"] is True for item in status["backends"])
+
+    minimal = run_cli(context, "configure-runtime", "--backend-preset", "minimal").stdout
+    assert "backends.code_intelligence.backend=builtin" in minimal
+    assert "backends.code_intelligence.serena.enabled=false" in minimal
+    assert "backends.code_intelligence.cocoindex.enabled=false" in minimal
+    assert "backends.fact_validation.rdf_shacl.enabled=false" in minimal
+    assert "backends.derivation.datalog.enabled=false" in minimal
+    status = json.loads(run_cli(context, "backend-status", "--format", "json").stdout)
+    assert status["groups"]["code_intelligence"]["selected"] == "builtin"
+    assert all(
+        not item["enabled"]
+        for item in status["backends"]
+        if item["id"] in {"serena", "cocoindex", "datalog", "rdf_shacl"}
+    )
 
 
 def test_validate_facts_fake_backend_reports_candidates_and_telemetry(tmp_path: Path) -> None:

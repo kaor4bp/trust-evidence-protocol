@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -43,6 +44,7 @@ from context_lib import (
     CRITIQUE_STATUSES,
     DEBT_STATUSES,
     DERIVATION_BACKENDS,
+    DEFAULT_BACKEND_SETTINGS,
     FACT_VALIDATION_BACKENDS,
     GUIDELINE_APPLIES_TO,
     GUIDELINE_DOMAINS,
@@ -2079,9 +2081,30 @@ def apply_backend_setting_items(backends: dict, items: list[str]) -> tuple[bool,
     return changed, None
 
 
+def backend_preset_payload(name: str) -> dict:
+    backends = copy.deepcopy(DEFAULT_BACKEND_SETTINGS)
+    if name == "minimal":
+        return backends
+    if name == "recommended":
+        backends["code_intelligence"]["backend"] = "serena"
+        backends["code_intelligence"]["serena"]["enabled"] = True
+        backends["code_intelligence"]["serena"]["mode"] = "mcp"
+        backends["code_intelligence"]["serena"]["max_results"] = 12
+        backends["code_intelligence"]["cocoindex"]["enabled"] = True
+        backends["code_intelligence"]["cocoindex"]["mode"] = "cli"
+        backends["code_intelligence"]["cocoindex"]["max_results"] = 8
+        backends["code_intelligence"]["cocoindex"]["import_into_cix"] = False
+        backends["code_intelligence"]["cocoindex"]["default_scope"] = "project"
+        backends["code_intelligence"]["cocoindex"]["storage_root"] = "<context>/backends/cocoindex"
+        backends["code_intelligence"]["cocoindex"]["workspace_glance"] = True
+        return backends
+    raise ValueError(f"unknown backend preset: {name}")
+
+
 def cmd_configure_runtime(
     root: Path,
     hook_verbosity: str | None,
+    backend_preset: str | None,
     budget_items: list[str],
     input_capture_items: list[str],
     analysis_items: list[str],
@@ -2095,6 +2118,9 @@ def cmd_configure_runtime(
     analysis = dict(settings.get("analysis", {}))
     backends = dict(settings.get("backends", {}))
     changed = False
+    if backend_preset:
+        backends = backend_preset_payload(backend_preset)
+        changed = True
     if hook_verbosity:
         hooks["verbosity"] = hook_verbosity
         changed = True
@@ -2276,6 +2302,7 @@ def cmd_help(topic: str) -> int:
             "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]",
             "validate-facts --backend rdf_shacl [--format json]",
             "export-rdf --format turtle|jsonld [--output path]",
+            "configure-runtime --backend-preset minimal|recommended",
             "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3 --backend derivation.backend=datalog",
         ],
         "records": [
@@ -6471,6 +6498,11 @@ def parse_args() -> argparse.Namespace:
     )
     configure_runtime.add_argument("--hook-verbosity", choices=["quiet", "normal", "debug"])
     configure_runtime.add_argument(
+        "--backend-preset",
+        choices=["minimal", "recommended"],
+        help="Apply a named backend set: minimal disables optional backends; recommended enables Serena + CocoIndex.",
+    )
+    configure_runtime.add_argument(
         "--context-budget",
         dest="context_budget",
         action="append",
@@ -7608,6 +7640,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             cmd_configure_runtime(
                 root,
                 hook_verbosity=args.hook_verbosity,
+                backend_preset=args.backend_preset,
                 budget_items=args.context_budget,
                 input_capture_items=args.input_capture_items,
                 analysis_items=args.analysis_items,

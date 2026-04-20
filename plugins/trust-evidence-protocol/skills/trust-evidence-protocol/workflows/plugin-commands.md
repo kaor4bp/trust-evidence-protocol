@@ -158,6 +158,8 @@ Use `workspace-admission check` before attaching or analyzing an unknown checkou
 
 ```bash
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --show
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend-preset minimal
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend-preset recommended
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --hook-verbosity quiet --context-budget hydration=compact
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --input-capture user_prompts=metadata-only --input-capture session_linking=false
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis logic_solver.backend=z3 --analysis logic_solver.install_policy=ask
