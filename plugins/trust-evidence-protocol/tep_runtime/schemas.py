@@ -10,6 +10,7 @@ from .errors import ValidationError
 from .ids import WORKING_CONTEXT_ID_PATTERN
 from .logic import validate_claim_logic
 from .records import RECORD_TYPE_TO_PREFIX
+from .repo_scope import root_refs_are_absolute
 from .validation import (
     ensure_dict,
     ensure_list,
@@ -152,9 +153,12 @@ def validate_record(record_id: str, data: dict) -> list[str]:
         if not str(data.get("updated_at", "")).strip():
             errors.append("updated_at is required")
         try:
-            ensure_string_list(data, "root_refs")
+            root_refs = ensure_string_list(data, "root_refs")
         except ValueError as exc:
             errors.append(str(exc))
+            root_refs = []
+        if not root_refs_are_absolute(root_refs):
+            errors.append("workspace root_refs must be absolute paths")
         for key in ("project_refs", "tags"):
             if key in data:
                 try:
@@ -174,10 +178,14 @@ def validate_record(record_id: str, data: dict) -> list[str]:
         if not str(data.get("updated_at", "")).strip():
             errors.append("updated_at is required")
         try:
-            if not ensure_string_list(data, "root_refs"):
+            root_refs = ensure_string_list(data, "root_refs")
+            if not root_refs:
                 errors.append("project must define root_refs")
         except ValueError as exc:
             errors.append(str(exc))
+            root_refs = []
+        if not root_refs_are_absolute(root_refs):
+            errors.append("project root_refs must be absolute paths")
         for key in ("related_project_refs", "workspace_refs"):
             if key in data:
                 try:

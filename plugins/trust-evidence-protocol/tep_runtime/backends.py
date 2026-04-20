@@ -7,7 +7,7 @@ import importlib.util
 import shutil
 from pathlib import Path
 
-from .records import load_records
+from .repo_scope import repo_scope_for_root
 from .settings import load_settings
 from .scopes import current_project_ref, current_task_ref, current_workspace_ref
 
@@ -32,47 +32,10 @@ def _command_status(commands: list[str]) -> tuple[bool, str]:
     return False, "unknown"
 
 
-def _path_contains(root_value: str, target: Path) -> bool:
-    if not root_value.strip():
-        return False
-    try:
-        root_path = Path(root_value).expanduser().resolve()
-    except OSError:
-        return False
-    return target == root_path or target.is_relative_to(root_path)
-
-
 def _repo_focus_refs(root: Path, repo_root: Path | None, fallback_workspace_ref: str, fallback_project_ref: str) -> tuple[str, str]:
     if repo_root is None:
         return fallback_workspace_ref, fallback_project_ref
-    records, errors = load_records(root)
-    if errors:
-        return fallback_workspace_ref, fallback_project_ref
-    target = repo_root.expanduser().resolve()
-    matching_projects = [
-        record
-        for record in records.values()
-        if record.get("record_type") == "project"
-        and str(record.get("status", "active")) == "active"
-        and any(_path_contains(str(root_ref), target) for root_ref in record.get("root_refs", []))
-    ]
-    project_ref = fallback_project_ref if any(record.get("id") == fallback_project_ref for record in matching_projects) else ""
-    if not project_ref and matching_projects:
-        project_ref = str(sorted(matching_projects, key=lambda item: str(item.get("id", "")))[0].get("id", ""))
-    matching_workspaces = [
-        record
-        for record in records.values()
-        if record.get("record_type") == "workspace"
-        and str(record.get("status", "active")) == "active"
-        and (
-            any(_path_contains(str(root_ref), target) for root_ref in record.get("root_refs", []))
-            or (project_ref and project_ref in record.get("project_refs", []))
-        )
-    ]
-    workspace_ref = fallback_workspace_ref if any(record.get("id") == fallback_workspace_ref for record in matching_workspaces) else ""
-    if not workspace_ref and matching_workspaces:
-        workspace_ref = str(sorted(matching_workspaces, key=lambda item: str(item.get("id", "")))[0].get("id", ""))
-    return workspace_ref, project_ref
+    return repo_scope_for_root(root, repo_root)
 
 
 def _disabled_status(group: str, backend: str, mode: str, setup_hint: str) -> dict:

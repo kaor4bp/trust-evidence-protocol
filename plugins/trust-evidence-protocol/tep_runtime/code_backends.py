@@ -230,7 +230,10 @@ def cocoindex_search_payload(
         project_ref=project_ref,
         storage_root=str(coco_settings.get("storage_root") or "<context>/backends/cocoindex"),
     )
-    status_matches = select_backend_status(backend_status_payload(context_root), "code_intelligence.cocoindex")
+    status_matches = select_backend_status(
+        backend_status_payload(context_root, repo_root=repo_root, scope=scope),
+        "code_intelligence.cocoindex",
+    )
     status = status_matches[0] if status_matches else {}
 
     payload: dict[str, Any] = {

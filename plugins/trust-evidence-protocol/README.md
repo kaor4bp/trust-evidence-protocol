@@ -243,6 +243,7 @@ Backend output may guide lookup, indexing, validation, and candidate generation,
 External code-intelligence backends such as CocoIndex should be accessed through TEP `code-search` / MCP `code_search`, not as parallel direct MCP entrypoints in normal operation.
 TEP scopes CocoIndex storage by default under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code`; workspace scope uses `<context>/backends/cocoindex/workspaces/<WSP-ID>/.cocoindex_code`.
 Code paths are always project-relative: the workdir-local `.tep` file selects the active focus only, while `--root` or the selected project `root_refs` selects the repository root used for CIX freshness, backend path mapping, and CocoIndex storage.
+`WSP-*` and `PRJ-*` `root_refs` are stored as absolute paths; CLI record commands normalize relative input at write time, while raw record validation rejects relative `root_refs`.
 When an agent inspects a repository different from its cwd, it must pass `--root <repo>` or use a `.tep` anchor whose project points at that repository.
 The default search scope is project; workspace scope is an explicit outward glance, not the normal search boundary.
 Current CocoIndex CLI `ccc search` still requires repo-local `.cocoindex_code/settings.yml` discovery marker.
@@ -640,6 +641,7 @@ Commands:
 - `code-search`
   - searches CIX entries by path, language, code kind, import, symbol, feature, linked ref, or stale state
   - resolves paths against `--root`; if `--root` is omitted, uses the active project `root_refs` selected by the nearest `.tep` anchor, then falls back to cwd only when no focused project root exists
+  - returns `repo_scope` with `repo_root`, `repo_root_source`, matched `workspace_ref`, matched `project_ref`, and `paths_are_project_relative`
   - can filter annotations with `--annotation-kind smell` and `--annotation-category ...`
   - can use `--query "..."` to proxy a semantic code search through the configured TEP backend, such as CocoIndex, while returning navigation-only TEP-normalized `backend_results`
   - accepts `--scope project|workspace`; project is the default, workspace is an explicit broader glance
@@ -772,6 +774,7 @@ Guideline disclosure for code edits:
 - `record-workspace --workspace-key ... --title ... --root-ref ... --note ...`
   - creates a canonical `WSP-*` workspace memory-boundary record
   - a workspace groups one or more project records under one TEP context root
+  - `--root-ref` is normalized to an absolute path before persistence
   - workspace records do not prove claims
 
 - `set-current-workspace --workspace WSP-*`
@@ -810,6 +813,7 @@ Guideline disclosure for code edits:
 - `record-project --project-key ... --title ... --root-ref ... --note ...`
   - creates a canonical `PRJ-*` project boundary record
   - project records separate mixed domains inside one workspace
+  - `--root-ref` is normalized to an absolute path before persistence
   - project records do not prove claims
 
 - `set-current-project --project PRJ-*`

@@ -2538,6 +2538,43 @@ def test_schema_core_validates_record_shapes_and_typed_refs(tmp_path: Path) -> N
     _, candidate_errors = validate_candidate_record(root, {source_id: source}, source)
     assert any(error.message == f"duplicate id: {source_id}" for error in candidate_errors)
 
+    workspace_id = "WSP-20260418-aaaa1111"
+    workspace = {
+        "_path": root / "records" / "workspace" / f"{workspace_id}.json",
+        "_folder": "workspace",
+        "id": workspace_id,
+        "record_type": "workspace",
+        "scope": "test-workspace",
+        "workspace_key": "test-workspace",
+        "title": "Test Workspace",
+        "status": "active",
+        "context_root": str(root),
+        "root_refs": ["relative/repo"],
+        "project_refs": [],
+        "created_at": "2026-04-18T10:03:00+03:00",
+        "updated_at": "2026-04-18T10:03:00+03:00",
+        "note": "Test workspace.",
+    }
+    project_id = "PRJ-20260418-aaaa1111"
+    project = {
+        "_path": root / "records" / "project" / f"{project_id}.json",
+        "_folder": "project",
+        "id": project_id,
+        "record_type": "project",
+        "scope": "test-project",
+        "project_key": "test-project",
+        "title": "Test Project",
+        "status": "active",
+        "root_refs": ["relative/repo"],
+        "related_project_refs": [],
+        "workspace_refs": [],
+        "created_at": "2026-04-18T10:04:00+03:00",
+        "updated_at": "2026-04-18T10:04:00+03:00",
+        "note": "Test project.",
+    }
+    assert "workspace root_refs must be absolute paths" in validate_record(workspace_id, workspace)
+    assert "project root_refs must be absolute paths" in validate_record(project_id, project)
+
 
 def test_validation_core_normalizes_optional_lists_and_confidence() -> None:
     payload = {

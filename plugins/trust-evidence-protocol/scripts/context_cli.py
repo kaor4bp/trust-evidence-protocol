@@ -323,6 +323,14 @@ from tep_runtime.code_index import (
     public_code_index_entry,
     resolve_code_entry,
 )
+from tep_runtime.repo_scope import (
+    code_entry_matches_repo_scope,
+    normalize_root_refs,
+    path_contains,
+    repo_scope_for_root,
+    repo_scope_payload,
+    resolve_code_repo_root,
+)
 from tep_runtime.logic_index import (
     build_logic_index_payload,
     load_logic_index_payload,
@@ -742,7 +750,7 @@ def cmd_record_workspace(
         title=title,
         status=status,
         context_root=context_root or str(root),
-        root_refs=root_refs,
+        root_refs=normalize_root_refs(root_refs),
         project_refs=project_refs,
         tags=tags,
         note=note,
@@ -880,101 +888,12 @@ def cmd_assign_workspace(
     return persist_mutated_records(root, merged_records, changed_ids, reason)
 
 
-def _path_contains(root_value: str, target: Path) -> bool:
-    if not root_value.strip():
-        return False
-    try:
-        root_path = Path(root_value).expanduser().resolve()
-    except OSError:
-        return False
-    return target == root_path or target.is_relative_to(root_path)
-
-
-def _record_root_refs(record: dict | None) -> list[str]:
-    if not isinstance(record, dict):
-        return []
-    return [str(item).strip() for item in record.get("root_refs", []) if str(item).strip()]
-
-
-def _resolve_root_ref(value: str) -> Path:
-    path = Path(value).expanduser()
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    return path.resolve()
-
-
-def repo_scope_for_root(root: Path, repo_root: Path) -> tuple[str, str]:
-    """Return workspace/project refs whose root_refs contain repo_root.
-
-    The agent's cwd only selects the local .tep anchor. Code paths and backend
-    storage must be scoped to the repository root being inspected.
-    """
-
-    records, errors = load_records(root)
-    if errors:
-        return "", ""
-    target = repo_root.expanduser().resolve()
-    matching_projects = [
-        record
-        for record in records.values()
-        if record.get("record_type") == "project"
-        and str(record.get("status", "active")) == "active"
-        and any(_path_contains(root_ref, target) for root_ref in _record_root_refs(record))
-    ]
-    current_project = current_project_ref(root)
-    project_ref = ""
-    if current_project and any(record.get("id") == current_project for record in matching_projects):
-        project_ref = current_project
-    elif matching_projects:
-        project_ref = str(sorted(matching_projects, key=lambda item: str(item.get("id", "")))[0].get("id", ""))
-
-    matching_workspaces = [
-        record
-        for record in records.values()
-        if record.get("record_type") == "workspace"
-        and str(record.get("status", "active")) == "active"
-        and (
-            any(_path_contains(root_ref, target) for root_ref in _record_root_refs(record))
-            or (project_ref and project_ref in record.get("project_refs", []))
-        )
-    ]
-    current_workspace = current_workspace_ref(root)
-    workspace_ref = ""
-    if current_workspace and any(record.get("id") == current_workspace for record in matching_workspaces):
-        workspace_ref = current_workspace
-    elif matching_workspaces:
-        workspace_ref = str(sorted(matching_workspaces, key=lambda item: str(item.get("id", "")))[0].get("id", ""))
-    return workspace_ref, project_ref
-
-
-def focused_repo_root(root: Path) -> Path | None:
-    records, errors = load_records(root)
-    if errors:
-        return None
-    for record_ref in (current_project_ref(root), current_workspace_ref(root)):
-        record = records.get(record_ref)
-        for root_ref in _record_root_refs(record):
-            return _resolve_root_ref(root_ref)
-    return None
-
-
-def resolve_code_repo_root(root: Path, requested_root: str | Path | None, *, fallback_to_cwd: bool = True) -> Path | None:
-    if requested_root is not None and str(requested_root).strip():
-        return Path(str(requested_root)).expanduser().resolve()
-    focused = focused_repo_root(root)
-    if focused is not None:
-        return focused
-    return Path.cwd().resolve() if fallback_to_cwd else None
-
-
-def code_entry_matches_repo_scope(entry: dict, workspace_ref: str, project_ref: str) -> bool:
-    entry_project = str(entry.get("project_ref", "") or "").strip()
-    entry_workspace = str(entry.get("workspace_ref", "") or "").strip()
-    if project_ref and entry_project and entry_project != project_ref:
-        return False
-    if workspace_ref and entry_workspace and entry_workspace != workspace_ref:
-        return False
-    return True
+def resolve_code_repo_root_or_exit(root: Path, requested_root: str | Path | None, *, fallback_to_cwd: bool = True) -> tuple[Path, str]:
+    repo_root, repo_root_source = resolve_code_repo_root(root, requested_root, fallback_to_cwd=fallback_to_cwd)
+    if repo_root is None:
+        print("missing repository root")
+        raise SystemExit(1)
+    return repo_root, repo_root_source
 
 
 def workspace_admission_payload(root: Path, records: dict[str, dict], repo: Path) -> dict:
@@ -994,12 +913,12 @@ def workspace_admission_payload(root: Path, records: dict[str, dict], repo: Path
     matching_projects = [
         {"id": project.get("id"), "root_refs": project.get("root_refs", [])}
         for project in projects
-        if any(_path_contains(str(root_ref), target) for root_ref in project.get("root_refs", []))
+        if any(path_contains(str(root_ref), target) for root_ref in project.get("root_refs", []))
     ]
     matching_workspaces = [
         {"id": workspace.get("id"), "root_refs": workspace.get("root_refs", []), "project_refs": workspace.get("project_refs", [])}
         for workspace in workspaces
-        if any(_path_contains(str(root_ref), target) for root_ref in workspace.get("root_refs", []))
+        if any(path_contains(str(root_ref), target) for root_ref in workspace.get("root_refs", []))
         or any(project.get("id") in workspace.get("project_refs", []) for project in matching_projects)
     ]
     known = bool(matching_projects or matching_workspaces)
@@ -1085,7 +1004,7 @@ def cmd_record_project(
         project_key=project_key,
         title=title,
         status=status,
-        root_refs=root_refs,
+        root_refs=normalize_root_refs(root_refs),
         related_project_refs=related_project_refs,
         workspace_refs=resolved_workspace_refs,
         tags=tags,
@@ -4685,6 +4604,7 @@ def cmd_code_info(root: Path, repo_root: Path, entry_ref: str | None, path: str 
 def cmd_code_search(
     root: Path,
     repo_root: Path,
+    repo_root_source: str,
     query: str | None,
     path_patterns: list[str],
     language: str | None,
@@ -4840,11 +4760,22 @@ def cmd_code_search(
         note="CIX search via TEP entrypoint",
     )
     if output_format == "json":
-        payload = {"results": [project_code_entry(entry, fields, repo_root) for entry in results]}
+        payload = {
+            "repo_scope": repo_scope_payload(root, repo_root, repo_root_source),
+            "results": [project_code_entry(entry, fields, repo_root) for entry in results],
+        }
         if backend_payload is not None:
             payload["backend_results"] = backend_payload
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
+        scope_payload = repo_scope_payload(root, repo_root, repo_root_source)
+        print(
+            "# Repository Scope\n\n"
+            f"- repo_root: `{scope_payload['repo_root']}`\n"
+            f"- repo_root_source: `{scope_payload['repo_root_source']}`\n"
+            f"- workspace_ref: `{scope_payload['workspace_ref'] or 'none'}`\n"
+            f"- project_ref: `{scope_payload['project_ref'] or 'none'}`\n"
+        )
         print_code_entries(results, fields, repo_root)
         if backend_payload is not None:
             print()
@@ -7431,10 +7362,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
     if args.command == "logic-conflict-candidates":
         raise SystemExit(cmd_logic_conflict_candidates(root, limit=args.limit, output_format=args.output_format))
     if args.command == "init-code-index":
-        repo_root = resolve_code_repo_root(root, args.root)
-        if repo_root is None:
-            print("missing repository root")
-            raise SystemExit(1)
+        repo_root, repo_root_source = resolve_code_repo_root_or_exit(root, args.root)
         raise SystemExit(
             cmd_init_code_index(
                 root,
@@ -7445,10 +7373,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "index-code":
-        repo_root = resolve_code_repo_root(root, args.root)
-        if repo_root is None:
-            print("missing repository root")
-            raise SystemExit(1)
+        repo_root, repo_root_source = resolve_code_repo_root_or_exit(root, args.root)
         raise SystemExit(
             cmd_index_code(
                 root,
@@ -7460,10 +7385,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "code-refresh":
-        repo_root = resolve_code_repo_root(root, args.root)
-        if repo_root is None:
-            print("missing repository root")
-            raise SystemExit(1)
+        repo_root, repo_root_source = resolve_code_repo_root_or_exit(root, args.root)
         raise SystemExit(
             cmd_code_refresh(
                 root,
@@ -7473,10 +7395,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "code-info":
-        repo_root = resolve_code_repo_root(root, args.root)
-        if repo_root is None:
-            print("missing repository root")
-            raise SystemExit(1)
+        repo_root, repo_root_source = resolve_code_repo_root_or_exit(root, args.root)
         raise SystemExit(
             cmd_code_info(
                 root,
@@ -7488,14 +7407,12 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "code-search":
-        repo_root = resolve_code_repo_root(root, args.root)
-        if repo_root is None:
-            print("missing repository root")
-            raise SystemExit(1)
+        repo_root, repo_root_source = resolve_code_repo_root_or_exit(root, args.root)
         raise SystemExit(
             cmd_code_search(
                 root,
                 repo_root=repo_root,
+                repo_root_source=repo_root_source,
                 query=args.query,
                 path_patterns=args.path_patterns,
                 language=args.language,
@@ -7520,10 +7437,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "code-feedback":
-        repo_root = resolve_code_repo_root(root, args.root)
-        if repo_root is None:
-            print("missing repository root")
-            raise SystemExit(1)
+        repo_root, repo_root_source = resolve_code_repo_root_or_exit(root, args.root)
         raise SystemExit(
             cmd_code_feedback(
                 root,
@@ -7541,10 +7455,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "code-smell-report":
-        repo_root = resolve_code_repo_root(root, args.root)
-        if repo_root is None:
-            print("missing repository root")
-            raise SystemExit(1)
+        repo_root, repo_root_source = resolve_code_repo_root_or_exit(root, args.root)
         raise SystemExit(
             cmd_code_smell_report(
                 root,
@@ -7816,10 +7727,10 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "backend-status":
-        repo_root = resolve_code_repo_root(root, args.root, fallback_to_cwd=False)
+        repo_root, repo_root_source = resolve_code_repo_root(root, args.root, fallback_to_cwd=False)
         raise SystemExit(cmd_backend_status(root, output_format=args.output_format, repo_root=repo_root, scope=args.scope))
     if args.command == "backend-check":
-        repo_root = resolve_code_repo_root(root, args.root, fallback_to_cwd=False)
+        repo_root, repo_root_source = resolve_code_repo_root(root, args.root, fallback_to_cwd=False)
         raise SystemExit(
             cmd_backend_check(root, backend=args.backend, output_format=args.output_format, repo_root=repo_root, scope=args.scope)
         )

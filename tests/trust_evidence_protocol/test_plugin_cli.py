@@ -2884,6 +2884,13 @@ def test_code_search_resolves_paths_from_project_root_not_agent_cwd(tmp_path: Pa
     assert implicit.returncode == 0, implicit.stdout + implicit.stderr
     implicit_payload = json.loads(implicit.stdout)
     assert len(implicit_payload["results"]) == 1
+    assert implicit_payload["repo_scope"] == {
+        "repo_root": str(repo_b),
+        "repo_root_source": "project-root",
+        "workspace_ref": workspace_b,
+        "project_ref": project_b,
+        "paths_are_project_relative": True,
+    }
     implicit_entry = json.loads(
         (context / "code_index" / "entries" / f"{implicit_payload['results'][0]['id']}.json").read_text(encoding="utf-8")
     )
@@ -2924,6 +2931,13 @@ def test_code_search_resolves_paths_from_project_root_not_agent_cwd(tmp_path: Pa
     explicit = json.loads(
         run_cli(context, "code-search", "--root", str(repo_b), "--query", "app label", "--format", "json").stdout
     )
+    assert explicit["repo_scope"] == {
+        "repo_root": str(repo_b),
+        "repo_root_source": "explicit",
+        "workspace_ref": workspace_b,
+        "project_ref": project_b,
+        "paths_are_project_relative": True,
+    }
     backend = explicit["backend_results"]
     assert backend["storage"]["project_ref"] == project_b
     assert backend["storage"]["workspace_ref"] == workspace_b
