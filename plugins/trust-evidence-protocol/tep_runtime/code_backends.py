@@ -12,7 +12,10 @@ import shutil
 import sys
 import json
 import subprocess
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
+from collections.abc import Iterator
 from typing import Any
 
 from .backends import backend_status_payload, select_backend_status
@@ -27,6 +30,49 @@ _CCC_FILE_RE = re.compile(
 )
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 DIRECT_SEARCH_HELPER = PLUGIN_ROOT / "scripts" / "cocoindex_direct_search.py"
+DIRECT_INDEX_HELPER = PLUGIN_ROOT / "scripts" / "cocoindex_direct_index.py"
+_COCOINDEX_SHADOW_SKIP = {".git", ".cocoindex_code", "__pycache__", ".pytest_cache"}
+_DEFAULT_COCOINDEX_PROJECT_SETTINGS = """\
+include_patterns:
+- "**/*.py"
+- "**/*.pyi"
+- "**/*.js"
+- "**/*.jsx"
+- "**/*.ts"
+- "**/*.tsx"
+- "**/*.mjs"
+- "**/*.cjs"
+- "**/*.rs"
+- "**/*.go"
+- "**/*.java"
+- "**/*.c"
+- "**/*.h"
+- "**/*.cpp"
+- "**/*.hpp"
+- "**/*.cs"
+- "**/*.sql"
+- "**/*.sh"
+- "**/*.bash"
+- "**/*.zsh"
+- "**/*.md"
+- "**/*.mdx"
+- "**/*.txt"
+- "**/*.rst"
+- "**/*.json"
+- "**/*.yaml"
+- "**/*.yml"
+- "**/*.toml"
+exclude_patterns:
+- "**/.*"
+- "**/__pycache__"
+- "**/node_modules"
+- "**/target"
+- "**/build"
+- "**/dist"
+- "**/.cocoindex_code"
+language_overrides: []
+chunkers: []
+"""
 
 
 def _cocoindex_command() -> str | None:
@@ -167,7 +213,7 @@ def _cocoindex_runtime_storage(storage_dir: Path | None, repo_root: Path) -> dic
         "cli_search_ready": cli_search_ready,
         "runtime_search_ready": runtime_search_ready,
         "search_ready": runtime_search_ready,
-        "runtime_path": "repo-marker-cli" if cli_search_ready else ("direct-scoped-db" if runtime_search_ready else ""),
+        "runtime_path": "direct-scoped-db" if runtime_search_ready else "",
     }
 
 
@@ -203,6 +249,39 @@ def _run_cocoindex_direct_search(
     )
 
 
+def _copy_cocoindex_settings(repo_root: Path, storage_dir: Path, shadow_root: Path) -> None:
+    settings_text = _DEFAULT_COCOINDEX_PROJECT_SETTINGS
+    repo_settings = repo_root / ".cocoindex_code" / "settings.yml"
+    if repo_settings.is_file():
+        settings_text = repo_settings.read_text(encoding="utf-8", errors="replace")
+    for root in (storage_dir, shadow_root / ".cocoindex_code"):
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "settings.yml").write_text(settings_text, encoding="utf-8")
+
+
+@contextmanager
+def _cocoindex_shadow_root(repo_root: Path, storage_dir: Path) -> Iterator[Path]:
+    """Create a temporary project marker outside the checkout for CocoIndex CLI."""
+
+    temp_parent = storage_dir.parent
+    temp_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".tep-cocoindex-shadow-", dir=temp_parent) as temp_dir:
+        shadow_root = Path(temp_dir)
+        _copy_cocoindex_settings(repo_root, storage_dir, shadow_root)
+        for child in repo_root.iterdir():
+            if child.name in _COCOINDEX_SHADOW_SKIP:
+                continue
+            target = shadow_root / child.name
+            try:
+                target.symlink_to(child, target_is_directory=child.is_dir())
+            except OSError:
+                if child.is_dir():
+                    shutil.copytree(child, target, symlinks=True, ignore=shutil.ignore_patterns(*_COCOINDEX_SHADOW_SKIP))
+                else:
+                    shutil.copy2(child, target)
+        yield shadow_root
+
+
 def _run_cocoindex_index(
     command: str,
     *,
@@ -211,22 +290,31 @@ def _run_cocoindex_index(
     scope: str,
     timeout: int,
 ) -> subprocess.CompletedProcess[str]:
-    env = {
-        **os.environ,
-        "COCOINDEX_CODE_DB_PATH_MAPPING": f"{repo_root}={storage_dir}",
-        "TEP_COCOINDEX_SCOPE": scope,
-        "TEP_COCOINDEX_STORAGE_DIR": str(storage_dir),
-        "TEP_COCOINDEX_REPO_ROOT": str(repo_root),
-    }
-    return subprocess.run(
-        [command, "index"],
-        cwd=repo_root,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
+    with _cocoindex_shadow_root(repo_root, storage_dir) as shadow_root:
+        helper = os.environ.get("TEP_COCOINDEX_DIRECT_INDEX_HELPER")
+        if helper:
+            args = [helper]
+        else:
+            args = [_python_for_cocoindex_command(command), str(DIRECT_INDEX_HELPER)]
+        env = {
+            **os.environ,
+            "COCOINDEX_CODE_DB_PATH_MAPPING": f"{shadow_root}={storage_dir}",
+            "COCOINDEX_CODE_HOST_PATH_MAPPING": f"{shadow_root}={repo_root}",
+            "TEP_COCOINDEX_SCOPE": scope,
+            "TEP_COCOINDEX_STORAGE_DIR": str(storage_dir),
+            "TEP_COCOINDEX_REPO_ROOT": str(repo_root),
+            "TEP_COCOINDEX_SHADOW_ROOT": str(shadow_root),
+        }
+        return subprocess.run(
+            args,
+            cwd=shadow_root,
+            env=env,
+            input=json.dumps({"project_root": str(shadow_root), "storage_dir": str(storage_dir)}, ensure_ascii=False),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
 
 
 def _cocoindex_index_scopes(mode: str, *, workspace_ref: str | None, project_ref: str | None) -> list[str]:
@@ -424,7 +512,7 @@ def cocoindex_search_payload(
         payload["warnings"].append("project-scoped CocoIndex search has no current project ref")
     if effective_scope == "workspace" and not workspace_ref:
         payload["warnings"].append("workspace-scoped CocoIndex search has no current workspace ref")
-    if storage_dir and payload["storage"]["runtime_search_ready"] and not payload["storage"]["repo_marker_exists"]:
+    if storage_dir and payload["storage"]["runtime_search_ready"]:
         try:
             result = _run_cocoindex_direct_search(
                 command,

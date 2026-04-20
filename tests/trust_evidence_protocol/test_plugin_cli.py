@@ -2979,15 +2979,24 @@ def test_code_index_commands_refresh_project_and_workspace_cocoindex_storage(tmp
     fake_bin.mkdir()
     log_path = tmp_path / "cocoindex.log"
     ccc = fake_bin / "ccc"
-    ccc.write_text(
+    ccc.write_text("#!/usr/bin/env python3\nprint('fake ccc command marker')\n", encoding="utf-8")
+    ccc.chmod(0o755)
+    direct_index = fake_bin / "direct-index"
+    direct_index.write_text(
         "#!/usr/bin/env python3\n"
+        "import json\n"
         "import os\n"
         "import pathlib\n"
         "import sys\n"
-        "assert sys.argv[1] == 'index'\n"
+        "payload = json.loads(sys.stdin.read())\n"
         "mapping = os.environ['COCOINDEX_CODE_DB_PATH_MAPPING']\n"
         "repo, storage = mapping.split('=', 1)\n"
-        "assert repo == os.environ['TEP_COCOINDEX_REPO_ROOT']\n"
+        "assert repo == os.environ['TEP_COCOINDEX_SHADOW_ROOT']\n"
+        "assert payload['project_root'] == repo\n"
+        "assert payload['storage_dir'] == storage\n"
+        "assert repo != os.environ['TEP_COCOINDEX_REPO_ROOT']\n"
+        "assert pathlib.Path(repo, '.cocoindex_code', 'settings.yml').is_file()\n"
+        "assert pathlib.Path(os.environ['TEP_COCOINDEX_REPO_ROOT'], '.cocoindex_code').exists() is False\n"
         "storage_path = pathlib.Path(storage)\n"
         "storage_path.mkdir(parents=True, exist_ok=True)\n"
         "(storage_path / 'settings.yml').write_text('fixture: true\\n', encoding='utf-8')\n"
@@ -2996,9 +3005,10 @@ def test_code_index_commands_refresh_project_and_workspace_cocoindex_storage(tmp
         "    handle.write(os.environ['TEP_COCOINDEX_SCOPE'] + '=' + mapping + '\\n')\n",
         encoding="utf-8",
     )
-    ccc.chmod(0o755)
+    direct_index.chmod(0o755)
     monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}")
     monkeypatch.setenv("TEP_TEST_LOG", str(log_path))
+    monkeypatch.setenv("TEP_COCOINDEX_DIRECT_INDEX_HELPER", str(direct_index))
     run_cli(
         context,
         "configure-runtime",
@@ -3020,8 +3030,8 @@ def test_code_index_commands_refresh_project_and_workspace_cocoindex_storage(tmp
     assert (workspace_storage / "settings.yml").is_file()
     assert (workspace_storage / "target_sqlite.db").is_file()
     log_lines = log_path.read_text(encoding="utf-8").splitlines()
-    assert f"project={repo}={project_storage}" in log_lines
-    assert f"workspace={repo}={workspace_storage}" in log_lines
+    assert any(line.startswith("project=") and line.endswith(f"={project_storage}") for line in log_lines)
+    assert any(line.startswith("workspace=") and line.endswith(f"={workspace_storage}") for line in log_lines)
     assert not (repo / ".cocoindex_code").exists()
 
     project_status = json.loads(
@@ -3420,6 +3430,16 @@ def test_cocoindex_status_distinguishes_storage_from_cli_search_readiness(tmp_pa
     assert coco["storage"]["search_ready"] is True
     assert coco["storage"]["runtime_path"] == "direct-scoped-db"
     assert any("direct scoped DB runtime path" in warning for warning in coco["warnings"])
+    repo_marker = repo / ".cocoindex_code"
+    repo_marker.mkdir()
+    (repo_marker / "settings.yml").write_text("include_patterns: ['**/*.py']\nexclude_patterns: []\n", encoding="utf-8")
+    marker_status = json.loads(
+        run_cli(context, "backend-check", "--backend", "code_intelligence.cocoindex", "--root", str(repo), "--format", "json").stdout
+    )
+    marker_coco = marker_status["matches"][0]
+    assert marker_coco["storage"]["repo_marker_exists"] is True
+    assert marker_coco["storage"]["cli_search_ready"] is True
+    assert marker_coco["storage"]["runtime_path"] == "direct-scoped-db"
 
     search = json.loads(
         run_cli(context, "code-search", "--root", str(repo), "--query", "semantic lookup", "--format", "json").stdout
@@ -3427,7 +3447,7 @@ def test_cocoindex_status_distinguishes_storage_from_cli_search_readiness(tmp_pa
     backend = search["backend_results"]
     assert backend["returncode"] == 0
     assert backend["runtime_path"] == "direct-scoped-db"
-    assert backend["storage"]["repo_marker_exists"] is False
+    assert backend["storage"]["repo_marker_exists"] is True
     assert backend["storage"]["runtime_search_ready"] is True
     assert backend["results"][0]["target"] == {"path": "src/runtime.py", "line_start": 7, "line_end": 8}
     assert backend["results"][0]["runtime_path"] == "direct-scoped-db"

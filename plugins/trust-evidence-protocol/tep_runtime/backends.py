@@ -142,7 +142,7 @@ def _cocoindex_diagnostics(
             "cli_search_ready": cli_search_ready,
             "runtime_search_ready": runtime_search_ready,
             "search_ready": runtime_search_ready,
-            "runtime_path": "repo-marker-cli" if cli_search_ready else ("direct-scoped-db" if runtime_search_ready else ""),
+            "runtime_path": "direct-scoped-db" if runtime_search_ready else "",
         },
     }
 
