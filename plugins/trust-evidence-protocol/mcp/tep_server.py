@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.74"
+SERVER_VERSION = "0.1.75"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -181,6 +181,38 @@ TOOLS: list[JsonObject] = [
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
+        ),
+    },
+    {
+        "name": "backend_status",
+        "description": (
+            "Read optional backend availability, selected backend, current WSP/PRJ/TASK focus, and scoped storage diagnostics. "
+            "Backend status is navigation/diagnostic data only, not proof."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "root": {"type": "string", "description": "Optional repository root for backend storage diagnostics."},
+                "scope": {"type": "string", "enum": ["project", "workspace"], "description": "Optional backend index scope override."},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "backend_check",
+        "description": (
+            "Read one optional backend group or concrete backend id with selected/available/default-use and scoped storage diagnostics. "
+            "Use before relying on an optional backend such as code_intelligence.cocoindex."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "backend": {"type": "string", "description": "Backend group or id such as code_intelligence, cocoindex, or code_intelligence.cocoindex."},
+                "root": {"type": "string", "description": "Optional repository root for backend storage diagnostics."},
+                "scope": {"type": "string", "enum": ["project", "workspace"], "description": "Optional backend index scope override."},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["backend"],
         ),
     },
     {
@@ -836,6 +868,30 @@ def tool_telemetry_report(args: JsonObject) -> tuple[bool, str]:
     )
 
 
+def tool_backend_status(args: JsonObject) -> tuple[bool, str]:
+    cli_args = ["backend-status", "--format", as_format(args.get("format"))]
+    if args.get("root"):
+        cli_args.extend(["--root", str(args["root"])])
+    if args.get("scope"):
+        cli_args.extend(["--scope", str(args["scope"])])
+    return run_cli(args, cli_args)
+
+
+def tool_backend_check(args: JsonObject) -> tuple[bool, str]:
+    cli_args = [
+        "backend-check",
+        "--backend",
+        str(args.get("backend", "")),
+        "--format",
+        as_format(args.get("format")),
+    ]
+    if args.get("root"):
+        cli_args.extend(["--root", str(args["root"])])
+    if args.get("scope"):
+        cli_args.extend(["--scope", str(args["scope"])])
+    return run_cli(args, cli_args)
+
+
 def tool_guidelines_for(args: JsonObject) -> tuple[bool, str]:
     cli_args = [
         "guidelines-for",
@@ -1268,6 +1324,8 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "claim_graph": tool_claim_graph,
     "linked_records": tool_linked_records,
     "telemetry_report": tool_telemetry_report,
+    "backend_status": tool_backend_status,
+    "backend_check": tool_backend_check,
     "guidelines_for": tool_guidelines_for,
     "code_search": tool_code_search,
     "code_feedback": tool_code_feedback,

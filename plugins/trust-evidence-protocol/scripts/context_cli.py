@@ -2179,8 +2179,8 @@ def append_backend_access_event(root: Path, tool: str, access_kind: str, backend
     append_access_event(root, event)
 
 
-def cmd_backend_status(root: Path, output_format: str) -> int:
-    payload = backend_status_payload(root)
+def cmd_backend_status(root: Path, output_format: str, repo_root: Path | None = None, scope: str | None = None) -> int:
+    payload = backend_status_payload(root, repo_root=repo_root, scope=scope)
     append_backend_access_event(root, "backend-status", "backend_status")
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -2190,8 +2190,14 @@ def cmd_backend_status(root: Path, output_format: str) -> int:
     return 0
 
 
-def cmd_backend_check(root: Path, backend: str, output_format: str) -> int:
-    payload = backend_status_payload(root)
+def cmd_backend_check(
+    root: Path,
+    backend: str,
+    output_format: str,
+    repo_root: Path | None = None,
+    scope: str | None = None,
+) -> int:
+    payload = backend_status_payload(root, repo_root=repo_root, scope=scope)
     selected = select_backend_status(payload, backend)
     append_backend_access_event(root, "backend-check", "backend_check", backend=backend)
     if output_format == "json":
@@ -6498,6 +6504,8 @@ def parse_args() -> argparse.Namespace:
         "backend-status",
         help="Show optional backend availability. Backend output is not proof.",
     )
+    backend_status.add_argument("--root", type=Path, help="Optional repository root for backend storage diagnostics.")
+    backend_status.add_argument("--scope", choices=("project", "workspace"), help="Optional backend index scope override.")
     backend_status.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
 
     backend_check = subparsers.add_parser(
@@ -6505,6 +6513,8 @@ def parse_args() -> argparse.Namespace:
         help="Show one optional backend or backend group. Backend output is not proof.",
     )
     backend_check.add_argument("--backend", required=True)
+    backend_check.add_argument("--root", type=Path, help="Optional repository root for backend storage diagnostics.")
+    backend_check.add_argument("--scope", choices=("project", "workspace"), help="Optional backend index scope override.")
     backend_check.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
 
     validate_facts = subparsers.add_parser(
@@ -7606,9 +7616,13 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "backend-status":
-        raise SystemExit(cmd_backend_status(root, output_format=args.output_format))
+        repo_root = args.root.expanduser().resolve() if args.root else None
+        raise SystemExit(cmd_backend_status(root, output_format=args.output_format, repo_root=repo_root, scope=args.scope))
     if args.command == "backend-check":
-        raise SystemExit(cmd_backend_check(root, backend=args.backend, output_format=args.output_format))
+        repo_root = args.root.expanduser().resolve() if args.root else None
+        raise SystemExit(
+            cmd_backend_check(root, backend=args.backend, output_format=args.output_format, repo_root=repo_root, scope=args.scope)
+        )
     if args.command == "validate-facts":
         raise SystemExit(cmd_validate_facts(root, backend=args.backend, output_format=args.output_format))
     if args.command == "export-rdf":

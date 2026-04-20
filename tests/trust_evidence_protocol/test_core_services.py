@@ -5865,9 +5865,15 @@ def test_settings_core_normalizes_and_persists_policy(tmp_path: Path) -> None:
     assert stored["current_task_ref"] is None
     assert "updated_at" in json.loads(settings_path(root).read_text(encoding="utf-8"))
 
-    backend_status = backend_status_payload(root)
+    backend_status = backend_status_payload(root, repo_root=root, scope="project")
     assert backend_status["backend_status_is_proof"] is False
+    assert backend_status["focus"]["workspace_ref"] == ""
     assert select_backend_status(backend_status, "fact_validation")[0]["id"] == "builtin"
+    coco = select_backend_status(backend_status, "code_intelligence.cocoindex")[0]
+    assert coco["default_scope"] == "project"
+    assert coco["effective_scope"] == "project"
+    assert coco["storage"]["repo_root"] == str(root)
+    assert coco["storage"]["index_exists"] is False
     assert "Backend status is diagnostic/navigation data only" in "\n".join(
         backend_status_text_lines(backend_status)
     )

@@ -453,6 +453,30 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {"context": str(context), "scope": "workspace", "format": "json"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 28,
+                "method": "tools/call",
+                "params": {
+                    "name": "backend_status",
+                    "arguments": {"context": str(context), "root": str(tmp_path), "scope": "project", "format": "json"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 29,
+                "method": "tools/call",
+                "params": {
+                    "name": "backend_check",
+                    "arguments": {
+                        "context": str(context),
+                        "backend": "code_intelligence.cocoindex",
+                        "root": str(tmp_path),
+                        "scope": "project",
+                        "format": "json",
+                    },
+                },
+            },
         ]
     )
 
@@ -477,6 +501,8 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "claim_graph",
         "linked_records",
         "telemetry_report",
+        "backend_status",
+        "backend_check",
         "code_search",
         "code_feedback",
         "code_smell_report",
@@ -533,6 +559,18 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     wctx_drift_payload = json.loads(wctx_drift["content"][0]["text"])
     assert wctx_drift_payload["working_context_drift_is_proof"] is False
     assert wctx_drift_payload["best_matching_context"]["id"] == wctx_id
+
+    backend_status = by_id[28]["result"]
+    assert backend_status["isError"] is False
+    backend_status_payload = json.loads(backend_status["content"][0]["text"])
+    assert backend_status_payload["backend_status_is_proof"] is False
+    assert "workspace_ref" in backend_status_payload["focus"]
+
+    backend_check = by_id[29]["result"]
+    assert backend_check["isError"] is False
+    backend_check_payload = json.loads(backend_check["content"][0]["text"])
+    assert backend_check_payload["backend_status_is_proof"] is False
+    assert backend_check_payload["matches"][0]["id"] == "cocoindex"
 
     workspace_admission = by_id[26]["result"]
     assert workspace_admission["isError"] is False

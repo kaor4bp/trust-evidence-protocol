@@ -859,15 +859,49 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert invalid_backend.returncode == 1
     assert "backends.code_intelligence.backend has invalid value" in invalid_backend.stdout
 
-    status_payload = json.loads(run_cli(context, "backend-status", "--format", "json").stdout)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "backend-status-workspace",
+            "--title",
+            "Backend status workspace",
+            "--root-ref",
+            str(context),
+            "--note",
+            "backend status diagnostics",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    status_payload = json.loads(
+        run_cli(context, "backend-status", "--root", str(context), "--scope", "workspace", "--format", "json").stdout
+    )
     assert status_payload["backend_status_is_proof"] is False
     assert status_payload["groups"]["derivation"]["selected"] == "datalog"
+    coco = next(item for item in status_payload["backends"] if item["id"] == "cocoindex")
+    assert coco["effective_scope"] == "workspace"
+    assert coco["storage"]["repo_root"] == str(context)
+    assert coco["storage"]["scoped_db_dir"].endswith(f"/backends/cocoindex/workspaces/{workspace_id}/.cocoindex_code")
     assert any(item["id"] == "datalog" and item["available"] is True for item in status_payload["backends"])
     check_payload = json.loads(
-        run_cli(context, "backend-check", "--backend", "derivation.datalog", "--format", "json").stdout
+        run_cli(
+            context,
+            "backend-check",
+            "--backend",
+            "code_intelligence.cocoindex",
+            "--root",
+            str(context),
+            "--scope",
+            "workspace",
+            "--format",
+            "json",
+        ).stdout
     )
     assert check_payload["backend_status_is_proof"] is False
     assert check_payload["matches"][0]["backend_output_is_proof"] is False
+    assert check_payload["matches"][0]["storage"]["repo_root"] == str(context)
     telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
     assert telemetry["by_tool"]["backend-status"] >= 1
     assert telemetry["by_tool"]["backend-check"] >= 1

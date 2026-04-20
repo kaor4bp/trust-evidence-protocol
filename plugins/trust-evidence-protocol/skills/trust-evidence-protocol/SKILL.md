@@ -99,7 +99,8 @@ Persistence write boundary:
 - `<context>/settings.json.backends` controls optional external adapters for fact validation, code intelligence, and derivation.
 - CocoIndex backend storage is scoped by TEP settings under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code` by default; workspace storage is an explicit broader scope.
 - Backend status and backend output are navigation/diagnostic data only; cite canonical `SRC-*` and `CLM-*` records before using a backend result as proof.
-- Use `backend-status` / `backend-check` before relying on an optional backend, and degrade cleanly when dependencies are missing.
+- Use `backend-status` / `backend-check` before relying on an optional backend, pass repo root/scope when checking code intelligence, and degrade cleanly when dependencies are missing.
+- Prefer MCP `backend_status` / `backend_check` when available so selected backend, WSP/PRJ/TASK focus, CocoIndex storage path, and per-scope index state are visible without reading settings or raw backend files.
 - Use `validate-facts` for backend-produced validation candidates; candidates can guide review but cannot support claims or appear as proof-chain facts.
 - Use `export-rdf` only as a backend projection for validation/debugging; the export is not canonical memory and not proof.
 - Z3 `unsat` results identify claims participating in an inconsistent formal snapshot; they do not prove each listed claim is false.

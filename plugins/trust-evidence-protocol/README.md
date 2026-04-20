@@ -237,6 +237,7 @@ Default external backend registry:
 
 `backends` is an adapter registry, not proof.
 Use `backend-status` or `backend-check` to inspect dependency availability before relying on a helper.
+Pass `--root` and, when useful, `--scope project|workspace` to make scoped storage and per-project index state explicit.
 Backend output may guide lookup, indexing, validation, and candidate generation, but a user-facing proof chain must still cite canonical `SRC-*` and `CLM-*` records.
 External code-intelligence backends such as CocoIndex should be accessed through TEP `code-search` / MCP `code_search`, not as parallel direct MCP entrypoints in normal operation.
 TEP scopes CocoIndex storage by default under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code`; workspace scope uses `<context>/backends/cocoindex/workspaces/<WSP-ID>/.cocoindex_code`.
@@ -406,14 +407,15 @@ Commands:
     - `configure-runtime --backend derivation.backend=datalog --backend derivation.datalog.enabled=true --backend derivation.datalog.mode=fake`
 
 - `backend-status`
-  - reports configured optional backend availability as diagnostic/navigation data
+  - reports configured optional backend availability, selected/default backend, focus, and scoped storage diagnostics as navigation data
   - never treats backend output as proof
-  - useful example: `backend-status --format json`
+  - useful example: `backend-status --root /path/to/repo --scope project --format json`
 
 - `backend-check`
-  - reports one backend group or concrete backend id
+  - reports one backend group or concrete backend id with the same focus/storage diagnostics
   - useful examples:
     - `backend-check --backend code_intelligence`
+    - `backend-check --backend code_intelligence.cocoindex --root /path/to/repo --scope project --format json`
     - `backend-check --backend derivation.datalog --format json`
 
 - `validate-facts`

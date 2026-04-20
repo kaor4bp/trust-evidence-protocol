@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 
 from .settings import load_settings
+from .scopes import current_project_ref, current_task_ref, current_workspace_ref
 
 
 BACKEND_IS_PROOF = False
@@ -62,12 +63,80 @@ def _available_builtin(group: str, selected: bool) -> dict:
     }
 
 
-def backend_status_payload(root: Path) -> dict:
+def _resolve_scoped_storage_dir(
+    context_root: Path,
+    *,
+    scope: str,
+    workspace_ref: str,
+    project_ref: str,
+    storage_root: str,
+) -> Path | None:
+    root_value = (storage_root or "<context>/backends/cocoindex").strip()
+    if root_value.startswith("<context>"):
+        base = context_root / root_value.removeprefix("<context>").lstrip("/")
+    else:
+        base = Path(root_value).expanduser()
+        if not base.is_absolute():
+            base = context_root / base
+    if scope == "project":
+        return base / "projects" / project_ref / ".cocoindex_code" if project_ref else None
+    if scope == "workspace":
+        return base / "workspaces" / workspace_ref / ".cocoindex_code" if workspace_ref else None
+    return None
+
+
+def _cocoindex_diagnostics(
+    root: Path,
+    *,
+    settings: dict,
+    repo_root: Path | None,
+    scope: str | None,
+    workspace_ref: str,
+    project_ref: str,
+) -> dict:
+    default_scope = str(settings.get("default_scope") or "project")
+    effective_scope = scope or default_scope
+    if effective_scope not in {"project", "workspace"}:
+        effective_scope = default_scope if default_scope in {"project", "workspace"} else "project"
+    storage_root = str(settings.get("storage_root") or "<context>/backends/cocoindex")
+    storage_dir = _resolve_scoped_storage_dir(
+        root,
+        scope=effective_scope,
+        workspace_ref=workspace_ref,
+        project_ref=project_ref,
+        storage_root=storage_root,
+    )
+    repo = repo_root.expanduser().resolve() if repo_root else None
+    return {
+        "default_scope": default_scope,
+        "effective_scope": effective_scope,
+        "workspace_glance": bool(settings.get("workspace_glance")),
+        "storage_root": storage_root,
+        "storage": {
+            "repo_root": str(repo) if repo else "",
+            "workspace_ref": workspace_ref,
+            "project_ref": project_ref,
+            "scoped_db_dir": str(storage_dir) if storage_dir else "",
+            "db_path_mapping": f"{repo}={storage_dir}" if repo and storage_dir else "",
+            "index_exists": bool(storage_dir and storage_dir.exists()),
+        },
+    }
+
+
+def backend_status_payload(root: Path, *, repo_root: Path | None = None, scope: str | None = None) -> dict:
     settings = load_settings(root)
     backend_settings = settings.get("backends", {})
+    workspace_ref = current_workspace_ref(root)
+    project_ref = current_project_ref(root)
+    task_ref = current_task_ref(root)
     payload = {
         "backend_status_is_proof": BACKEND_IS_PROOF,
         "context": str(root),
+        "focus": {
+            "workspace_ref": workspace_ref,
+            "project_ref": project_ref,
+            "task_ref": task_ref,
+        },
         "groups": {},
         "backends": [],
     }
@@ -157,6 +226,14 @@ def backend_status_payload(root: Path) -> dict:
     coco_settings = code.get("cocoindex", {}) if isinstance(code, dict) else {}
     coco_enabled = bool(coco_settings.get("enabled"))
     coco_mode = str(coco_settings.get("mode") or "cli")
+    coco_diagnostics = _cocoindex_diagnostics(
+        root,
+        settings=coco_settings if isinstance(coco_settings, dict) else {},
+        repo_root=repo_root,
+        scope=scope,
+        workspace_ref=workspace_ref,
+        project_ref=project_ref,
+    )
     if coco_enabled:
         command_available, command_path = _command_status(["cocoindex-code", "ccc", "cocoindex"])
         code_entries.append(
@@ -168,21 +245,22 @@ def backend_status_payload(root: Path) -> dict:
                 "available": command_available,
                 "version": command_path,
                 "mode": coco_mode,
-                "freshness": "unknown",
+                "freshness": "present" if coco_diagnostics["storage"]["index_exists"] else "missing",
                 "warnings": [] if command_available else ["CocoIndex command was not found on PATH"],
                 "setup_hint": "" if command_available else "Install/configure CocoIndex before selecting code_intelligence.cocoindex.",
                 "backend_output_is_proof": BACKEND_IS_PROOF,
+                **coco_diagnostics,
             }
         )
     else:
-        code_entries.append(
-            _disabled_status(
-                "code_intelligence",
-                "cocoindex",
-                coco_mode,
-                "Enable backends.code_intelligence.cocoindex.enabled after configuring CocoIndex.",
-            )
+        disabled = _disabled_status(
+            "code_intelligence",
+            "cocoindex",
+            coco_mode,
+            "Enable backends.code_intelligence.cocoindex.enabled after configuring CocoIndex.",
         )
+        disabled.update(coco_diagnostics)
+        code_entries.append(disabled)
     payload["groups"]["code_intelligence"] = {"selected": code_selected, "items": code_entries}
 
     derivation = backend_settings.get("derivation", {}) if isinstance(backend_settings, dict) else {}
@@ -236,6 +314,8 @@ def backend_status_payload(root: Path) -> dict:
     payload["groups"]["derivation"] = {"selected": derivation_selected, "items": derivation_entries}
 
     for group in payload["groups"].values():
+        for item in group["items"]:
+            item["will_be_used_by_default"] = bool(item.get("enabled") and item.get("available") and item.get("selected"))
         payload["backends"].extend(group["items"])
     return payload
 
@@ -262,6 +342,14 @@ def backend_status_text_lines(payload: dict, *, selected: list[dict] | None = No
         "",
         "Backend status is diagnostic/navigation data only. It is not proof.",
     ]
+    focus = payload.get("focus", {})
+    if focus:
+        lines.append(
+            "Focus: "
+            f"workspace=`{focus.get('workspace_ref') or '<none>'}` "
+            f"project=`{focus.get('project_ref') or '<none>'}` "
+            f"task=`{focus.get('task_ref') or '<none>'}`"
+        )
     groups: dict[str, dict] = payload.get("groups", {})
     if selected is not None:
         groups = {}
@@ -277,8 +365,19 @@ def backend_status_text_lines(payload: dict, *, selected: list[dict] | None = No
             lines.append(
                 f"- `{item.get('id')}` enabled=`{str(item.get('enabled')).lower()}` "
                 f"selected=`{str(item.get('selected')).lower()}` available=`{str(item.get('available')).lower()}` "
-                f"mode=`{item.get('mode')}` freshness=`{item.get('freshness')}` warnings=`{warnings}`"
+                f"mode=`{item.get('mode')}` freshness=`{item.get('freshness')}` "
+                f"default=`{str(item.get('will_be_used_by_default')).lower()}` warnings=`{warnings}`"
             )
+            storage = item.get("storage") if isinstance(item.get("storage"), dict) else {}
+            if storage:
+                lines.append(
+                    f"  scope: effective=`{item.get('effective_scope')}` default=`{item.get('default_scope')}` "
+                    f"index_exists=`{str(storage.get('index_exists')).lower()}`"
+                )
+                if storage.get("scoped_db_dir"):
+                    lines.append(f"  storage: {storage.get('scoped_db_dir')}")
+                if storage.get("db_path_mapping"):
+                    lines.append(f"  mapping: {storage.get('db_path_mapping')}")
             if setup_hint:
                 lines.append(f"  setup: {setup_hint}")
     if selected is not None and not selected:
