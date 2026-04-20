@@ -3698,6 +3698,9 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
 
     brief = run_cli(context, "brief-context", "--task", "debug bridge check-r1 retry").stdout
     assert "Context Brief" in brief
+    assert "- requested: debug bridge check-r1 retry" in brief
+    full_brief = run_cli(context, "brief-context", "--task", "debug bridge check-r1 retry", "--detail", "full").stdout
+    assert "- requested: debug bridge check-r1 retry" in full_brief
     assert model_id in brief
     assert claim_id in brief
 
