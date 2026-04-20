@@ -62,6 +62,8 @@ from context_lib import cleanup_restore_apply_payload as compat_cleanup_restore_
 from context_lib import cleanup_restore_plan_payload as compat_cleanup_restore_plan_payload  # noqa: E402
 from context_lib import cleanup_restore_plan_text_lines as compat_cleanup_restore_plan_text_lines  # noqa: E402
 from context_lib import active_restrictions_for as compat_active_restrictions_for  # noqa: E402
+from context_lib import access_report_payload as compat_access_report_payload  # noqa: E402
+from context_lib import access_report_text_lines as compat_access_report_text_lines  # noqa: E402
 from context_lib import collect_link_edges as compat_collect_link_edges  # noqa: E402
 from context_lib import current_project_ref as compat_current_project_ref  # noqa: E402
 from context_lib import current_task_ref as compat_current_task_ref  # noqa: E402
@@ -2221,6 +2223,42 @@ def test_topic_index_core_builds_navigation_prefilter_and_reports(tmp_path: Path
 
     inferred_terms = infer_topic_terms_from_refs(root, records, [claim_a], limit=3)
     assert inferred_terms
+
+
+def test_access_report_surfaces_navigation_anomalies_without_proof() -> None:
+    events = [
+        {
+            "channel": "hook",
+            "tool": "bash",
+            "access_kind": "raw_claim_read",
+            "raw_path_count": 1,
+            "record_refs": ["CLM-20260420-aaaaaaaa"],
+        },
+        *[
+            {
+                "channel": "cli",
+                "tool": "code-search",
+                "access_kind": "code_index_search",
+                "record_refs": ["CIX-20260420-bbbbbbbb"],
+            }
+            for _ in range(9)
+        ],
+        {
+            "channel": "mcp",
+            "tool": "record-detail",
+            "access_kind": "record_detail",
+            "record_refs": ["CLM-20260420-aaaaaaaa"],
+        },
+    ]
+
+    payload = compat_access_report_payload(events, limit=5)
+
+    assert payload["telemetry_is_proof"] is False
+    anomaly_kinds = {item["kind"] for item in payload["anomalies"]}
+    assert {"raw-record-read", "tool-concentration", "low-mcp-ratio", "hot-record"}.issubset(anomaly_kinds)
+    text = "\n".join(compat_access_report_text_lines(payload))
+    assert "## Anomalies" in text
+    assert "Raw record reads bypass compact MCP/CLI projections" in text
 
 
 def test_report_core_renders_reports_and_relative_paths(tmp_path: Path) -> None:

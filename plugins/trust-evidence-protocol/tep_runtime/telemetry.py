@@ -89,6 +89,48 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
         for event in event_list
         if str(event.get("access_kind") or "").startswith("raw_") or int(event.get("raw_path_count") or 0) > 0
     ]
+    top_tool, top_tool_count = by_tool.most_common(1)[0] if by_tool else ("", 0)
+    top_record, top_record_count = record_counter.most_common(1)[0] if record_counter else ("", 0)
+    anomalies: list[dict] = []
+    if raw_events:
+        anomalies.append(
+            {
+                "kind": "raw-record-read",
+                "severity": "warning",
+                "count": len(raw_events),
+                "message": "Raw record reads bypass compact MCP/CLI projections; prefer record_detail, claim_graph, or linked_records.",
+            }
+        )
+    if event_list and top_tool_count / max(1, len(event_list)) >= 0.5 and len(event_list) >= 10:
+        anomalies.append(
+            {
+                "kind": "tool-concentration",
+                "severity": "info",
+                "tool": top_tool,
+                "count": top_tool_count,
+                "message": "One lookup tool dominates recent telemetry; consider a more targeted route or generated view.",
+            }
+        )
+    if event_list and by_channel.get("cli", 0) > by_channel.get("mcp", 0) * 2 and len(event_list) >= 10:
+        anomalies.append(
+            {
+                "kind": "low-mcp-ratio",
+                "severity": "info",
+                "cli_count": by_channel.get("cli", 0),
+                "mcp_count": by_channel.get("mcp", 0),
+                "message": "CLI lookup dominates MCP lookup; prefer MCP for read-only context retrieval when available.",
+            }
+        )
+    if top_record_count >= 5:
+        anomalies.append(
+            {
+                "kind": "hot-record",
+                "severity": "info",
+                "record_ref": top_record,
+                "count": top_record_count,
+                "message": "One record is repeatedly accessed; consider linking it from a model, flow, WCTX, or guideline if it is a recurring anchor.",
+            }
+        )
     return {
         "telemetry_is_proof": False,
         "event_count": len(event_list),
@@ -102,6 +144,7 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
             for record_ref, count in record_counter.most_common(max(1, limit))
         ],
         "recent_raw_events": raw_events[-max(1, limit) :],
+        "anomalies": anomalies,
     }
 
 
@@ -129,5 +172,13 @@ def access_report_text_lines(payload: dict) -> list[str]:
     for item in payload.get("top_records", []):
         lines.append(f"- `{item.get('record_ref')}` accesses=`{item.get('access_count')}`")
     if not payload.get("top_records"):
+        lines.append("- none")
+    lines.append("")
+    lines.append("## Anomalies")
+    for item in payload.get("anomalies", []):
+        prefix = f"- `{item.get('kind')}` severity=`{item.get('severity')}`"
+        detail = str(item.get("message") or "").strip()
+        lines.append(f"{prefix}: {detail}" if detail else prefix)
+    if not payload.get("anomalies"):
         lines.append("- none")
     return lines
