@@ -83,6 +83,7 @@ from tep_runtime.attention import (
     attention_diagram_text_lines,
     attention_map_text_lines,
     build_attention_index,
+    curiosity_map_html,
     curiosity_map_payload,
     curiosity_map_text_lines,
     curiosity_probe_text_lines,

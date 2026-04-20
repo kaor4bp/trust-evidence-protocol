@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 from .ids import now_timestamp
@@ -994,6 +995,176 @@ def curiosity_map_text_lines(payload: dict) -> list[str]:
         ]
     )
     return lines
+
+
+def curiosity_map_html(payload: dict) -> str:
+    """Render a standalone, dependency-free HTML curiosity graph.
+
+    The HTML view is for human orientation only. It deliberately embeds the
+    same non-proof payload metadata and does not introduce new evidence.
+    """
+
+    clusters = payload.get("clusters", []) if isinstance(payload.get("clusters"), list) else []
+    records = payload.get("records", {}) if isinstance(payload.get("records"), dict) else {}
+    bridges = payload.get("bridges", []) if isinstance(payload.get("bridges"), list) else []
+    probes = payload.get("probes", []) if isinstance(payload.get("probes"), list) else []
+    cold_topic_ids = {str(zone.get("topic_id", "")) for zone in payload.get("cold_zones", []) if isinstance(zone, dict)}
+    width = 1100
+    height = 760
+    center_x = width / 2
+    center_y = height / 2
+    cluster_radius = 270
+    record_radius = 82
+    cluster_positions: dict[str, tuple[float, float]] = {}
+    record_positions: dict[str, tuple[float, float]] = {}
+
+    for index, cluster in enumerate(clusters):
+        cluster_id = str(cluster.get("id", ""))
+        if not cluster_id:
+            continue
+        angle = (2 * math.pi * index / max(1, len(clusters))) - (math.pi / 2)
+        x = center_x + cluster_radius * math.cos(angle)
+        y = center_y + cluster_radius * math.sin(angle)
+        cluster_positions[cluster_id] = (x, y)
+        top_records = [str(ref) for ref in cluster.get("top_records", []) if str(ref) in records]
+        for record_index, record_ref in enumerate(top_records):
+            if record_ref in record_positions:
+                continue
+            offset_angle = angle + ((record_index - (len(top_records) - 1) / 2) * 0.45)
+            record_positions[record_ref] = (
+                x + record_radius * math.cos(offset_angle),
+                y + record_radius * math.sin(offset_angle),
+            )
+
+    missing_records = [ref for ref in records if ref not in record_positions]
+    for index, record_ref in enumerate(missing_records):
+        angle = (2 * math.pi * index / max(1, len(missing_records))) + (math.pi / 2)
+        record_positions[record_ref] = (
+            center_x + (cluster_radius + 125) * math.cos(angle),
+            center_y + (cluster_radius + 125) * math.sin(angle),
+        )
+
+    def cluster_node(cluster: dict) -> str:
+        cluster_id = str(cluster.get("id", ""))
+        x, y = cluster_positions.get(cluster_id, (center_x, center_y))
+        cold = cluster_id in cold_topic_ids
+        css_class = "cluster cold" if cold else "cluster"
+        label = str(cluster.get("term", "") or cluster_id)
+        meta = f"records={cluster.get('record_count', 0)} heat={cluster.get('activity_score', 0)}"
+        return (
+            f'<div class="{css_class}" style="left:{x:.1f}px;top:{y:.1f}px">'
+            f"<strong>{escape(label)}</strong><small>{escape(meta)}</small></div>"
+        )
+
+    def record_node(record_ref: str, record: dict) -> str:
+        x, y = record_positions.get(record_ref, (center_x, center_y))
+        summary = record_diagram_summary(record)
+        meta = f"{record.get('record_type', '')} heat={record.get('activity_score', 0)} taps={record.get('tap_count', 0)}"
+        return (
+            f'<div class="record" style="left:{x:.1f}px;top:{y:.1f}px">'
+            f"<strong>{escape(record_ref)}</strong><small>{escape(meta)}</small>"
+            f"<span>{escape(summary)}</span></div>"
+        )
+
+    line_items: list[str] = []
+    for cluster in clusters:
+        cluster_id = str(cluster.get("id", ""))
+        if cluster_id not in cluster_positions:
+            continue
+        x1, y1 = cluster_positions[cluster_id]
+        for record_ref in cluster.get("top_records", []):
+            record_ref = str(record_ref)
+            if record_ref not in record_positions:
+                continue
+            x2, y2 = record_positions[record_ref]
+            line_items.append(f'<line class="membership" x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" />')
+    for bridge in bridges:
+        left = str(bridge.get("from_topic", ""))
+        right = str(bridge.get("to_topic", ""))
+        if left in cluster_positions and right in cluster_positions:
+            x1, y1 = cluster_positions[left]
+            x2, y2 = cluster_positions[right]
+            line_items.append(f'<line class="bridge" x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" />')
+    for probe in probes:
+        refs = [str(ref) for ref in probe.get("record_refs", []) if str(ref) in record_positions]
+        if len(refs) == 2:
+            x1, y1 = record_positions[refs[0]]
+            x2, y2 = record_positions[refs[1]]
+            line_items.append(f'<line class="probe" x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" />')
+
+    prompt_items = []
+    for prompt in payload.get("curiosity_prompts", []):
+        refs = ", ".join(str(ref) for ref in prompt.get("record_refs", []))
+        prompt_items.append(
+            "<li>"
+            f"<strong>probe {escape(str(prompt.get('probe_index', '')))}</strong> "
+            f"score={escape(str(prompt.get('score', 0)))} refs={escape(refs)}: "
+            f"{escape(str(prompt.get('question', '')))}"
+            "</li>"
+        )
+    prompt_html = "\n".join(prompt_items) or "<li>none</li>"
+    node_html = "\n".join(cluster_node(cluster) for cluster in clusters)
+    node_html += "\n" + "\n".join(record_node(record_ref, record) for record_ref, record in records.items())
+    title = f"TEP Curiosity Map - {payload.get('mode', 'general')} / {payload.get('volume', 'normal')}"
+    metadata = (
+        f"scope={payload.get('scope', '')} workspace={payload.get('workspace_ref', '')} "
+        f"project={payload.get('project_ref', '')} task={payload.get('task_ref', '')}"
+    )
+    payload_json = escape(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{escape(title)}</title>
+  <style>
+    :root {{ color-scheme: light; --ink:#17202a; --muted:#5c6773; --line:#9aa7b4; --cold:#fff1a8; --cluster:#d7ecff; --record:#f8f9fa; --probe:#b83280; --bridge:#2b8a3e; }}
+    body {{ margin:0; font:14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:#f4f2ed; }}
+    header {{ padding:20px 28px 12px; background:#fffdf8; border-bottom:1px solid #ded8cc; }}
+    h1 {{ margin:0 0 6px; font-size:22px; }}
+    .meta {{ color:var(--muted); }}
+    .warning {{ margin-top:10px; padding:9px 12px; background:#fff7db; border:1px solid #e3c76b; border-radius:8px; }}
+    .canvas-wrap {{ overflow:auto; padding:18px; }}
+    .canvas {{ position:relative; width:{width}px; height:{height}px; margin:auto; background:radial-gradient(circle at center, #fffdf9, #ece7dd); border:1px solid #d9d1c2; border-radius:18px; box-shadow:0 18px 35px rgba(30,25,15,.10); }}
+    svg {{ position:absolute; inset:0; pointer-events:none; }}
+    line {{ stroke:var(--line); stroke-width:1.4; opacity:.65; }}
+    line.bridge {{ stroke:var(--bridge); stroke-width:3; opacity:.78; }}
+    line.probe {{ stroke:var(--probe); stroke-width:2.2; stroke-dasharray:7 7; opacity:.82; }}
+    .cluster,.record {{ position:absolute; transform:translate(-50%,-50%); box-sizing:border-box; border-radius:14px; border:1px solid #9eb7ce; background:var(--cluster); padding:10px 12px; width:190px; min-height:70px; box-shadow:0 8px 18px rgba(20,35,50,.13); }}
+    .cluster.cold {{ background:var(--cold); border-color:#b7791f; }}
+    .record {{ width:230px; background:var(--record); border-color:#9ca3af; }}
+    strong {{ display:block; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+    small {{ display:block; color:var(--muted); margin-top:3px; }}
+    span {{ display:block; margin-top:5px; max-height:38px; overflow:hidden; color:#293241; }}
+    section {{ max-width:1100px; margin:0 auto 28px; padding:0 20px; }}
+    li {{ margin:8px 0; }}
+    details {{ margin-top:18px; }}
+    pre {{ overflow:auto; background:#161b22; color:#d6deeb; padding:14px; border-radius:10px; }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{escape(title)}</h1>
+    <div class="meta">{escape(metadata)}</div>
+    <div class="warning">Generated navigation view only. Inspect canonical records before citing any link, heat, cold zone, or probe as proof.</div>
+  </header>
+  <div class="canvas-wrap">
+    <div class="canvas">
+      <svg viewBox="0 0 {width} {height}" aria-hidden="true">{''.join(line_items)}</svg>
+      {node_html}
+    </div>
+  </div>
+  <section>
+    <h2>Curiosity Prompts</h2>
+    <ol>{prompt_html}</ol>
+    <details>
+      <summary>Embedded non-proof payload</summary>
+      <pre>{payload_json}</pre>
+    </details>
+  </section>
+</body>
+</html>
+"""
 
 
 def curiosity_probe_text_lines(payload: dict, *, limit: int) -> list[str]:

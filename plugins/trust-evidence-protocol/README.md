@@ -21,6 +21,7 @@ Responsibilities:
 - build generated predicate `logic_index/` data from `CLM.logic` for symbol, atom, rule, and conflict-candidate checks
 - capture `INP-*` user-prompt provenance through the UserPromptSubmit hook when enabled by `input_capture`
 - collect append-only lookup telemetry in `activity/access.jsonl`, including MCP/CLI lookup events and hook-detected raw claim-file reads
+- provide one `lookup` front door that routes agents to fact, code, theory, research, or policy lookup instead of making them guess between overlapping tools
 - push agents to preserve reusable discoveries, rules, actions, plans, debt, questions, models, flows, and proposals as records
 
 Non-responsibilities:
@@ -110,6 +111,10 @@ Generated navigation layer:
   - generated attention map over topic clusters, record taps, cold zones, bridges, and curiosity probes
   - helps an agent choose what to inspect next without reading the whole context
   - may be rebuilt at any time
+  - not a source of truth and not proof
+- `.codex_context/views/curiosity/*.html`
+  - generated human-facing curiosity graph snapshots written by `curiosity-map --html`
+  - safe to show to a user for orientation
   - not a source of truth and not proof
 - `.codex_context/activity/taps.jsonl`
   - append-only activity signals such as retrieved, opened, cited, decisive, updated, challenged, or contradicted
@@ -487,6 +492,7 @@ Commands:
   - attaches the current project and current task automatically when explicit refs are omitted
   - may include lightweight `--assumption`, `--concern`, `--risk`, and `--stop-condition`
   - proposal assumptions are not truth support and cannot be used as proof in evidence chains
+  - if the agent has a reasoned objection or alternative and the user chooses another path, preserve the constructive critique as `PRP-*` instead of repeatedly arguing or silently dropping it
 
 - `brief-context --task "..."`
   - prints a compact task-oriented reasoning brief from the current `.codex_context`
@@ -495,6 +501,16 @@ Commands:
   - filters relevance sections by `settings.json.current_project_ref` when a current project is set
   - excludes records tied to another `TASK-*` through `task_refs`
   - is read-only and fails if the context is structurally invalid
+
+- `lookup --query "..." --kind facts|code|theory|research|policy|auto [--format text|json]`
+  - one front door for normal lookup routing
+  - returns the primary tool and ordered route commands for the requested work mode
+  - `facts` routes to `claim-graph`, `search-records`, `record-detail`, and `linked-records`
+  - `code` routes to `code-search`, `code-feedback`, `code-info`, and a `curiosity-map --mode code`
+  - `theory` routes to `claim-graph`, model/flow/proposal search, `curiosity-map --mode theory`, and `probe-pack`
+  - `research` routes to `brief-context`, broader record search, `curiosity-map --mode research`, and `probe-pack`
+  - `policy` routes to `guidelines-for` and scoped guideline/permission/restriction/proposal lookup
+  - lookup output is navigation only; cite `record-detail` / `linked-records` records before making proof claims
 
 - `next-step --intent answer|plan|edit|test|persist|permission|debug --task "..."`
   - prints the compact route branch the agent should follow next
@@ -552,6 +568,12 @@ Commands:
 - `topic-conflict-candidates`
   - shows lexical overlap candidates that may deserve structured comparison
   - candidate output is not proof and does not replace `scan-conflicts`
+
+- `curiosity-map --mode research|theory|code --volume compact|normal|wide --html`
+  - writes a standalone HTML visual graph to `.codex_context/views/curiosity/`
+  - includes clusters, heat/cold zones, established bridges, candidate probes, and prompt list
+  - useful when the agent should show the user why it wants to inspect a cold or weakly linked area
+  - the HTML is generated navigation only and must not be cited as evidence
 
 - `logic-index build`
   - rebuilds `.codex_context/logic_index/atoms.json`, `symbols.json`, `rules.json`, `by_predicate.json`, `by_symbol.json`, `variable_graph.json`, and reports

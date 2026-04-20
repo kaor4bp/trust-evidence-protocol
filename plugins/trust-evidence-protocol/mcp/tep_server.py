@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.1.79"
+SERVER_VERSION = "0.2.5"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -98,6 +98,30 @@ TOOLS: list[JsonObject] = [
                 "detail": {"type": "string", "enum": ["compact", "full"], "default": "compact"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
+        ),
+    },
+    {
+        "name": "lookup",
+        "description": (
+            "One front door for deciding whether to search facts, code, theory/model context, broad research context, "
+            "or policy/guideline context. Navigation only; follow returned route with proof-bearing tools before citing."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "query": {"type": "string", "description": "Lookup query or task summary."},
+                "kind": {
+                    "type": "string",
+                    "enum": ["auto", "facts", "code", "theory", "research", "policy"],
+                    "default": "auto",
+                    "description": "Lookup route to choose. Auto uses lightweight lexical routing.",
+                },
+                "root": {"type": "string", "description": "Repository root for code lookup routes. Defaults to cwd."},
+                "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
+                "mode": {"type": "string", "enum": ["general", "research", "theory", "code"], "default": "general"},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["query"],
         ),
     },
     {
@@ -481,6 +505,11 @@ TOOLS: list[JsonObject] = [
                 "volume": {"type": "string", "enum": ["compact", "normal", "wide"], "default": "normal"},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "mode": {"type": "string", "enum": ["general", "research", "theory", "code"], "default": "general"},
+                "html": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "When true, write a standalone HTML map under <context>/views/curiosity/ and return html_path.",
+                },
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
@@ -821,6 +850,25 @@ def tool_next_step(args: JsonObject) -> tuple[bool, str]:
             as_format(args.get("format")),
         ],
     )
+
+
+def tool_lookup(args: JsonObject) -> tuple[bool, str]:
+    cli_args = [
+        "lookup",
+        "--query",
+        str(args.get("query", "")),
+        "--kind",
+        str(args.get("kind") or "auto"),
+        "--scope",
+        str(args.get("scope") or "current"),
+        "--mode",
+        str(args.get("mode") or "general"),
+        "--format",
+        as_format(args.get("format")),
+    ]
+    if args.get("root"):
+        cli_args.extend(["--root", str(args["root"])])
+    return run_cli(args, cli_args)
 
 
 def tool_search_records(args: JsonObject) -> tuple[bool, str]:
@@ -1176,20 +1224,20 @@ def tool_attention_diagram_compare(args: JsonObject) -> tuple[bool, str]:
 
 
 def tool_curiosity_map(args: JsonObject) -> tuple[bool, str]:
-    return run_cli(
-        args,
-        [
-            "curiosity-map",
-            "--volume",
-            str(args.get("volume") or "normal"),
-            "--scope",
-            str(args.get("scope") or "current"),
-            "--mode",
-            str(args.get("mode") or "general"),
-            "--format",
-            as_format(args.get("format")),
-        ],
-    )
+    cli_args = [
+        "curiosity-map",
+        "--volume",
+        str(args.get("volume") or "normal"),
+        "--scope",
+        str(args.get("scope") or "current"),
+        "--mode",
+        str(args.get("mode") or "general"),
+        "--format",
+        as_format(args.get("format")),
+    ]
+    if as_bool(args.get("html")):
+        cli_args.append("--html")
+    return run_cli(args, cli_args)
 
 
 def tool_curiosity_probes(args: JsonObject) -> tuple[bool, str]:
@@ -1392,6 +1440,7 @@ def tool_logic_conflict_candidates(args: JsonObject) -> tuple[bool, str]:
 TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "brief_context": tool_brief_context,
     "next_step": tool_next_step,
+    "lookup": tool_lookup,
     "search_records": tool_search_records,
     "record_detail": tool_record_detail,
     "claim_graph": tool_claim_graph,

@@ -405,7 +405,23 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "curiosity_map",
-                    "arguments": {"context": str(context), "volume": "compact", "scope": "all", "mode": "theory", "format": "json"},
+                    "arguments": {
+                        "context": str(context),
+                        "volume": "compact",
+                        "scope": "all",
+                        "mode": "theory",
+                        "html": True,
+                        "format": "json",
+                    },
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 31,
+                "method": "tools/call",
+                "params": {
+                    "name": "lookup",
+                    "arguments": {"context": str(context), "query": "MCP gateway code lookup", "kind": "auto", "format": "json"},
                 },
             },
             {
@@ -506,6 +522,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert {
         "search_records",
         "next_step",
+        "lookup",
         "record_detail",
         "claim_graph",
         "linked_records",
@@ -675,6 +692,16 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert '"mode": "theory"' in curiosity_map["content"][0]["text"]
     assert '"curiosity_prompts"' in curiosity_map["content"][0]["text"]
     assert "graph TD" in curiosity_map["content"][0]["text"]
+    curiosity_payload = json.loads(curiosity_map["content"][0]["text"])
+    assert Path(curiosity_payload["html_path"]).exists()
+
+    lookup = by_id[31]["result"]
+    assert lookup["isError"] is False
+    lookup_payload = json.loads(lookup["content"][0]["text"])
+    assert lookup_payload["lookup_is_proof"] is False
+    assert lookup_payload["kind"] == "code"
+    assert lookup_payload["mode"] == "code"
+    assert lookup_payload["primary_tool"] == "code-search"
 
     next_step = by_id[21]["result"]
     assert next_step["isError"] is False

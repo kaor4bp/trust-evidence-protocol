@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import shutil
 import sys
 import tempfile
@@ -91,6 +92,7 @@ from context_lib import (
     backend_status_payload,
     backend_status_text_lines,
     build_attention_index,
+    curiosity_map_html,
     curiosity_map_payload,
     curiosity_map_text_lines,
     build_action_payload,
@@ -2309,6 +2311,7 @@ def cmd_help(topic: str) -> int:
     topics = {
         "modes": [
             "hydration: refresh generated views and current project/task summaries",
+            "lookup: one front door for facts, code, theory, visual curiosity, and policy lookup routes",
             "review context: validate records, references, and structured contradictions",
             "type graph: inspect allowed record chains and WCTX/CIX scope pressure",
             "reindex context: rebuild generated views, indexes, backlog, and reports",
@@ -2335,6 +2338,7 @@ def cmd_help(topic: str) -> int:
         "commands": [
             "review-context | reindex-context | scan-conflicts | type-graph --check",
             "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]",
+            "lookup --query ... --kind facts|code|theory|research|policy|auto [--format json]",
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json",
@@ -2347,7 +2351,7 @@ def cmd_help(topic: str) -> int:
             "working-context create|fork|show|close|check-drift",
             "workspace-admission check --repo path [--format json]",
             "topic-index build --method lexical | topic-search --query ...",
-            "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | curiosity-map --mode research|theory|code | curiosity-probes --mode theory --budget 5 | probe-pack --mode theory --budget 3",
+            "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | curiosity-map --mode research|theory|code [--html] | curiosity-probes --mode theory --budget 5 | probe-pack --mode theory --budget 3",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]",
             "validate-facts --backend rdf_shacl [--format json]",
@@ -2382,6 +2386,140 @@ def cmd_help(topic: str) -> int:
         print(f"\n## {title.title()}")
         for line in lines:
             print(f"- {line}")
+    return 0
+
+
+LOOKUP_KINDS = {"auto", "facts", "code", "theory", "research", "policy"}
+
+
+def infer_lookup_kind(query: str, requested_kind: str) -> str:
+    if requested_kind in LOOKUP_KINDS and requested_kind != "auto":
+        return requested_kind
+    lowered = query.lower()
+    code_terms = {"code", "file", "function", "class", "import", "symbol", "test", "pytest", "src", "module"}
+    policy_terms = {"guideline", "permission", "restriction", "rule", "policy", "allowed", "forbidden"}
+    theory_terms = {"model", "flow", "theory", "hypothesis", "why", "cause", "relationship", "contradiction"}
+    if any(term in lowered for term in code_terms):
+        return "code"
+    if any(term in lowered for term in policy_terms):
+        return "policy"
+    if any(term in lowered for term in theory_terms):
+        return "theory"
+    return "facts"
+
+
+def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str) -> dict:
+    selected_kind = infer_lookup_kind(query, kind)
+    query_arg = shlex.quote(query)
+    root_arg = shlex.quote(root_path)
+    route_commands: dict[str, list[str]] = {
+        "facts": [
+            f"claim-graph --query {query_arg} --format json",
+            f"search-records --query {query_arg} --type claim --format json",
+            "record-detail --record CLM-* --format json",
+            "linked-records --record CLM-* --format json",
+        ],
+        "code": [
+            f"code-search --query {query_arg} --root {root_arg} --fields target,symbols,features,freshness --format json",
+            f"code-feedback --query {query_arg} --root {root_arg} --format json",
+            "code-info --entry CIX-* --fields target,symbols,features,freshness --format json",
+            f"curiosity-map --mode code --scope {scope} --volume compact",
+        ],
+        "theory": [
+            f"claim-graph --query {query_arg} --format json",
+            f"search-records --query {query_arg} --type model --type flow --type open_question --type proposal --format json",
+            f"curiosity-map --mode theory --scope {scope} --volume compact",
+            f"probe-pack --mode theory --scope {scope} --budget 3 --format json",
+        ],
+        "research": [
+            f"brief-context --task {query_arg} --detail compact",
+            f"search-records --query {query_arg} --include-fallback --format json",
+            f"curiosity-map --mode research --scope {scope} --volume compact",
+            f"probe-pack --mode research --scope {scope} --budget 3 --format json",
+        ],
+        "policy": [
+            f"guidelines-for --task {query_arg} --format json",
+            f"search-records --query {query_arg} --type guideline --type permission --type restriction --type proposal --format json",
+            "record-detail --record GLD-* --format json",
+        ],
+    }
+    primary_tool = {
+        "facts": "claim-graph",
+        "code": "code-search",
+        "theory": "curiosity-map",
+        "research": "brief-context",
+        "policy": "guidelines-for",
+    }[selected_kind]
+    inferred_mode = {"code": "code", "theory": "theory", "research": "research"}.get(selected_kind, "general")
+    selected_mode = mode if mode in ATTENTION_MODES and mode != "general" else inferred_mode
+    return {
+        "lookup_is_proof": False,
+        "query": query,
+        "requested_kind": kind,
+        "kind": selected_kind,
+        "scope": scope,
+        "mode": selected_mode,
+        "root": root_path,
+        "primary_tool": primary_tool,
+        "route": route_commands[selected_kind],
+        "fallback_route": [
+            f"search-records --query {query_arg} --format json",
+            f"curiosity-map --mode {selected_mode} --scope {scope} --volume compact",
+            "telemetry-report --format json",
+        ],
+        "rules": [
+            "Use lookup first when unsure where to search.",
+            "Treat lookup and generated maps as navigation only, not proof.",
+            "Open record-detail or linked-records before citing a canonical record.",
+            "Use code-search through TEP; do not call external code backends directly in normal work.",
+        ],
+    }
+
+
+def lookup_text_lines(payload: dict) -> list[str]:
+    lines = [
+        "# TEP Lookup Route",
+        "",
+        "Mode: one front door for facts, code, theory, research, and policy lookup. Not proof.",
+        f"query: `{payload.get('query', '')}` kind: `{payload.get('kind')}` primary_tool: `{payload.get('primary_tool')}` scope: `{payload.get('scope')}` mode: `{payload.get('mode')}`",
+        "",
+        "## Route",
+    ]
+    for command in payload.get("route", []):
+        lines.append(f"- `{command}`")
+    lines.extend(["", "## Fallback"])
+    for command in payload.get("fallback_route", []):
+        lines.append(f"- `{command}`")
+    lines.extend(["", "## Rules"])
+    for rule in payload.get("rules", []):
+        lines.append(f"- {rule}")
+    return lines
+
+
+def cmd_lookup(root: Path, query: str, kind: str, root_path: str | None, scope: str, mode: str, output_format: str) -> int:
+    if not query.strip():
+        print("lookup query must not be empty")
+        return 1
+    payload = lookup_payload(
+        query=query,
+        kind=kind,
+        root_path=str(root_path or Path.cwd()),
+        scope=scope,
+        mode=mode,
+    )
+    append_lookup_access_event(
+        root,
+        channel="cli",
+        tool="lookup",
+        access_kind="record_search",
+        record_refs=[],
+        query=query,
+        note=f"lookup route kind={payload['kind']} primary_tool={payload['primary_tool']}",
+    )
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(lookup_text_lines(payload)))
     return 0
 
 
@@ -3326,7 +3464,13 @@ def cmd_attention_diagram_compare(root: Path, limit: int, output_format: str, sc
     return 0
 
 
-def cmd_curiosity_map(root: Path, volume: str, output_format: str, scope: str, mode: str) -> int:
+def curiosity_map_html_path(root: Path, *, scope: str, mode: str, volume: str) -> Path:
+    safe = "-".join(part for part in (scope, mode, volume) if part)
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", safe).strip("-") or "current-general-normal"
+    return root / "views" / "curiosity" / f"curiosity-map-{safe}.html"
+
+
+def cmd_curiosity_map(root: Path, volume: str, output_format: str, scope: str, mode: str, html: bool) -> int:
     _, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3336,9 +3480,15 @@ def cmd_curiosity_map(root: Path, volume: str, output_format: str, scope: str, m
         return 1
     scoped_payload = scoped_attention_payload(root, payload, scope, mode)
     map_payload = curiosity_map_payload(scoped_payload, volume=volume)
+    if html:
+        output_path = curiosity_map_html_path(root, scope=scope, mode=mode, volume=volume)
+        write_text_file(output_path, curiosity_map_html(map_payload))
+        map_payload["html_path"] = str(output_path)
     if output_format == "json":
         print(json.dumps(map_payload, indent=2, ensure_ascii=False))
         return 0
+    if html:
+        print(f"Wrote curiosity HTML map: {output_path}")
     print("\n".join(curiosity_map_text_lines(map_payload)))
     return 0
 
@@ -6392,6 +6542,16 @@ def parse_args() -> argparse.Namespace:
     next_step.add_argument("--task", default="")
     next_step.add_argument("--detail", choices=("compact", "full"), default="compact")
     next_step.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    lookup = subparsers.add_parser(
+        "lookup",
+        help="One front door for choosing fact, code, theory, research, or policy lookup routes.",
+    )
+    lookup.add_argument("--query", required=True)
+    lookup.add_argument("--kind", choices=sorted(LOOKUP_KINDS), default="auto")
+    lookup.add_argument("--root", type=Path, help="Repository root for code lookup routes. Defaults to cwd.")
+    lookup.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    lookup.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
+    lookup.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     search_records = subparsers.add_parser(
         "search-records",
         help="Search canonical records by keyword before expanding links.",
@@ -6553,6 +6713,7 @@ def parse_args() -> argparse.Namespace:
     curiosity_map.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     curiosity_map.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     curiosity_map.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
+    curiosity_map.add_argument("--html", action="store_true", help="Write a standalone HTML visual map under <context>/views/curiosity/.")
     curiosity_probes = subparsers.add_parser(
         "curiosity-probes",
         help="Show generated bounded curiosity probes. Not proof.",
@@ -7638,6 +7799,18 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(
             cmd_next_step(root, intent=args.intent, task=args.task, detail=args.detail, output_format=args.output_format)
         )
+    if args.command == "lookup":
+        raise SystemExit(
+            cmd_lookup(
+                root,
+                query=args.query,
+                kind=args.kind,
+                root_path=args.root,
+                scope=args.scope,
+                mode=args.mode,
+                output_format=args.output_format,
+            )
+        )
     if args.command == "search-records":
         raise SystemExit(
             cmd_search_records(
@@ -7784,7 +7957,16 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "curiosity-map":
-        raise SystemExit(cmd_curiosity_map(root, volume=args.volume, output_format=args.output_format, scope=args.scope, mode=args.mode))
+        raise SystemExit(
+            cmd_curiosity_map(
+                root,
+                volume=args.volume,
+                output_format=args.output_format,
+                scope=args.scope,
+                mode=args.mode,
+                html=args.html,
+            )
+        )
     if args.command == "curiosity-probes":
         raise SystemExit(cmd_curiosity_probes(root, budget=args.budget, output_format=args.output_format, scope=args.scope, mode=args.mode))
     if args.command == "probe-inspect":

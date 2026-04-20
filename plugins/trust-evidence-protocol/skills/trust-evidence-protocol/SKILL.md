@@ -36,6 +36,7 @@ Do not use hidden chain-of-thought, unsupported memory, raw text, generated view
 When MCP tools are available, prefer them for read-only lookup:
 
 - use `next_step` first when you are unsure which TEP branch to follow; request `format=json` when a tool needs structured `route_graph`; treat both forms as navigation only
+- use `lookup` as the first search router when you are unsure whether the task needs facts, code, theory/model context, broad research context, or policy/guideline context
 - use compact `brief_context` before planning, answering, editing, or asking permission; request `detail=full` only when the compact brief is insufficient
 - use `search_records` before inspecting raw files from scratch
 - use `claim_graph` when keyword lookup should return a compact graph of current `CLM-*` anchors and linked sources/support before opening individual records
@@ -81,6 +82,7 @@ Persistence write boundary:
 - Prefer `attention-diagram detail=compact` first; request `detail=full` only when record-summary labels are needed.
 - Use `attention-diagram-compare` / MCP `attention_diagram_compare` when deciding mechanically whether full diagram labels are worth the payload.
 - Use `curiosity-map` / MCP `curiosity_map` when the agent needs one visual-thinking map with heat, cold zones, established bridges, candidate curiosity links, and recommended next probes.
+- Use `curiosity-map --html` when a human should see the generated graph; the HTML goes under `<context>/views/curiosity/` and remains navigation-only.
 - Prefer `curiosity-map volume=compact` first; expand to `normal` or `wide` only when the compact map hides relevant neighboring clusters or probes.
 - Pick an attention mode before visual exploration: `research` for broad investigation, `theory` for claim/model/flow reasoning, and `code` for implementation or test navigation. Mode filters reduce irrelevant record types but remain navigation-only.
 - Attention lookup defaults to current `.tep` workspace/project/task focus; only use `scope=all` when deliberately doing cross-scope triage.
@@ -302,6 +304,7 @@ When the user gives a reusable rule like "write tests this way", record the user
 Use `CLM-*` only for factual support around the rule, such as "existing tests already use page objects".
 
 When the agent sees a weak user plan, risky implementation direction, repeated failure pattern, or better alternative, create or update a `PRP-*` proposal instead of becoming silent or merely compliant.
+If the agent states a reasoned position and the user chooses a different path, preserve the constructive critique, alternatives, risks, and stop conditions as `PRP-*` instead of repeatedly arguing, forgetting the concern, or converting the disagreement into a `CLM-*`.
 
 ## Action And Freedom
 

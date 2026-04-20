@@ -1569,6 +1569,16 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert "visual-thinking map" in curiosity_map_text
     assert "Curiosity Prompts" in curiosity_map_text
     assert "Use the map to decide what to inspect next" in curiosity_map_text
+    html_map = json.loads(
+        run_cli(context, "curiosity-map", "--volume", "compact", "--scope", "all", "--mode", "theory", "--html", "--format", "json").stdout
+    )
+    html_path = Path(html_map["html_path"])
+    assert html_path == context / "views" / "curiosity" / "curiosity-map-all-theory-compact.html"
+    assert html_path.exists()
+    html_text = html_path.read_text(encoding="utf-8")
+    assert "TEP Curiosity Map" in html_text
+    assert "Generated navigation view only" in html_text
+    assert facility_claim_id in html_text
     research_map = json.loads(
         run_cli(context, "curiosity-map", "--volume", "compact", "--scope", "all", "--mode", "research", "--format", "json").stdout
     )
@@ -1582,6 +1592,17 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert code_attention["mode"] == "code"
     assert input_id not in code_attention["records"]
     assert tapped_claim_id not in code_attention["records"]
+    lookup_facts = json.loads(run_cli(context, "lookup", "--query", "Facility Program relationship", "--kind", "facts", "--format", "json").stdout)
+    assert lookup_facts["lookup_is_proof"] is False
+    assert lookup_facts["primary_tool"] == "claim-graph"
+    assert any(command.startswith("claim-graph") for command in lookup_facts["route"])
+    lookup_code = json.loads(
+        run_cli(context, "lookup", "--query", "code function import lookup", "--kind", "auto", "--root", str(tmp_path), "--format", "json").stdout
+    )
+    assert lookup_code["kind"] == "code"
+    assert lookup_code["mode"] == "code"
+    assert lookup_code["primary_tool"] == "code-search"
+    assert any("code-search" in command for command in lookup_code["route"])
     probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
     assert probes_payload["attention_index_is_proof"] is False
     assert all(ref.startswith("CLM-") for probe in probes_payload["probes"] for ref in probe["record_refs"])
