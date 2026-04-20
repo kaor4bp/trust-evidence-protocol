@@ -26,6 +26,7 @@ from context_lib import (
     CLAIM_PLANES,
     CLAIM_POLARITIES,
     CLAIM_STATUSES,
+    COCOINDEX_SCOPES,
     CODE_INDEX_ALLOWED_RECORD_TYPES,
     CODE_INDEX_ANNOTATION_KINDS,
     CODE_INDEX_ANNOTATION_STATUSES,
@@ -874,6 +875,101 @@ def cmd_assign_workspace(
     return persist_mutated_records(root, merged_records, changed_ids, reason)
 
 
+def _path_contains(root_value: str, target: Path) -> bool:
+    if not root_value.strip():
+        return False
+    try:
+        root_path = Path(root_value).expanduser().resolve()
+    except OSError:
+        return False
+    return target == root_path or target.is_relative_to(root_path)
+
+
+def workspace_admission_payload(root: Path, records: dict[str, dict], repo: Path) -> dict:
+    current_workspace = current_workspace_ref(root)
+    current_project = current_project_ref(root)
+    target = repo.expanduser().resolve()
+    projects = [
+        public_record_payload(record)
+        for record in records.values()
+        if record.get("record_type") == "project" and str(record.get("status", "active")) == "active"
+    ]
+    workspaces = [
+        public_record_payload(record)
+        for record in records.values()
+        if record.get("record_type") == "workspace" and str(record.get("status", "active")) == "active"
+    ]
+    matching_projects = [
+        {"id": project.get("id"), "root_refs": project.get("root_refs", [])}
+        for project in projects
+        if any(_path_contains(str(root_ref), target) for root_ref in project.get("root_refs", []))
+    ]
+    matching_workspaces = [
+        {"id": workspace.get("id"), "root_refs": workspace.get("root_refs", []), "project_refs": workspace.get("project_refs", [])}
+        for workspace in workspaces
+        if any(_path_contains(str(root_ref), target) for root_ref in workspace.get("root_refs", []))
+        or any(project.get("id") in workspace.get("project_refs", []) for project in matching_projects)
+    ]
+    known = bool(matching_projects or matching_workspaces)
+    in_current_workspace = bool(
+        current_workspace
+        and any(workspace.get("id") == current_workspace for workspace in matching_workspaces)
+    )
+    in_current_project = bool(
+        current_project
+        and any(project.get("id") == current_project for project in matching_projects)
+    )
+    requires_user_decision = not (in_current_project or in_current_workspace)
+    recommendation = "known-current-project" if in_current_project else "known-current-workspace" if in_current_workspace else "ask-user"
+    return {
+        "workspace_admission_is_proof": False,
+        "repo": str(target),
+        "current_workspace_ref": current_workspace,
+        "current_project_ref": current_project,
+        "known": known,
+        "in_current_workspace": in_current_workspace,
+        "in_current_project": in_current_project,
+        "requires_user_decision": requires_user_decision,
+        "recommendation": recommendation,
+        "matching_projects": matching_projects,
+        "matching_workspaces": matching_workspaces,
+        "options": [
+            "create-new-workspace",
+            "add-project-to-current-workspace",
+            "inspect-readonly-without-persisting",
+        ]
+        if requires_user_decision
+        else [],
+    }
+
+
+def workspace_admission_text_lines(payload: dict) -> list[str]:
+    lines = [
+        f"Workspace admission for: {payload.get('repo')}",
+        f"Known: {'yes' if payload.get('known') else 'no'}",
+        f"Current workspace: {payload.get('current_workspace_ref') or '<none>'}",
+        f"Current project: {payload.get('current_project_ref') or '<none>'}",
+        f"Requires user decision: {'yes' if payload.get('requires_user_decision') else 'no'}",
+        f"Recommendation: {payload.get('recommendation')}",
+    ]
+    if payload.get("requires_user_decision"):
+        lines.append("Ask the user whether this repo starts a new workspace, becomes a project in the current workspace, or should be inspected read-only without persistence.")
+    return lines
+
+
+def cmd_workspace_admission_check(root: Path, repo: Path, output_format: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload = workspace_admission_payload(root, records, repo)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        for line in workspace_admission_text_lines(payload):
+            print(line)
+    return 0
+
+
 def cmd_record_project(
     root: Path,
     project_key: str,
@@ -1438,6 +1534,108 @@ def print_working_context_detail(context: dict) -> None:
         print(line)
 
 
+def _text_tokens(*values: object) -> set[str]:
+    text = " ".join(str(value or "") for value in values)
+    return {token for token in re.findall(r"[a-zA-Z0-9_./-]{3,}", text.lower())}
+
+
+def _working_context_score(context: dict, task_text: str) -> int:
+    task_tokens = _text_tokens(task_text)
+    context_tokens = _text_tokens(
+        context.get("scope", ""),
+        context.get("title", ""),
+        context.get("note", ""),
+        " ".join(str(item) for item in context.get("topic_terms", [])),
+        " ".join(str(item) for item in context.get("focus_paths", [])),
+        " ".join(str(item) for item in context.get("concerns", [])),
+    )
+    return len(task_tokens & context_tokens)
+
+
+def working_context_drift_payload(root: Path, records: dict[str, dict], task_text: str) -> dict:
+    project_ref = current_project_ref(root) or None
+    task_ref = current_task_ref(root) or None
+    contexts = [
+        data
+        for data in records.values()
+        if data.get("record_type") == "working_context"
+        and str(data.get("status", "")).strip() == "active"
+        and record_belongs_to_project(data, project_ref)
+    ]
+    scored = sorted(
+        (
+            {
+                "id": context.get("id"),
+                "score": _working_context_score(context, task_text),
+                "title": context.get("title", ""),
+                "scope": context.get("scope", ""),
+                "task_refs": context.get("task_refs", []),
+                "project_refs": context.get("project_refs", []),
+            }
+            for context in contexts
+        ),
+        key=lambda item: (item["score"], item["id"] or ""),
+        reverse=True,
+    )
+    current_candidates = [
+        item
+        for item in scored
+        if not item.get("task_refs") or (task_ref and task_ref in item.get("task_refs", []))
+    ]
+    best_current = current_candidates[0] if current_candidates else None
+    best_any = scored[0] if scored else None
+    if best_current and best_current["score"] > 0:
+        recommendation = "keep-current-working-context"
+        drift_detected = False
+    elif best_any and best_any["score"] > 0:
+        recommendation = "switch-or-fork-working-context"
+        drift_detected = True
+    else:
+        recommendation = "create-working-context"
+        drift_detected = True
+    return {
+        "working_context_drift_is_proof": False,
+        "task_text": task_text,
+        "current_workspace_ref": current_workspace_ref(root),
+        "current_project_ref": project_ref or "",
+        "current_task_ref": task_ref or "",
+        "drift_detected": drift_detected,
+        "recommendation": recommendation,
+        "best_current_context": best_current,
+        "best_matching_context": best_any,
+        "candidates": scored[:8],
+    }
+
+
+def working_context_drift_text_lines(payload: dict) -> list[str]:
+    lines = [
+        f"Working-context drift: {'yes' if payload.get('drift_detected') else 'no'}",
+        f"Recommendation: {payload.get('recommendation')}",
+        f"Current workspace: {payload.get('current_workspace_ref') or '<none>'}",
+        f"Current project: {payload.get('current_project_ref') or '<none>'}",
+        f"Current task: {payload.get('current_task_ref') or '<none>'}",
+    ]
+    best = payload.get("best_matching_context") if isinstance(payload.get("best_matching_context"), dict) else None
+    if best:
+        lines.append(f"Best WCTX: {best.get('id')} score={best.get('score')} title=\"{best.get('title')}\"")
+    if payload.get("drift_detected"):
+        lines.append("Action: switch/fork an existing WCTX or create a new WCTX before persisting task-specific conclusions.")
+    return lines
+
+
+def cmd_working_context_check_drift(root: Path, task_text: str, output_format: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload = working_context_drift_payload(root, records, task_text)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        for line in working_context_drift_text_lines(payload):
+            print(line)
+    return 0
+
+
 def cmd_working_context_create(
     root: Path,
     scope: str,
@@ -1848,7 +2046,16 @@ def apply_backend_setting_items(backends: dict, items: list[str]) -> tuple[bool,
                     return changed, f"backends.code_intelligence.{parts[1]}.max_results has invalid value"
                 if parts[2] == "import_into_cix" and (parts[1] != "cocoindex" or not isinstance(parsed, bool)):
                     return changed, "backends.code_intelligence.cocoindex.import_into_cix must be boolean"
-                if parts[2] not in {"enabled", "mode", "max_results", "import_into_cix"}:
+                if parts[2] in {"default_scope", "storage_root", "workspace_glance"} and parts[1] != "cocoindex":
+                    return changed, f"unknown backend setting key: {key}"
+                if parts[1] == "cocoindex":
+                    if parts[2] == "default_scope" and parsed not in COCOINDEX_SCOPES:
+                        return changed, "backends.code_intelligence.cocoindex.default_scope has invalid value"
+                    if parts[2] == "storage_root" and (not isinstance(parsed, str) or not parsed.strip()):
+                        return changed, "backends.code_intelligence.cocoindex.storage_root must be non-empty string"
+                    if parts[2] == "workspace_glance" and not isinstance(parsed, bool):
+                        return changed, "backends.code_intelligence.cocoindex.workspace_glance must be boolean"
+                if parts[2] not in {"enabled", "mode", "max_results", "import_into_cix", "default_scope", "storage_root", "workspace_glance"}:
                     return changed, f"unknown backend setting key: {key}"
                 backends.setdefault(section, {}).setdefault(parts[1], {})[parts[2]] = parsed
             else:
@@ -2028,6 +2235,7 @@ def cmd_help(topic: str) -> int:
             "precedent review: inspect previous TASK-* records of the same task_type before repeating work",
             "evidence chain: validate agent-supplied proof chains and keep context/proof separate",
             "working context: pin WCTX-* focus/context snapshots for retrospective and handoff",
+            "workspace admission: check unknown repos before attaching them to the current workspace/project",
             "topic index: generated lexical prefilter for navigation and candidate review",
             "attention index: generated tap-aware map, cold zones, and curiosity probes",
             "telemetry: non-proof MCP/CLI/hook lookup stats, raw claim read counts, and heatmap inputs",
@@ -2053,7 +2261,8 @@ def cmd_help(topic: str) -> int:
             "review-precedents --task-type investigation --query ...",
             "task-drift-check --intent ... [--type investigation]",
             "record-input --input-kind user_prompt --origin-kind user --origin-ref ... --text ...",
-            "working-context create|fork|show|close",
+            "working-context create|fork|show|close|check-drift",
+            "workspace-admission check --repo path [--format json]",
             "topic-index build --method lexical | topic-search --query ...",
             "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | attention-map | curiosity-probes --budget 5 | probe-inspect --index 1 | probe-chain-draft --index 1 | probe-pack --budget 3",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
@@ -4345,6 +4554,7 @@ def cmd_code_search(
     include_archived: bool,
     fields_value: str | None,
     limit: int,
+    scope: str | None,
     output_format: str,
 ) -> int:
     entries, errors = load_code_index_entries(root)
@@ -4455,6 +4665,9 @@ def cmd_code_search(
             language=language,
             path_patterns=path_patterns,
             limit=limit,
+            scope=scope,
+            workspace_ref=current_workspace_ref(root) or None,
+            project_ref=current_project_ref(root) or None,
         )
         backend_payload = enrich_backend_results_with_cix(
             backend_payload,
@@ -4534,6 +4747,8 @@ def code_feedback_review_payload(
         language=language,
         path_patterns=path_patterns,
         limit=limit,
+        workspace_ref=current_workspace_ref(root) or None,
+        project_ref=current_project_ref(root) or None,
     )
     backend_payload = enrich_backend_results_with_cix(
         backend_payload,
@@ -5909,6 +6124,7 @@ def parse_args() -> argparse.Namespace:
     )
     code_search.add_argument("--root", default=".")
     code_search.add_argument("--query", help="Optional semantic code query proxied through the configured TEP code backend.")
+    code_search.add_argument("--scope", choices=sorted(COCOINDEX_SCOPES), help="Backend index scope. Defaults to CocoIndex settings.")
     code_search.add_argument("--path", dest="path_patterns", action="append", default=[])
     code_search.add_argument("--language")
     code_search.add_argument("--code-kind")
@@ -6072,6 +6288,15 @@ def parse_args() -> argparse.Namespace:
     )
     set_current_workspace.add_argument("--workspace", dest="workspace_ref")
     set_current_workspace.add_argument("--clear", action="store_true")
+
+    workspace_admission = subparsers.add_parser(
+        "workspace-admission",
+        help="Check whether an external repo can be associated with the current workspace.",
+    )
+    workspace_admission_subparsers = workspace_admission.add_subparsers(dest="workspace_admission_command", required=True)
+    workspace_admission_check = workspace_admission_subparsers.add_parser("check", help="Read-only workspace admission decision aid.")
+    workspace_admission_check.add_argument("--repo", required=True)
+    workspace_admission_check.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
 
     assign_workspace = subparsers.add_parser(
         "assign-workspace",
@@ -6350,6 +6575,13 @@ def parse_args() -> argparse.Namespace:
     working_context_show.add_argument("--context", dest="context_ref")
     working_context_show.add_argument("--all", action="store_true", dest="show_all")
     working_context_show.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+
+    working_context_drift = working_context_subparsers.add_parser(
+        "check-drift",
+        help="Check whether the current task text matches the active WCTX focus.",
+    )
+    working_context_drift.add_argument("--task", required=True, help="Current user task or planned task summary.")
+    working_context_drift.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
 
     working_context_fork = working_context_subparsers.add_parser("fork", help="Copy-on-write fork of a WCTX-* record.")
     working_context_fork.add_argument("--context", dest="context_ref", required=True)
@@ -7081,6 +7313,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 include_archived=args.include_archived,
                 fields_value=args.fields,
                 limit=args.limit,
+                scope=args.scope,
                 output_format=args.output_format,
             )
         )
@@ -7228,6 +7461,15 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         raise SystemExit(cmd_show_workspace(root, show_all=args.show_all))
     if args.command == "set-current-workspace":
         raise SystemExit(cmd_set_current_workspace(root, workspace_ref=args.workspace_ref, clear=args.clear))
+    if args.command == "workspace-admission":
+        if args.workspace_admission_command == "check":
+            raise SystemExit(
+                cmd_workspace_admission_check(
+                    root,
+                    repo=Path(args.repo).expanduser(),
+                    output_format=args.output_format,
+                )
+            )
     if args.command == "assign-workspace":
         raise SystemExit(
             cmd_assign_workspace(
@@ -7422,6 +7664,8 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                     output_format=args.output_format,
                 )
             )
+        if args.working_context_command == "check-drift":
+            raise SystemExit(cmd_working_context_check_drift(root, task_text=args.task, output_format=args.output_format))
         if args.working_context_command == "fork":
             raise SystemExit(
                 cmd_working_context_fork(

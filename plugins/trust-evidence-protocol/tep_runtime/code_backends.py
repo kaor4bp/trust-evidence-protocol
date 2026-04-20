@@ -6,6 +6,7 @@ normalizes external tool output before it reaches MCP/CLI callers.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -79,6 +80,30 @@ def parse_cocoindex_search_output(stdout: str) -> list[dict[str, Any]]:
     return results
 
 
+def resolve_cocoindex_storage_dir(
+    context_root: Path,
+    *,
+    scope: str,
+    workspace_ref: str | None,
+    project_ref: str | None,
+    storage_root: str | None,
+) -> Path | None:
+    """Return the scoped CocoIndex DB directory controlled by TEP settings."""
+
+    root_value = (storage_root or "<context>/backends/cocoindex").strip()
+    if root_value.startswith("<context>"):
+        base = context_root / root_value.removeprefix("<context>").lstrip("/")
+    else:
+        base = Path(root_value).expanduser()
+        if not base.is_absolute():
+            base = context_root / base
+    if scope == "project":
+        return base / "projects" / project_ref / ".cocoindex_code" if project_ref else None
+    if scope == "workspace":
+        return base / "workspaces" / workspace_ref / ".cocoindex_code" if workspace_ref else None
+    return None
+
+
 def cocoindex_search_payload(
     context_root: Path,
     repo_root: Path,
@@ -87,14 +112,25 @@ def cocoindex_search_payload(
     language: str | None = None,
     path_patterns: list[str] | None = None,
     limit: int = 8,
+    scope: str | None = None,
+    workspace_ref: str | None = None,
+    project_ref: str | None = None,
 ) -> dict[str, Any]:
     settings = load_settings(context_root)
     code_settings = settings.get("backends", {}).get("code_intelligence", {})
     coco_settings = code_settings.get("cocoindex", {}) if isinstance(code_settings, dict) else {}
     enabled = bool(coco_settings.get("enabled"))
     mode = str(coco_settings.get("mode") or "cli")
+    effective_scope = scope or str(coco_settings.get("default_scope") or "project")
     backend_limit = int(coco_settings.get("max_results") or limit)
     effective_limit = max(1, min(limit, backend_limit, 100))
+    storage_dir = resolve_cocoindex_storage_dir(
+        context_root,
+        scope=effective_scope,
+        workspace_ref=workspace_ref,
+        project_ref=project_ref,
+        storage_root=str(coco_settings.get("storage_root") or "<context>/backends/cocoindex"),
+    )
     status_matches = select_backend_status(backend_status_payload(context_root), "code_intelligence.cocoindex")
     status = status_matches[0] if status_matches else {}
 
@@ -102,10 +138,18 @@ def cocoindex_search_payload(
         "backend": "cocoindex",
         "query": query,
         "mode": mode,
+        "scope": effective_scope,
         "enabled": enabled,
         "available": bool(status.get("available")),
         "backend_output_is_proof": BACKEND_OUTPUT_IS_PROOF,
         "warnings": list(status.get("warnings") or []),
+        "storage": {
+            "repo_root": str(repo_root),
+            "workspace_ref": workspace_ref or "",
+            "project_ref": project_ref or "",
+            "scoped_db_dir": str(storage_dir) if storage_dir else "",
+            "db_path_mapping": f"{repo_root}={storage_dir}" if storage_dir else "",
+        },
         "results": [],
     }
     if not query.strip():
@@ -122,6 +166,10 @@ def cocoindex_search_payload(
         payload["available"] = False
         payload["warnings"].append("CocoIndex command was not found on PATH")
         return payload
+    if effective_scope == "project" and not project_ref:
+        payload["warnings"].append("project-scoped CocoIndex search has no current project ref")
+    if effective_scope == "workspace" and not workspace_ref:
+        payload["warnings"].append("workspace-scoped CocoIndex search has no current workspace ref")
 
     args = [command, "search", query, "--limit", str(effective_limit)]
     if language:
@@ -131,9 +179,16 @@ def cocoindex_search_payload(
             args.extend(["--path", pattern])
             break
     try:
+        env = None
+        if storage_dir:
+            env = {
+                **os.environ,
+                "COCOINDEX_CODE_DB_PATH_MAPPING": f"{repo_root}={storage_dir}",
+            }
         result = subprocess.run(
             args,
             cwd=repo_root,
+            env=env,
             capture_output=True,
             text=True,
             timeout=20,
@@ -213,8 +268,12 @@ def cocoindex_search_text_lines(payload: dict[str, Any]) -> list[str]:
     status = "available" if payload.get("available") else "unavailable"
     lines = [
         f"Backend: cocoindex ({status}, mode={payload.get('mode', 'unknown')}, proof=false)",
+        f"Scope: {payload.get('scope', 'project')}",
         f"Query: {payload.get('query', '')}",
     ]
+    storage = payload.get("storage") if isinstance(payload.get("storage"), dict) else {}
+    if storage.get("scoped_db_dir"):
+        lines.append(f"Scoped DB: {storage.get('scoped_db_dir')}")
     for warning in payload.get("warnings") or []:
         lines.append(f"Warning: {warning}")
     for item in payload.get("results") or []:

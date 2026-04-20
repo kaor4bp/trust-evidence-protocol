@@ -786,6 +786,7 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     help_text = run_cli(context, "help", "modes").stdout
     assert "precedent review" in help_text
     assert "task control" in help_text
+    assert "workspace admission" in help_text
     assert "--format json route_graph" in help_text
 
     alias_text = run_cli(context, "tep-help", "modes").stdout
@@ -796,6 +797,8 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]" in commands_help
     assert "validate-facts --backend rdf_shacl [--format json]" in commands_help
     assert "export-rdf --format turtle|jsonld [--output path]" in commands_help
+    assert "working-context create|fork|show|close|check-drift" in commands_help
+    assert "workspace-admission check --repo path [--format json]" in commands_help
 
     configured = run_cli(
         context,
@@ -820,12 +823,19 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
         "derivation.datalog.enabled=true",
         "--backend",
         "derivation.datalog.mode=fake",
+        "--backend",
+        "code_intelligence.cocoindex.default_scope=workspace",
+        "--backend",
+        "code_intelligence.cocoindex.storage_root=<context>/backends/cocoindex",
+        "--backend",
+        "code_intelligence.cocoindex.workspace_glance=false",
     ).stdout
     assert "hooks.verbosity=quiet" in configured
     assert "analysis.logic_solver.backend=z3" in configured
     assert "analysis.topic_prefilter.backend=nmf" in configured
     assert "backends.derivation.backend=datalog" in configured
     assert "backends.derivation.datalog.enabled=true" in configured
+    assert "backends.code_intelligence.cocoindex.default_scope=workspace" in configured
     settings = json.loads((context / "settings.json").read_text(encoding="utf-8"))
     assert settings["hooks"]["verbosity"] == "quiet"
     assert settings["context_budget"]["hydration"] == "compact"
@@ -836,6 +846,9 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert settings["backends"]["derivation"]["backend"] == "datalog"
     assert settings["backends"]["derivation"]["datalog"]["enabled"] is True
     assert settings["backends"]["derivation"]["datalog"]["mode"] == "fake"
+    assert settings["backends"]["code_intelligence"]["cocoindex"]["default_scope"] == "workspace"
+    assert settings["backends"]["code_intelligence"]["cocoindex"]["storage_root"] == "<context>/backends/cocoindex"
+    assert settings["backends"]["code_intelligence"]["cocoindex"]["workspace_glance"] is False
 
     invalid_analysis = run_cli(context, "configure-runtime", "--analysis", "logic_solver.backend=bad", check=False)
     assert invalid_analysis.returncode == 1
@@ -1978,6 +1991,115 @@ def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> 
     assert run_cli(context, "review-context").returncode == 0
 
 
+def test_workspace_admission_requires_decision_for_unknown_repo(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    known_repo = tmp_path / "known-repo"
+    unknown_repo = tmp_path / "unknown-repo"
+    known_repo.mkdir()
+    unknown_repo.mkdir()
+
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "known-workspace",
+            "--title",
+            "Known workspace",
+            "--root-ref",
+            str(known_repo),
+            "--note",
+            "workspace fixture",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    project_id = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "known-project",
+            "--title",
+            "Known project",
+            "--root-ref",
+            str(known_repo),
+            "--note",
+            "project fixture",
+        ),
+        "project",
+    )
+    run_cli(context, "set-current-project", "--project", project_id)
+
+    known = json.loads(
+        run_cli(context, "workspace-admission", "check", "--repo", str(known_repo), "--format", "json").stdout
+    )
+    assert known["known"] is True
+    assert known["in_current_workspace"] is True
+    assert known["in_current_project"] is True
+    assert known["requires_user_decision"] is False
+
+    unknown = json.loads(
+        run_cli(context, "workspace-admission", "check", "--repo", str(unknown_repo), "--format", "json").stdout
+    )
+    assert unknown["known"] is False
+    assert unknown["requires_user_decision"] is True
+    assert "create-new-workspace" in unknown["options"]
+    assert "inspect-readonly-without-persisting" in unknown["options"]
+
+
+def test_working_context_check_drift_uses_task_text_against_active_focus(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    created = run_cli(
+        context,
+        "working-context",
+        "create",
+        "--scope",
+        "backend.cocoindex",
+        "--title",
+        "CocoIndex backend routing",
+        "--kind",
+        "edit",
+        "--topic-term",
+        "cocoindex",
+        "--topic-term",
+        "backend",
+        "--note",
+        "track scoped backend index routing",
+    )
+    wctx_id = recorded_id(created, "working_context")
+
+    related = json.loads(
+        run_cli(
+            context,
+            "working-context",
+            "check-drift",
+            "--task",
+            "Continue CocoIndex backend storage routing",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert related["drift_detected"] is False
+    assert related["best_current_context"]["id"] == wctx_id
+    assert related["recommendation"] == "keep-current-working-context"
+
+    unrelated = json.loads(
+        run_cli(
+            context,
+            "working-context",
+            "check-drift",
+            "--task",
+            "Investigate medical differential diagnosis prompts",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert unrelated["drift_detected"] is True
+    assert unrelated["recommendation"] == "create-working-context"
+
+
 def test_record_detail_and_neighborhood_expose_drilldown_context(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
@@ -2372,6 +2494,38 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
     subprocess.run(["git", "add", "src/app.py"], cwd=repo, check=True, capture_output=True, text=True)
     run_cli(context, "init-code-index", "--root", str(repo))
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "code-search-workspace",
+            "--title",
+            "Code search workspace",
+            "--root-ref",
+            str(repo),
+            "--note",
+            "backend workspace fixture",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    project_id = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "code-search-project",
+            "--title",
+            "Code search project",
+            "--root-ref",
+            str(repo),
+            "--note",
+            "backend project fixture",
+        ),
+        "project",
+    )
+    run_cli(context, "set-current-project", "--project", project_id)
     source_id = recorded_id(
         run_cli(
             context,
@@ -2417,8 +2571,10 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     ccc = fake_bin / "ccc"
     ccc.write_text(
         "#!/usr/bin/env python3\n"
+        "import os\n"
         "import sys\n"
         "assert sys.argv[1] == 'search'\n"
+        "assert os.environ.get('COCOINDEX_CODE_DB_PATH_MAPPING') == os.environ.get('TEP_TEST_EXPECTED_MAPPING')\n"
         "print('--- Result 1 (score: 0.812) ---')\n"
         "print('File: src/app.py:10-12 [python]')\n"
         "print('def choose_backend():')\n"
@@ -2427,6 +2583,10 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     )
     ccc.chmod(0o755)
     monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv(
+        "TEP_TEST_EXPECTED_MAPPING",
+        f"{repo}={context / 'backends' / 'cocoindex' / 'projects' / project_id / '.cocoindex_code'}",
+    )
 
     run_cli(
         context,
@@ -2463,6 +2623,10 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     assert backend["backend_output_is_proof"] is False
     assert backend["enabled"] is True
     assert backend["available"] is True
+    assert backend["scope"] == "project"
+    assert backend["storage"]["project_ref"] == project_id
+    assert backend["storage"]["workspace_ref"] == workspace_id
+    assert backend["storage"]["scoped_db_dir"].endswith(f"/backends/cocoindex/projects/{project_id}/.cocoindex_code")
     assert backend["results"][0]["target"] == {"path": "src/app.py", "line_start": 10, "line_end": 12}
     assert backend["results"][0]["snippet"] == "def choose_backend():\n    return 'cocoindex'"
     assert backend["results"][0]["cix_candidates"][0]["target"]["path"] == "src/app.py"

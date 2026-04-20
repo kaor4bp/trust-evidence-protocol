@@ -93,6 +93,7 @@ BACKEND_MODES = {"disabled", "fake", "local", "docker", "mcp", "cli"}
 FACT_VALIDATION_BACKENDS = {"builtin", "rdf_shacl"}
 CODE_INTELLIGENCE_BACKENDS = {"builtin", "serena", "cocoindex"}
 DERIVATION_BACKENDS = {"builtin", "datalog"}
+COCOINDEX_SCOPES = {"project", "workspace"}
 
 DEFAULT_ANALYSIS_SETTINGS = {
     "logic_solver": {
@@ -139,6 +140,9 @@ DEFAULT_BACKEND_SETTINGS = {
             "mode": "cli",
             "max_results": 8,
             "import_into_cix": False,
+            "default_scope": "project",
+            "storage_root": "<context>/backends/cocoindex",
+            "workspace_glance": True,
         },
     },
     "derivation": {
@@ -584,6 +588,15 @@ def normalize_backend_settings(raw: object) -> dict:
             import_into_cix = cocoindex.get("import_into_cix")
             if isinstance(import_into_cix, bool):
                 payload["code_intelligence"]["cocoindex"]["import_into_cix"] = import_into_cix
+            default_scope = cocoindex.get("default_scope")
+            if isinstance(default_scope, str) and default_scope in COCOINDEX_SCOPES:
+                payload["code_intelligence"]["cocoindex"]["default_scope"] = default_scope
+            storage_root = cocoindex.get("storage_root")
+            if isinstance(storage_root, str) and storage_root.strip():
+                payload["code_intelligence"]["cocoindex"]["storage_root"] = storage_root.strip()
+            workspace_glance = cocoindex.get("workspace_glance")
+            if isinstance(workspace_glance, bool):
+                payload["code_intelligence"]["cocoindex"]["workspace_glance"] = workspace_glance
 
     derivation = raw.get("derivation")
     if isinstance(derivation, dict):
@@ -887,6 +900,15 @@ def validate_settings_state(root: Path, records: dict[str, dict]) -> list[Valida
                             and not isinstance(raw_backend.get("import_into_cix"), bool)
                         ):
                             return [ValidationError(path, "backends.code_intelligence.cocoindex.import_into_cix must be boolean")]
+                        if backend_name == "cocoindex":
+                            if raw_backend.get("default_scope") is not None and raw_backend.get("default_scope") not in COCOINDEX_SCOPES:
+                                return [ValidationError(path, "backends.code_intelligence.cocoindex.default_scope has invalid value")]
+                            if raw_backend.get("storage_root") is not None and (
+                                not isinstance(raw_backend.get("storage_root"), str) or not raw_backend.get("storage_root").strip()
+                            ):
+                                return [ValidationError(path, "backends.code_intelligence.cocoindex.storage_root must be non-empty string")]
+                            if raw_backend.get("workspace_glance") is not None and not isinstance(raw_backend.get("workspace_glance"), bool):
+                                return [ValidationError(path, "backends.code_intelligence.cocoindex.workspace_glance must be boolean")]
 
             raw_derivation = raw_backends.get("derivation")
             if raw_derivation is not None and not isinstance(raw_derivation, dict):

@@ -5768,6 +5768,9 @@ def test_settings_core_normalizes_and_persists_policy(tmp_path: Path) -> None:
                         "mode": "cli",
                         "max_results": 6,
                         "import_into_cix": True,
+                        "default_scope": "workspace",
+                        "storage_root": "<context>/backends/cocoindex",
+                        "workspace_glance": False,
                     },
                 },
                 "derivation": {"backend": "datalog", "datalog": {"enabled": True, "mode": "fake"}},
@@ -5806,6 +5809,9 @@ def test_settings_core_normalizes_and_persists_policy(tmp_path: Path) -> None:
     assert normalized["backends"]["code_intelligence"]["backend"] == "serena"
     assert normalized["backends"]["code_intelligence"]["serena"]["max_results"] == 5
     assert normalized["backends"]["code_intelligence"]["cocoindex"]["import_into_cix"] is True
+    assert normalized["backends"]["code_intelligence"]["cocoindex"]["default_scope"] == "workspace"
+    assert normalized["backends"]["code_intelligence"]["cocoindex"]["storage_root"] == "<context>/backends/cocoindex"
+    assert normalized["backends"]["code_intelligence"]["cocoindex"]["workspace_glance"] is False
     assert normalized["backends"]["derivation"]["backend"] == "datalog"
     assert normalized["backends"]["derivation"]["datalog"]["mode"] == "fake"
     assert normalized["current_task_ref"] == "TASK-20260418-abcdef12"
@@ -6044,6 +6050,10 @@ def test_settings_core_validates_raw_policy_shapes_and_refs(tmp_path: Path) -> N
         (
             {"backends": {"code_intelligence": {"cocoindex": {"import_into_cix": "yes"}}}},
             "backends.code_intelligence.cocoindex.import_into_cix must be boolean",
+        ),
+        (
+            {"backends": {"code_intelligence": {"cocoindex": {"default_scope": "global"}}}},
+            "backends.code_intelligence.cocoindex.default_scope has invalid value",
         ),
         (
             {"backends": {"derivation": {"backend": "prolog"}}},

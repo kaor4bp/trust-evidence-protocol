@@ -43,6 +43,7 @@ When MCP tools are available, prefer them for read-only lookup:
 - use `guidelines_for` before sizeable code/test edits
 - use `code_search` and `code_info` to find relevant files or code areas, then read code or cite `SRC-*`/`CLM-*` before making truth claims
 - if semantic code search is needed, use TEP `code_search(query=...)`; do not call CocoIndex or another code backend directly unless debugging the backend itself
+- keep semantic code search project-scoped by default; use workspace scope only as an explicit broader glance across related projects/services
 - when a backend hit is useful, inspect its `cix_candidates`, `index_suggestion`, and optional `link_suggestions`; persist the relationship with `link-code` only after verifying relevance
 - use `code_feedback` when you need a dedicated review/apply loop for backend hits; apply mode must only record reviewed navigation links, never proof
 - avoid reading raw `records/claim/*.json` directly during normal reasoning; use raw files only as an escape hatch for debugging, migration, or missing MCP/CLI coverage
@@ -58,6 +59,8 @@ Persistence write boundary:
 - Local `.tep.settings.allowed_freedom` may only keep or lower effective freedom. It is not a way to raise permission above canonical context policy.
 - If hooks report `Anchored context preserved`, continue using the preserved workspace/project/task only when the context has a single active workspace; otherwise require an explicit `.tep` anchor for the intended workdir.
 - If hooks report `Explicit TEP anchor required`, do not infer workspace/project from global fallback; use or create the intended workdir `.tep` anchor, then hydrate again.
+- Before analyzing or persisting records for an unknown repository, run `workspace-admission check --repo ...`; if it requires a decision, ask whether this is a new workspace, a new project in the current workspace, or read-only inspection without persistence.
+- When the user changes topic, repository, or task type, run `working-context check-drift --task ...`; switch, fork, or create `WCTX-*` before persisting task-local conclusions under the wrong focus.
 - `<context>/artifacts/` may receive raw diagnostic payloads directly, such as screenshots, logs, and copied command output.
 - A raw artifact is not proof by itself; create or update a `SRC-*` record that cites the artifact before using it as durable support.
 - The artifact exception must not be used to write source files, arbitrary workspace paths, `/tmp`, settings, indexes, generated views, or records.
@@ -94,6 +97,7 @@ Persistence write boundary:
 - `<context>/settings.json.analysis` controls optional mechanical helpers such as Z3 solver policy and NMF topic prefilter policy.
 - Analysis helper settings are not proof and are not permission to silently install dependencies; respect `missing_dependency` and `install_policy`.
 - `<context>/settings.json.backends` controls optional external adapters for fact validation, code intelligence, and derivation.
+- CocoIndex backend storage is scoped by TEP settings under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code` by default; workspace storage is an explicit broader scope.
 - Backend status and backend output are navigation/diagnostic data only; cite canonical `SRC-*` and `CLM-*` records before using a backend result as proof.
 - Use `backend-status` / `backend-check` before relying on an optional backend, and degrade cleanly when dependencies are missing.
 - Use `validate-facts` for backend-produced validation candidates; candidates can guide review but cannot support claims or appear as proof-chain facts.

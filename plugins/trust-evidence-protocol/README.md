@@ -225,6 +225,9 @@ Default external backend registry:
 - `backends.code_intelligence.cocoindex.mode = "cli"`
 - `backends.code_intelligence.cocoindex.max_results = 8`
 - `backends.code_intelligence.cocoindex.import_into_cix = false`
+- `backends.code_intelligence.cocoindex.default_scope = "project"`
+- `backends.code_intelligence.cocoindex.storage_root = "<context>/backends/cocoindex"`
+- `backends.code_intelligence.cocoindex.workspace_glance = true`
 - `backends.derivation.backend = "builtin"`
 - `backends.derivation.datalog.enabled = false`
 - `backends.derivation.datalog.mode = "fake"`
@@ -233,6 +236,8 @@ Default external backend registry:
 Use `backend-status` or `backend-check` to inspect dependency availability before relying on a helper.
 Backend output may guide lookup, indexing, validation, and candidate generation, but a user-facing proof chain must still cite canonical `SRC-*` and `CLM-*` records.
 External code-intelligence backends such as CocoIndex should be accessed through TEP `code-search` / MCP `code_search`, not as parallel direct MCP entrypoints in normal operation.
+TEP scopes CocoIndex storage by default under `<context>/backends/cocoindex/projects/<PRJ-ID>/.cocoindex_code`; workspace scope uses `<context>/backends/cocoindex/workspaces/<WSP-ID>/.cocoindex_code`.
+The default search scope is project; workspace scope is an explicit outward glance, not the normal search boundary.
 TEP normalizes backend output into navigation-only projections, records telemetry, and keeps `WSP-*` / `PRJ-*` / `TASK-*` scope visible.
 The first fact-validation backend exposes fake RDF/SHACL-shaped checks so agents can debug the flow without installing pySHACL.
 Validation candidates are not proof and do not make a claim supported.
@@ -560,6 +565,11 @@ Commands:
   - `show` is read-only and suitable for handoff or retrospective
   - `close` ends a context when it should stop guiding current work
 
+- `working-context check-drift --task "..."`
+  - read-only check that compares a new/current task summary against active `WCTX-*` focus
+  - returns `keep-current-working-context`, `switch-or-fork-working-context`, or `create-working-context`
+  - use before persisting task-specific conclusions when the user changes topic or repository
+
 - `cleanup-candidates [--format text|json]`
   - read-only report for stale or noisy records that may be safe to resolve, archive, refresh, or remove later
   - never edits records automatically; cleanup remains a deliberate separate action
@@ -615,6 +625,8 @@ Commands:
   - searches CIX entries by path, language, code kind, import, symbol, feature, linked ref, or stale state
   - can filter annotations with `--annotation-kind smell` and `--annotation-category ...`
   - can use `--query "..."` to proxy a semantic code search through the configured TEP backend, such as CocoIndex, while returning navigation-only TEP-normalized `backend_results`
+  - accepts `--scope project|workspace`; project is the default, workspace is an explicit broader glance
+  - when CocoIndex is enabled, TEP passes `COCOINDEX_CODE_DB_PATH_MAPPING` so backend databases live under scoped `<context>/backends/cocoindex/...` storage instead of becoming a separate source of truth
   - enriches backend hits with matching `cix_candidates` when the hit path is indexed
   - returns an `index_suggestion` when a backend hit has no matching CIX entry yet
   - can use `--link-candidate <REF>` to return non-mutating `link_suggestions`; apply a suggestion with `link-code` only after verifying the hit is relevant
@@ -749,6 +761,11 @@ Guideline disclosure for code edits:
   - stores the default active workspace boundary in `<context>/settings.json.current_workspace_ref`
   - causes new canonical records to inherit `workspace_refs` automatically
   - hydration and session-start hooks show the current workspace explicitly
+
+- `workspace-admission check --repo /abs/path`
+  - read-only guard before analyzing or persisting facts for an unknown repository
+  - if the repo is not already inside the current workspace/project, ask the user whether to create a new workspace, add a project to the current workspace, or inspect read-only without persistence
+  - prevents accidental leakage from a global current task into another checkout
 
 - `init-anchor --directory . --workspace WSP-* [--project PRJ-*] [--task TASK-*]`
   - writes a local `.tep` anchor that selects context root plus workdir-specific workspace/project/task focus

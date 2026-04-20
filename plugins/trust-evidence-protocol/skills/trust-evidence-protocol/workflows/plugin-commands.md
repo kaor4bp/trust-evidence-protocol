@@ -110,6 +110,8 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context build-reasoning-case --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context augment-chain --file evidence-chain.json --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-evidence-chain --file evidence-chain.json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context working-context check-drift --task "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context workspace-admission check --repo /abs/repo --format json
 ```
 
 Use `record-detail` after search when you need the exact record id, source quote, and direct links for a public reasoning checkpoint.
@@ -147,6 +149,8 @@ Use `logic-search` / `logic-check` only as predicate prefilters over `CLM.logic`
 Use `build-reasoning-case` before non-trivial actions or recommendations that span several facts, models, or flows.
 Use `augment-chain` when you already have record refs but need the plugin to fill quotes, source refs, and validation output mechanically.
 Use `validate-evidence-chain` before asking permission, recording a mutating `ACT-*`, or presenting a user-facing proof chain.
+Use `working-context check-drift` when the user changes topic, task type, or repository; switch/fork/create `WCTX-*` before persisting task-local conclusions under the wrong focus.
+Use `workspace-admission check` before attaching or analyzing an unknown checkout; if it requires a decision, ask whether to create a new workspace, add a project to the current workspace, or inspect read-only without persistence.
 
 ## Runtime Configuration
 
@@ -158,6 +162,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis topic_prefilter.backend=nmf --analysis topic_prefilter.missing_dependency=warn
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend derivation.backend=datalog --backend derivation.datalog.enabled=true --backend derivation.datalog.mode=fake
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend fact_validation.backend=rdf_shacl --backend fact_validation.rdf_shacl.enabled=true --backend fact_validation.rdf_shacl.mode=fake
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend code_intelligence.cocoindex.default_scope=project --backend code_intelligence.cocoindex.storage_root='<context>/backends/cocoindex'
 ```
 
 Use `hooks.verbosity=quiet` to reduce routine hook chatter while preserving stale/conflict/blocking messages.
@@ -165,6 +170,7 @@ Use `context_budget` as policy for compact/normal/debug output; do not treat com
 Use `input_capture` as policy for prompt provenance; `INP-*` records are not proof until classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
 Use `analysis` as policy for optional helpers such as Z3 and NMF; it is not proof and not permission to silently install dependencies.
 Use `backends` as policy for optional external adapters such as RDF/SHACL, Serena, CocoIndex, and Datalog-style derivation; missing dependencies must degrade to status diagnostics instead of crashing normal TEP commands.
+Keep CocoIndex behind TEP `code-search`; default to project scope and use workspace scope only as a deliberate outward glance.
 
 ## Local Anchors
 
@@ -189,6 +195,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-info --path tests/unit/test_example.py --fields target,imports,symbols,features,freshness
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --import pytest --fields target,imports,features --limit 20
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --query "prompt choice backend" --fields target --limit 8
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --scope workspace --query "shared client behavior" --fields target --limit 8
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-search --query "prompt choice backend" --link-candidate CLM-* --fields target --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-feedback --query "prompt choice backend" --link-candidate CLM-* --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context code-feedback --apply --entry CIX-* --link-candidate CLM-* --note "reviewed backend hit links this claim to this code area"
