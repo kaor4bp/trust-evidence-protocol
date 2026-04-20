@@ -1701,6 +1701,16 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     rebuilt_probes = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--scope", "all", "--format", "json").stdout)
     rebuilt_pairs = {tuple(sorted(probe["record_refs"])) for probe in rebuilt_probes["probes"]}
     assert tuple(sorted(route["record_refs"])) not in rebuilt_pairs
+    linked_map = json.loads(run_cli(context, "curiosity-map", "--volume", "wide", "--scope", "all", "--format", "json").stdout)
+    record_link_edges = [
+        edge
+        for edge in linked_map["map_graph"]["edges"]
+        if set(edge.get("source_records", [])) == {link_claim_id} and set(edge["fields"]) == {"record-link.support_refs"}
+    ]
+    assert record_link_edges
+    assert {record_link_edges[0]["from"], record_link_edges[0]["to"]} == set(route["record_refs"])
+    assert record_link_edges[0]["relation"] == "related"
+    assert any(set(route["record_refs"]).issubset(set(cluster["node_refs"])) for cluster in linked_map["map_graph"]["clusters"] if cluster["kind"] == "topology")
     pack = json.loads(run_cli(context, "probe-pack", "--budget", "2", "--scope", "all", "--format", "json").stdout)
     assert pack["pack_is_proof"] is False
     assert pack["detail"] == "compact"

@@ -589,6 +589,7 @@ Commands:
   - persists a reviewed curiosity/probe relationship as append-only `SRC-*` + `CLM-*`
   - also supports `--probe-index N --probe-scope current|all --mode theory|research|code`
   - rebuilds the generated attention index so the same reviewed pair stops surfacing as an unresolved curiosity probe
+  - appears in `map_graph` as a generated `related` edge between the reviewed support claims
   - requires a quote/observation; a generated probe or map score is not support by itself
   - does not mutate the original probed claims
 

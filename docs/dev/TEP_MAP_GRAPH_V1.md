@@ -183,5 +183,10 @@ view must treat `map_graph.nodes`, `map_graph.edges`, `map_graph.clusters`, and
 `map_graph.topology_analysis` as the source for topology, bridge, and probe
 controls instead of deriving a separate visual model from legacy fields.
 
+`record-link` feedback claims produce generated `related` map edges between the
+two reviewed support claims. These edges make resolved curiosity links visible
+in topology islands while preserving the proof boundary: the generated map edge
+is navigation-only and points back to the source-backed link claim.
+
 Use `curiosity-map --format json` only when a caller needs the full typed graph
 payload for visualization, export, or algorithm debugging.

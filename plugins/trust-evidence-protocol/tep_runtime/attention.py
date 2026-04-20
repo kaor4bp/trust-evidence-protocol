@@ -88,13 +88,14 @@ MAP_RELATION_WEIGHTS = {
     "depends_on": 0.8,
     "implemented_by": 0.75,
     "cites": 0.7,
+    "related": 0.6,
     "same_topic": 0.35,
     "mentions": 0.2,
     "candidate_link": 0.1,
     "no_known_link": 0.0,
     "rejected_link": -0.2,
 }
-TOPOLOGY_ESTABLISHED_RELATIONS = {"supports", "contradicts", "derived_from", "depends_on", "implemented_by", "cites"}
+TOPOLOGY_ESTABLISHED_RELATIONS = {"supports", "contradicts", "derived_from", "depends_on", "implemented_by", "cites", "related"}
 
 
 def activity_root(root: Path) -> Path:
@@ -257,7 +258,7 @@ def map_graph_edges(link_edges: list[dict], selected_record_ids: set[str]) -> li
         if left not in selected_record_ids or right not in selected_record_ids:
             continue
         fields = [str(field) for field in edge.get("fields", [])]
-        relation = map_edge_relation(fields)
+        relation = str(edge.get("relation", "")).strip() or map_edge_relation(fields)
         key = (left, right, relation, tuple(fields))
         if key in seen:
             continue
@@ -271,7 +272,78 @@ def map_graph_edges(link_edges: list[dict], selected_record_ids: set[str]) -> li
                 "status": "established",
                 "weight": MAP_RELATION_WEIGHTS.get(relation, 0.2),
                 "fields": fields,
+                "source_records": [str(ref) for ref in edge.get("source_records", []) if str(ref)],
                 "not_proof": True,
+            }
+        )
+    return edges
+
+
+def record_link_relation(record: dict) -> str:
+    for tag in record.get("tags", []):
+        tag_text = str(tag)
+        if tag_text.startswith("relation:"):
+            relation = tag_text.split(":", 1)[1].strip().replace("-", "_")
+            return relation if relation in MAP_RELATION_WEIGHTS else "related"
+    return "related"
+
+
+def record_link_map_edges(records: dict[str, dict], selected_record_ids: set[str], start_index: int) -> list[dict]:
+    edges = []
+    seen: set[tuple[str, str, str]] = set()
+    for record_id, record in sorted(records.items()):
+        tags = record.get("tags", [])
+        if record.get("record_type") != "claim" or "record-link" not in tags:
+            continue
+        support_refs = [str(ref) for ref in record.get("support_refs", []) if str(ref) in selected_record_ids]
+        if len(support_refs) != 2:
+            continue
+        left, right = sorted_pair(support_refs[0], support_refs[1])
+        relation = record_link_relation(record)
+        key = (left, right, relation)
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append(
+            {
+                "id": f"MEDGE-{start_index + len(edges):04d}",
+                "from": left,
+                "to": right,
+                "relation": relation,
+                "status": "established",
+                "weight": MAP_RELATION_WEIGHTS.get(relation, 0.2),
+                "fields": ["record-link.support_refs"],
+                "source_records": [record_id],
+                "not_proof": True,
+            }
+        )
+    return edges
+
+
+def record_link_direct_edges(records: dict[str, dict]) -> list[dict]:
+    edges = []
+    seen: set[tuple[str, str, str]] = set()
+    record_ids = set(records)
+    for record_id, record in sorted(records.items()):
+        tags = record.get("tags", [])
+        if record.get("record_type") != "claim" or "record-link" not in tags:
+            continue
+        support_refs = [str(ref) for ref in record.get("support_refs", []) if str(ref) in record_ids]
+        if len(support_refs) != 2:
+            continue
+        left, right = sorted_pair(support_refs[0], support_refs[1])
+        relation = record_link_relation(record)
+        key = (left, right, relation)
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append(
+            {
+                "from": left,
+                "to": right,
+                "fields": ["record-link.support_refs"],
+                "relation": relation,
+                "source_records": [record_id],
             }
         )
     return edges
@@ -465,10 +537,18 @@ def topic_map_clusters(clusters: list[dict]) -> list[dict]:
     return result
 
 
-def build_map_graph(link_edges: list[dict], selected_records: dict[str, dict], clusters: list[dict], probes: list[dict]) -> dict:
+def build_map_graph(
+    link_edges: list[dict],
+    selected_records: dict[str, dict],
+    clusters: list[dict],
+    probes: list[dict],
+    *,
+    all_records: dict[str, dict] | None = None,
+) -> dict:
     nodes = map_graph_nodes(selected_records)
     node_ids = {str(node.get("id", "")) for node in nodes if str(node.get("id", ""))}
     edges = map_graph_edges(link_edges, node_ids)
+    edges.extend(record_link_map_edges(all_records or selected_records, node_ids, len(edges) + 1))
     topic_clusters = topic_map_clusters(clusters)
     topology = topology_clusters(nodes, edges)
     all_clusters = topic_clusters + topology
@@ -729,7 +809,7 @@ def build_attention_index(
         key=lambda item: (-item["record_count"], item["term"], item["topic_id"]),
     )
 
-    link_edges = collect_link_edges(records)
+    link_edges = collect_link_edges(records) + record_link_direct_edges(records)
     bridges = []
     for edge in link_edges:
         left = str(edge.get("from", ""))
@@ -1206,7 +1286,7 @@ def curiosity_map_payload(payload: dict, *, volume: str = "normal") -> dict:
         "bridges": bridges,
         "cold_zones": cold_zones,
         "probes": probes,
-        "map_graph": build_map_graph(payload.get("link_edges", []), selected_records, clusters, probes),
+        "map_graph": build_map_graph(payload.get("link_edges", []), selected_records, clusters, probes, all_records=records),
         "curiosity_prompts": [
             {
                 "probe_index": index,
