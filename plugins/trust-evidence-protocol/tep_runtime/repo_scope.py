@@ -119,10 +119,10 @@ def resolve_code_repo_root(root: Path, requested_root: str | Path | None, *, fal
 def code_entry_matches_repo_scope(entry: dict, workspace_ref: str, project_ref: str) -> bool:
     entry_project = str(entry.get("project_ref", "") or "").strip()
     entry_workspace = str(entry.get("workspace_ref", "") or "").strip()
-    if project_ref and entry_project and entry_project != project_ref:
-        return False
-    if workspace_ref and entry_workspace and entry_workspace != workspace_ref:
-        return False
+    if project_ref:
+        return entry_project == project_ref
+    if workspace_ref:
+        return entry_workspace == workspace_ref
     return True
 
 

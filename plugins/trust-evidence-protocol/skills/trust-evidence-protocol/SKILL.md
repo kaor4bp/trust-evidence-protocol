@@ -69,6 +69,7 @@ Persistence write boundary:
 - Do not use `CIX-*` as claim support, source support, action justification, or evidence-chain proof.
 - Treat `.tep` as a local focus anchor only. Code paths are project-relative and must be resolved against `--root` or the active project `root_refs`, never against the agent cwd just because the agent is currently sitting there.
 - When inspecting a repository different from the current cwd, pass `--root <repo>` to `code-search`, `code-info`, `code-feedback`, `code-smell-report`, `backend-status`, and `backend-check`.
+- Treat unscoped `CIX-*` entries without `project_ref` as migration leftovers, not current project files; use `code-entry archive-unscoped` instead of relying on them.
 - `<context>/topic_index/` is generated lexical prefilter data, not proof.
 - Use topic search to find candidate records, topic neighborhoods, and possible contradiction-review pairs, then inspect canonical records.
 - Do not use topic overlap as a contradiction, claim support, source support, action justification, or evidence-chain proof.

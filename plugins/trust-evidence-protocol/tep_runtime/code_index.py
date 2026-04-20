@@ -320,8 +320,8 @@ def code_index_entry_for_file(
         and entry["target"].get("kind") == "file"
         and entry["target"].get("path") == rel_path
         and entry.get("status") not in {"superseded", "archived"}
-        and (not str(entry.get("project_ref", "")).strip() or not project_ref or str(entry.get("project_ref", "")).strip() == project_ref)
-        and (not str(entry.get("workspace_ref", "")).strip() or not workspace_ref or str(entry.get("workspace_ref", "")).strip() == workspace_ref)
+        and (str(entry.get("project_ref", "")).strip() == project_ref if project_ref else True)
+        and (str(entry.get("workspace_ref", "")).strip() == workspace_ref if workspace_ref else True)
     ]
     active = next((entry for entry in existing_for_path if entry.get("target_state") == "present"), None)
     missing = next((entry for entry in existing_for_path if entry.get("target_state") == "missing"), None)

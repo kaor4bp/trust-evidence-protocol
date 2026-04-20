@@ -642,6 +642,7 @@ Commands:
   - searches CIX entries by path, language, code kind, import, symbol, feature, linked ref, or stale state
   - resolves paths against `--root`; if `--root` is omitted, uses the active project `root_refs` selected by the nearest `.tep` anchor, then falls back to cwd only when no focused project root exists
   - returns `repo_scope` with `repo_root`, `repo_root_source`, matched `workspace_ref`, matched `project_ref`, and `paths_are_project_relative`
+  - excludes legacy unscoped CIX entries from project/workspace-scoped results; use `code-entry archive-unscoped` to quarantine old unscoped entries
   - can filter annotations with `--annotation-kind smell` and `--annotation-category ...`
   - can use `--query "..."` to proxy a semantic code search through the configured TEP backend, such as CocoIndex, while returning navigation-only TEP-normalized `backend_results`
   - accepts `--scope project|workspace`; project is the default, workspace is an explicit broader glance
@@ -669,6 +670,11 @@ Commands:
 - `code-entry create`
   - creates manual CIX entries for directories, globs, symbols, or logical areas
   - use this for areas like "SmartPick prompt UI" or "E2E tests folder" that AST cannot infer
+
+- `code-entry archive-unscoped [--status missing] [--apply]`
+  - archives legacy CIX file/directory/glob/symbol entries that have no `project_ref`
+  - dry-runs by default and is intended for unified `.tep_context` cleanup after migration
+  - archived CIX entries remain audit-visible with `--include-archived` but do not participate in normal scoped lookup
 
 - `annotate-code`
   - adds `agent-note`, `review-note`, `TODO`, `rationale`, `risk`, or `smell` annotations to a CIX entry

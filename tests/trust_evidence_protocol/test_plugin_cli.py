@@ -2575,7 +2575,6 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
     )
     subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
     subprocess.run(["git", "add", "src/app.py"], cwd=repo, check=True, capture_output=True, text=True)
-    run_cli(context, "init-code-index", "--root", str(repo))
     workspace_id = recorded_id(
         run_cli(
             context,
@@ -2608,6 +2607,7 @@ def test_code_search_proxies_cocoindex_backend_through_tep_entrypoint(tmp_path: 
         "project",
     )
     run_cli(context, "set-current-project", "--project", project_id)
+    run_cli(context, "init-code-index", "--root", str(repo))
     source_id = recorded_id(
         run_cli(
             context,
@@ -2896,6 +2896,56 @@ def test_code_search_resolves_paths_from_project_root_not_agent_cwd(tmp_path: Pa
     )
     assert implicit_entry["project_ref"] == project_b
     assert implicit_payload["results"][0]["freshness"]["stale"] is False
+
+    legacy_unscoped_id = "CIX-20260420-deadbeef"
+    legacy_unscoped_path = context / "code_index" / "entries" / f"{legacy_unscoped_id}.json"
+    legacy_unscoped_path.write_text(
+        json.dumps(
+            {
+                "id": legacy_unscoped_id,
+                "record_type": "code_index_entry",
+                "status": "missing",
+                "target": {"kind": "file", "path": "src/app.py"},
+                "target_state": "missing",
+                "language": "python",
+                "code_kind": "source",
+                "summary": "legacy unscoped duplicate",
+                "metadata": {},
+                "detected_features": [],
+                "manual_features": [],
+                "manual_links": {},
+                "annotations": [],
+                "links": [],
+                "child_entry_refs": [],
+                "related_entry_refs": [],
+                "supersedes_refs": [],
+                "created_at": "2026-04-20T10:00:00+03:00",
+                "updated_at": "2026-04-20T10:00:00+03:00",
+                "note": "legacy unscoped CIX should not leak into project-scoped search",
+            }
+        ),
+        encoding="utf-8",
+    )
+    scoped_with_missing = json.loads(
+        run_cli(
+            context,
+            "code-search",
+            "--root",
+            str(repo_b),
+            "--path",
+            "src/app.py",
+            "--include-missing",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert [item["id"] for item in scoped_with_missing["results"]] == [implicit_payload["results"][0]["id"]]
+
+    archive_plan = json.loads(run_cli(context, "code-entry", "archive-unscoped", "--format", "json").stdout)
+    assert archive_plan["archive_unscoped_is_dry_run"] is True
+    assert archive_plan["count"] == 1
+    run_cli(context, "code-entry", "archive-unscoped", "--apply")
+    assert json.loads(legacy_unscoped_path.read_text(encoding="utf-8"))["status"] == "archived"
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()

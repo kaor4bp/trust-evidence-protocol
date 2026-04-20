@@ -1,6 +1,6 @@
 {
   "name": "trust-evidence-protocol",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Evidence-first reasoning protocol with scoped records, workflow-guided context lookup, action preflight, and persistent project memory.",
   "keywords": [
     "evidence",

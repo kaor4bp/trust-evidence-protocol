@@ -5175,6 +5175,67 @@ def cmd_assign_code_index(root: Path, record_ref: str, entry_refs: list[str], no
     return persist_mutated_records(root, merged_records, [record_ref], f"Assigned code index refs to {record_ref}")
 
 
+def cmd_code_entry_archive_unscoped(root: Path, statuses: list[str], apply: bool, output_format: str) -> int:
+    entries, errors = load_code_index_entries(root)
+    if errors:
+        print_errors(errors)
+        return 1
+    selected_statuses = set(statuses or ["missing"])
+    invalid_statuses = selected_statuses - CODE_INDEX_STATUSES
+    if invalid_statuses:
+        print(f"invalid status: {sorted(invalid_statuses)[0]}")
+        return 1
+    targets = []
+    for entry in entries.values():
+        target = entry.get("target") if isinstance(entry.get("target"), dict) else {}
+        if str(target.get("kind", "")) not in {"file", "directory", "glob", "symbol"}:
+            continue
+        if str(entry.get("project_ref", "") or "").strip():
+            continue
+        if str(entry.get("status", "")).strip() not in selected_statuses:
+            continue
+        targets.append(entry)
+    payload = {
+        "archive_unscoped_is_dry_run": not apply,
+        "selected_statuses": sorted(selected_statuses),
+        "count": len(targets),
+        "items": [
+            {
+                "id": entry.get("id"),
+                "status": entry.get("status"),
+                "target": entry.get("target", {}),
+            }
+            for entry in targets[:100]
+        ],
+    }
+    if not apply:
+        if output_format == "json":
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"Would archive {len(targets)} unscoped CIX entr{'y' if len(targets) == 1 else 'ies'}")
+            for item in payload["items"]:
+                target = item.get("target", {})
+                print(f"- `{item.get('id')}` status=`{item.get('status')}` target=`{target.get('path') or target.get('name') or ''}`")
+        return 0
+    timestamp = now_timestamp()
+    changed = []
+    for entry in targets:
+        payload_entry = public_code_index_entry(entry)
+        payload_entry["status"] = "archived"
+        payload_entry["updated_at"] = timestamp
+        payload_entry["note"] = append_note(
+            str(payload_entry.get("note", "")),
+            f"[{timestamp}] archived by code-entry archive-unscoped because CIX has no project_ref",
+        )
+        changed.append(payload_entry)
+        entries[payload_entry["id"]] = payload_entry
+    persist_code_index_entries(root, entries, changed, f"Archived {len(changed)} unscoped code index entr{'y' if len(changed) == 1 else 'ies'}")
+    payload["archive_unscoped_is_dry_run"] = False
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
 def cmd_promote_model_to_domain(root: Path, model_ref: str, note: str | None) -> int:
     records, exit_code = load_clean_context(root)
     if exit_code:
@@ -6296,6 +6357,13 @@ def parse_args() -> argparse.Namespace:
     code_entry_create.add_argument("--summary", required=True)
     code_entry_create.add_argument("--feature", dest="manual_features", action="append", default=[])
     code_entry_create.add_argument("--note", required=True)
+    code_entry_archive_unscoped = code_entry_subparsers.add_parser(
+        "archive-unscoped",
+        help="Archive legacy CIX entries without project_ref so they cannot leak across projects.",
+    )
+    code_entry_archive_unscoped.add_argument("--status", dest="statuses", action="append", default=["missing"])
+    code_entry_archive_unscoped.add_argument("--apply", action="store_true")
+    code_entry_archive_unscoped.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     annotate_code = subparsers.add_parser(
         "annotate-code",
         help="Add a non-proof annotation to a CIX-* entry.",
@@ -7479,6 +7547,15 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                     summary=args.summary,
                     manual_features=args.manual_features,
                     note=args.note,
+                )
+            )
+        if args.code_entry_command == "archive-unscoped":
+            raise SystemExit(
+                cmd_code_entry_archive_unscoped(
+                    root,
+                    statuses=args.statuses,
+                    apply=args.apply,
+                    output_format=args.output_format,
                 )
             )
     if args.command == "annotate-code":
