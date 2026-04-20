@@ -330,6 +330,16 @@ from tep_runtime.code_index import (
     public_code_index_entry,
     resolve_code_entry,
 )
+
+RECORD_LINK_RELATIONS = {
+    "related": "is related to",
+    "supports": "supports",
+    "contradicts": "contradicts",
+    "depends-on": "depends on",
+    "derived-from": "is derived from",
+    "no-known-link": "has no known established link to",
+    "rejected-link": "does not have the proposed link to",
+}
 from tep_runtime.repo_scope import (
     code_entry_matches_repo_scope,
     normalize_root_refs,
@@ -2356,6 +2366,7 @@ def cmd_help(topic: str) -> int:
             "workspace-admission check --repo path [--format json]",
             "topic-index build --method lexical | topic-search --query ...",
             "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | curiosity-map --mode research|theory|code [--html] | curiosity-probes --mode theory --budget 5 | probe-pack --mode theory --budget 3",
+            "probe-route --index N --scope current|all | record-link --probe-index N --quote ... --note ...",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]",
             "validate-facts --backend rdf_shacl [--format json]",
@@ -3954,6 +3965,12 @@ def build_probe_route_payload(root: Path, records: dict, scoped_payload: dict, p
         *(f"linked-records --record {record_ref} --depth 1" for record_ref in refs),
         'build-reasoning-case --task "inspect whether the probed records should be linked"',
     ]
+    if len(refs) == 2:
+        commands.append(
+            f'record-link --probe-index {probe_index} --probe-scope {scope} --mode {mode} '
+            f'--scope {scope} '
+            '--relation related --quote "<canonical inspection quote>" --note "<why this reviewed link should be persisted>"'
+        )
     if diagram_comparison["delta"].get("payload_char_count", 0) > 0:
         commands.append(f"attention-diagram --scope {scope} --mode {mode} --limit 8 --detail full")
     if comparison["delta"].get("source_quote_count", 0) > 0:
@@ -3980,7 +3997,7 @@ def build_probe_route_payload(root: Path, records: dict, scoped_payload: dict, p
         "next_steps": [
             "Inspect canonical record details and direct links before making a claim.",
             "Use the draft chain only as a mechanical skeleton; validate/augment before user-facing proof.",
-            "If support exists, update records, model, or flow; otherwise record an open question or leave the probe unresolved.",
+            "If support exists, persist it with record-link; otherwise record an open question or leave the probe unresolved.",
         ],
         "note": "Generated inspection route. Navigation only; not proof.",
     }
@@ -6326,6 +6343,131 @@ def cmd_record_claim(
     return persist_candidate(root, records, payload, "claim")
 
 
+def resolve_record_link_refs(
+    records: dict[str, dict],
+    scoped_payload: dict | None,
+    left_ref: str | None,
+    right_ref: str | None,
+    probe_index: int | None,
+) -> tuple[list[str], str | None]:
+    if probe_index is not None:
+        if left_ref or right_ref:
+            return [], "use either --probe-index or --left/--right, not both"
+        if not scoped_payload:
+            return [], "attention index is missing or empty; run `attention-index build` first"
+        probes = scoped_payload.get("probes", [])
+        index = max(1, probe_index) - 1
+        if not probes:
+            return [], "no curiosity probes available for this scope"
+        if index >= len(probes):
+            return [], f"probe index out of range: {probe_index}; available={len(probes)}"
+        refs = [str(ref) for ref in probes[index].get("record_refs", []) if str(ref) in records]
+        if len(refs) != 2:
+            return [], "selected probe must contain exactly two existing record refs"
+        return refs, None
+    if not left_ref or not right_ref:
+        return [], "record-link requires --probe-index or both --left and --right"
+    refs = [left_ref, right_ref]
+    for ref in refs:
+        if ref not in records:
+            return [], f"missing record {ref}"
+        if records[ref].get("record_type") != "claim":
+            return [], f"{ref} must reference a claim record"
+    if left_ref == right_ref:
+        return [], "left and right records must be different"
+    return refs, None
+
+
+def cmd_record_link(
+    root: Path,
+    scope: str,
+    left_ref: str | None,
+    right_ref: str | None,
+    probe_index: int | None,
+    probe_scope: str,
+    mode: str,
+    relation: str,
+    quote: str,
+    confidence: str | None,
+    project_refs: list[str],
+    task_refs: list[str],
+    tags: list[str],
+    note: str,
+) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    scoped_payload = None
+    if probe_index is not None:
+        attention_payload = load_attention_payload(root)
+        if attention_payload:
+            scoped_payload = scoped_attention_payload(root, attention_payload, probe_scope, mode)
+    refs, error = resolve_record_link_refs(records, scoped_payload, left_ref, right_ref, probe_index)
+    if error:
+        print(error)
+        return 1
+    if relation not in RECORD_LINK_RELATIONS:
+        print(f"invalid relation: {relation}")
+        return 1
+    timestamp = now_timestamp()
+    source_id = next_record_id(records, "SRC-")
+    source_payload = build_source_payload(
+        record_id=source_id,
+        source_kind="runtime",
+        scope=scope,
+        critique_status="accepted",
+        origin_kind="agent_review",
+        origin_ref=f"record-link:{relation}",
+        quote=quote,
+        artifact_refs=[],
+        confidence=confidence,
+        independence_group=None,
+        captured_at=None,
+        captured_timestamp=timestamp,
+        independence_timestamp=timestamp,
+        project_refs=project_refs_for_write(root, project_refs),
+        task_refs=task_refs_for_write(root, task_refs),
+        tags=[*tags, "record-link", f"relation:{relation}"],
+        red_flags=[],
+        note=f"Source for reviewed record link: {note.strip()}",
+    )
+    verb = RECORD_LINK_RELATIONS[relation]
+    claim_id = next_record_id({**records, source_id: source_payload}, "CLM-")
+    statement = f"Reviewed records {refs[0]} and {refs[1]} {verb}."
+    claim_payload = build_claim_payload(
+        record_id=claim_id,
+        timestamp=timestamp,
+        scope=scope,
+        plane="runtime",
+        status="supported",
+        statement=statement,
+        source_refs=[source_id],
+        support_refs=refs,
+        contradiction_refs=[],
+        derived_from=[],
+        claim_kind="factual",
+        confidence=confidence,
+        comparison=None,
+        logic=None,
+        recorded_at=None,
+        project_refs=project_refs_for_write(root, project_refs),
+        task_refs=task_refs_for_write(root, task_refs),
+        tags=[*tags, "record-link", f"relation:{relation}"],
+        red_flags=[],
+        note=note,
+    )
+    merged_records, errors = validate_mutated_records(root, records, {source_id: source_payload, claim_id: claim_payload})
+    if errors:
+        print_errors(errors)
+        return 1
+    return persist_mutated_records(
+        root,
+        merged_records,
+        [source_id, claim_id],
+        f"Recorded link claim {claim_id} with source {source_id}",
+    )
+
+
 def cmd_record_permission(
     root: Path,
     scope: str,
@@ -7655,6 +7797,24 @@ def parse_args() -> argparse.Namespace:
     record_claim.add_argument("--red-flag", dest="red_flags", action="append", default=[])
     record_claim.add_argument("--note", required=True)
 
+    record_link = subparsers.add_parser(
+        "record-link",
+        help="Create an append-only source-backed claim linking two claim records or one curiosity probe pair.",
+    )
+    record_link.add_argument("--scope", required=True)
+    record_link.add_argument("--left", dest="left_ref")
+    record_link.add_argument("--right", dest="right_ref")
+    record_link.add_argument("--probe-index", type=int)
+    record_link.add_argument("--probe-scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    record_link.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
+    record_link.add_argument("--relation", choices=sorted(RECORD_LINK_RELATIONS), default="related")
+    record_link.add_argument("--quote", required=True, help="Short quote or observation that supports recording this reviewed link.")
+    record_link.add_argument("--confidence", choices=sorted(CONFIDENCE_LEVELS))
+    record_link.add_argument("--project", dest="project_refs", action="append", default=[])
+    record_link.add_argument("--task", dest="task_refs", action="append", default=[])
+    record_link.add_argument("--tag", dest="tags", action="append", default=[])
+    record_link.add_argument("--note", required=True)
+
     show_claim_lifecycle = subparsers.add_parser(
         "show-claim-lifecycle",
         help="Show retrieval lifecycle metadata for a CLM-* record.",
@@ -8735,6 +8895,25 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 task_refs=args.task_refs,
                 tags=args.tags,
                 red_flags=args.red_flags,
+                note=args.note,
+            )
+        )
+    if args.command == "record-link":
+        raise SystemExit(
+            cmd_record_link(
+                root,
+                scope=args.scope,
+                left_ref=args.left_ref,
+                right_ref=args.right_ref,
+                probe_index=args.probe_index,
+                probe_scope=args.probe_scope,
+                mode=args.mode,
+                relation=args.relation,
+                quote=args.quote,
+                confidence=args.confidence,
+                project_refs=args.project_refs,
+                task_refs=args.task_refs,
+                tags=args.tags,
                 note=args.note,
             )
         )

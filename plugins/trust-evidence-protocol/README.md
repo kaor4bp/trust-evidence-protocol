@@ -585,6 +585,12 @@ Commands:
   - use before expanding to full `curiosity-map --format json`
   - generated navigation only; not proof
 
+- `record-link --left CLM-* --right CLM-* --relation related --quote "..." --note "..."`
+  - persists a reviewed curiosity/probe relationship as append-only `SRC-*` + `CLM-*`
+  - also supports `--probe-index N --probe-scope current|all --mode theory|research|code`
+  - requires a quote/observation; a generated probe or map score is not support by itself
+  - does not mutate the original probed claims
+
 - `logic-index build`
   - rebuilds `.codex_context/logic_index/atoms.json`, `symbols.json`, `rules.json`, `by_predicate.json`, `by_symbol.json`, `variable_graph.json`, and reports
   - validates that factual atoms reference introduced typed symbols through source-backed `CLM-*` records

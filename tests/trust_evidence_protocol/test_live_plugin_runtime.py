@@ -126,7 +126,7 @@ def test_live_agent_uses_curiosity_map_brief_probe_route():
         4. Run `probe-route --index 1 --scope all --mode theory --format json`.
         5. Report observed literal markers from command output: `map_graph_version`,
            `candidate_probes`, `inspection_is_proof`, `route_is_proof`,
-           and `recommended_commands`.
+           `recommended_commands`, and `record-link`.
         Do not conclude Facility and Program are linked from the probe itself; this test
         checks the TEP route, not the truth of the candidate link.
         """
@@ -147,3 +147,4 @@ def test_live_agent_uses_curiosity_map_brief_probe_route():
     assert "inspection_is_proof" in markers, payload
     assert "route_is_proof" in markers, payload
     assert "recommended_commands" in markers, payload
+    assert "record-link" in markers, payload

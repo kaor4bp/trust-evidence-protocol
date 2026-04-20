@@ -60,6 +60,7 @@ MUTATING_COMMANDS = {
     "record-input",
     "record-source",
     "record-claim",
+    "record-link",
     "record-plan",
     "record-debt",
     "record-feedback",

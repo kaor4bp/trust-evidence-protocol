@@ -1669,7 +1669,35 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert any(command.startswith("attention-diagram-compare") for command in route["recommended_commands"])
     assert any(command.startswith("probe-chain-draft --index 1") for command in route["recommended_commands"])
     assert any(command.startswith("probe-pack-compare") for command in route["recommended_commands"])
+    assert any(command.startswith("record-link --probe-index 1") for command in route["recommended_commands"])
     assert route["context_delta"]["payload_char_count"] > 0
+    link_result = run_cli(
+        context,
+        "record-link",
+        "--probe-index",
+        "1",
+        "--probe-scope",
+        "all",
+        "--scope",
+        "attention.demo",
+        "--relation",
+        "related",
+        "--quote",
+        "Inspection found the Facility and Program claims should be linked.",
+        "--note",
+        "persisted reviewed curiosity probe link",
+    )
+    link_claim_id = recorded_id(link_result, "link claim")
+    link_claim = load_record(context, "claim", link_claim_id)
+    assert link_claim["support_refs"] == route["record_refs"]
+    linked_after = json.loads(
+        run_cli(context, "linked-records", "--record", route["record_refs"][0], "--depth", "2", "--format", "json").stdout
+    )
+    linked_ids = {record["id"] for record in linked_after["records"]}
+    assert link_claim_id in linked_ids
+    linked_edges = {(edge["from"], edge["to"]) for edge in linked_after["edges"]}
+    assert (link_claim_id, route["record_refs"][0]) in linked_edges
+    assert (link_claim_id, route["record_refs"][1]) in linked_edges
     pack = json.loads(run_cli(context, "probe-pack", "--budget", "2", "--scope", "all", "--format", "json").stdout)
     assert pack["pack_is_proof"] is False
     assert pack["detail"] == "compact"

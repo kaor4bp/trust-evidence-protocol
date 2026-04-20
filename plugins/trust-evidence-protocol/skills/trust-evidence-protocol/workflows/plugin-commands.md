@@ -145,6 +145,7 @@ Probe `score` and `explanation` fields are mechanical ranking hints for what to 
 Use `probe-inspect` to mechanically fetch record summaries, source quotes, direct link status, and suggested follow-up commands for a selected probe.
 Use `probe-chain-draft` to mechanically assemble a draft evidence chain from a selected probe, then run normal validation/augmentation before presenting proof.
 Use `probe-route` after choosing a probe when you want the runtime to compose next inspection commands plus diagram/full-pack expansion hints.
+Use `record-link` after a probe has been inspected and a real source-backed relationship should be persisted; never use the probe score itself as support.
 Use `probe-pack` when the agent needs a compact first pass over several top probes without manually composing multiple lookup commands.
 Use `probe-pack --detail full` only when the compact pack shows a probe worth expanding with source quotes and full chain draft payload.
 Use `probe-pack.metrics` to compare payload size and omitted fields mechanically; metrics are not proof.
