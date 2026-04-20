@@ -578,6 +578,12 @@ Commands:
   - useful when the agent should show the user why it wants to inspect a cold or weakly linked area
   - the HTML is generated navigation only and must not be cited as evidence
 
+- `map-brief --mode research|theory|code --volume compact --limit 6`
+  - prints a compact projection over `tep.map_graph.v1`
+  - shows topology islands, bridge pressure, candidate probes, cold zones, and recommended inspection commands
+  - use before expanding to full `curiosity-map --format json`
+  - generated navigation only; not proof
+
 - `logic-index build`
   - rebuilds `.codex_context/logic_index/atoms.json`, `symbols.json`, `rules.json`, `by_predicate.json`, `by_symbol.json`, `variable_graph.json`, and reports
   - validates that factual atoms reference introduced typed symbols through source-backed `CLM-*` records

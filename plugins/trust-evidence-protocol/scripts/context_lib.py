@@ -88,6 +88,8 @@ from tep_runtime.attention import (
     curiosity_map_html,
     curiosity_map_payload,
     curiosity_map_text_lines,
+    map_brief_payload,
+    map_brief_text_lines,
     curiosity_probe_text_lines,
     filter_attention_payload,
     load_attention_payload,

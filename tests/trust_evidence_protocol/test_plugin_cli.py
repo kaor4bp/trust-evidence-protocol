@@ -1571,6 +1571,19 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
         {facility_claim_id, program_claim_id}.issubset(set(prompt["record_refs"]))
         for prompt in curiosity_map["curiosity_prompts"]
     )
+    map_brief = json.loads(run_cli(context, "map-brief", "--volume", "compact", "--scope", "all", "--limit", "4", "--format", "json").stdout)
+    assert map_brief["map_brief_is_proof"] is False
+    assert map_brief["map_graph_version"] == "tep.map_graph.v1"
+    assert map_brief["summary"]["node_count"] == curiosity_map["map_graph"]["node_count"]
+    assert map_brief["summary"]["bridge_node_count"] >= 0
+    assert map_brief["topology_islands"]
+    assert map_brief["candidate_probes"]
+    assert any(command.startswith("probe-inspect") for command in map_brief["recommended_commands"])
+    map_brief_text = run_cli(context, "map-brief", "--volume", "compact", "--scope", "all").stdout
+    assert "# Map Brief" in map_brief_text
+    assert "Topology Islands" in map_brief_text
+    assert "Bridge Pressure" in map_brief_text
+    assert "Use this brief to choose inspection order" in map_brief_text
     curiosity_map_text = run_cli(context, "curiosity-map", "--volume", "compact", "--scope", "all").stdout
     assert "# Curiosity Map" in curiosity_map_text
     assert "visual-thinking map" in curiosity_map_text

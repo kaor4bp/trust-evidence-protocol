@@ -95,6 +95,8 @@ from context_lib import (
     curiosity_map_html,
     curiosity_map_payload,
     curiosity_map_text_lines,
+    map_brief_payload,
+    map_brief_text_lines,
     build_action_payload,
     build_claim_payload,
     build_comparison_payload,
@@ -3495,6 +3497,24 @@ def cmd_curiosity_map(root: Path, volume: str, output_format: str, scope: str, m
     return 0
 
 
+def cmd_map_brief(root: Path, volume: str, output_format: str, scope: str, mode: str, limit: int) -> int:
+    _, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload = load_attention_payload(root)
+    if not payload:
+        print("attention index is missing or empty; run `attention-index build` first")
+        return 1
+    scoped_payload = scoped_attention_payload(root, payload, scope, mode)
+    map_payload = curiosity_map_payload(scoped_payload, volume=volume)
+    brief = map_brief_payload(map_payload, limit=limit)
+    if output_format == "json":
+        print(json.dumps(brief, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(map_brief_text_lines(brief)))
+    return 0
+
+
 def cmd_curiosity_probes(root: Path, budget: int, output_format: str, scope: str, mode: str) -> int:
     payload = load_attention_payload(root)
     if not payload:
@@ -6759,6 +6779,15 @@ def parse_args() -> argparse.Namespace:
     curiosity_map.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     curiosity_map.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     curiosity_map.add_argument("--html", action="store_true", help="Write a standalone HTML visual map under <context>/views/curiosity/.")
+    map_brief = subparsers.add_parser(
+        "map-brief",
+        help="Show a compact Map Graph projection with topology islands, bridge pressure, and probes. Not proof.",
+    )
+    map_brief.add_argument("--volume", choices=sorted(CURIOSITY_MAP_VOLUMES), default="compact")
+    map_brief.add_argument("--limit", type=int, default=6)
+    map_brief.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    map_brief.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    map_brief.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     curiosity_probes = subparsers.add_parser(
         "curiosity-probes",
         help="Show generated bounded curiosity probes. Not proof.",
@@ -8013,6 +8042,17 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 scope=args.scope,
                 mode=args.mode,
                 html=args.html,
+            )
+        )
+    if args.command == "map-brief":
+        raise SystemExit(
+            cmd_map_brief(
+                root,
+                volume=args.volume,
+                output_format=args.output_format,
+                scope=args.scope,
+                mode=args.mode,
+                limit=args.limit,
             )
         )
     if args.command == "curiosity-probes":

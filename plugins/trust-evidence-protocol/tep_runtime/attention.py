@@ -343,6 +343,93 @@ def topology_clusters(nodes: list[dict], edges: list[dict]) -> list[dict]:
     return clusters
 
 
+def established_adjacency(nodes: list[dict], edges: list[dict]) -> tuple[dict[str, set[str]], dict[tuple[str, str], list[str]]]:
+    node_ids = {str(node.get("id", "")) for node in nodes if str(node.get("id", ""))}
+    adjacency: dict[str, set[str]] = {node_id: set() for node_id in node_ids}
+    edge_ids_by_pair: dict[tuple[str, str], list[str]] = {}
+    for edge in edges:
+        relation = str(edge.get("relation", ""))
+        if relation not in TOPOLOGY_ESTABLISHED_RELATIONS or float(edge.get("weight", 0.0) or 0.0) < 0.35:
+            continue
+        left = str(edge.get("from", ""))
+        right = str(edge.get("to", ""))
+        if left not in node_ids or right not in node_ids:
+            continue
+        adjacency[left].add(right)
+        adjacency[right].add(left)
+        edge_ids_by_pair.setdefault(tuple(sorted([left, right])), []).append(str(edge.get("id", "")))
+    return adjacency, edge_ids_by_pair
+
+
+def component_count(adjacency: dict[str, set[str]], *, skip_node: str = "", skip_pair: tuple[str, str] | None = None) -> int:
+    seen: set[str] = set()
+    count = 0
+    for node_id in sorted(adjacency):
+        if node_id == skip_node or node_id in seen:
+            continue
+        count += 1
+        stack = [node_id]
+        while stack:
+            current = stack.pop()
+            if current == skip_node or current in seen:
+                continue
+            seen.add(current)
+            for neighbor in adjacency.get(current, set()):
+                if neighbor == skip_node:
+                    continue
+                if skip_pair and tuple(sorted([current, neighbor])) == skip_pair:
+                    continue
+                if neighbor not in seen:
+                    stack.append(neighbor)
+    return count
+
+
+def topology_analysis(nodes: list[dict], edges: list[dict], clusters: list[dict]) -> dict:
+    adjacency, edge_ids_by_pair = established_adjacency(nodes, edges)
+    baseline_components = component_count(adjacency)
+    node_heat = {str(node.get("id", "")): float(node.get("scores", {}).get("heat", 0.0) or 0.0) for node in nodes}
+    bridge_nodes = []
+    for node_id, neighbors in sorted(adjacency.items()):
+        if len(neighbors) < 2:
+            continue
+        without_node = component_count(adjacency, skip_node=node_id)
+        if without_node > baseline_components:
+            bridge_nodes.append(
+                {
+                    "node_ref": node_id,
+                    "degree": len(neighbors),
+                    "component_delta": without_node - baseline_components,
+                    "heat": node_heat.get(node_id, 0.0),
+                    "not_proof": True,
+                }
+            )
+    bridge_edges = []
+    for pair, edge_ids in sorted(edge_ids_by_pair.items()):
+        without_edge = component_count(adjacency, skip_pair=pair)
+        if without_edge > baseline_components:
+            bridge_edges.append(
+                {
+                    "edge_refs": sorted(edge_ids),
+                    "node_refs": list(pair),
+                    "component_delta": without_edge - baseline_components,
+                    "not_proof": True,
+                }
+            )
+    orphan_nodes = sorted(node_id for node_id, neighbors in adjacency.items() if not neighbors)
+    return {
+        "analysis_is_proof": False,
+        "algorithm": "deterministic_connected_components_bridges",
+        "component_count": baseline_components,
+        "topology_cluster_count": len([cluster for cluster in clusters if cluster.get("kind") == "topology"]),
+        "bridge_node_refs": [item["node_ref"] for item in bridge_nodes],
+        "bridge_edge_refs": [edge_ref for item in bridge_edges for edge_ref in item.get("edge_refs", [])],
+        "orphan_node_refs": orphan_nodes,
+        "bridge_nodes": sorted(bridge_nodes, key=lambda item: (-item["component_delta"], -item["degree"], item["node_ref"])),
+        "bridge_edges": sorted(bridge_edges, key=lambda item: (-item["component_delta"], item["node_refs"])),
+        "note": "Topology analysis is navigation only; inspect canonical records before citing.",
+    }
+
+
 def topic_map_clusters(clusters: list[dict]) -> list[dict]:
     result = []
     for index, cluster in enumerate(clusters, start=1):
@@ -377,6 +464,7 @@ def build_map_graph(link_edges: list[dict], selected_records: dict[str, dict], c
     edges = map_graph_edges(link_edges, node_ids)
     topic_clusters = topic_map_clusters(clusters)
     topology = topology_clusters(nodes, edges)
+    all_clusters = topic_clusters + topology
     cluster_layers = [
         {
             "id": "layer:topic",
@@ -399,16 +487,18 @@ def build_map_graph(link_edges: list[dict], selected_records: dict[str, dict], c
             "not_proof": True,
         },
     ]
+    analysis = topology_analysis(nodes, edges, all_clusters)
     return {
         "format": MAP_GRAPH_VERSION,
         "graph_is_proof": False,
         "node_count": len(nodes),
         "edge_count": len(edges),
-        "cluster_count": len(topic_clusters) + len(topology),
+        "cluster_count": len(all_clusters),
         "nodes": nodes,
         "edges": edges,
-        "clusters": topic_clusters + topology,
+        "clusters": all_clusters,
         "cluster_layers": cluster_layers,
+        "topology_analysis": analysis,
         "probes": [
             {
                 "id": f"PROBE-{index:03d}",
@@ -1244,6 +1334,112 @@ def curiosity_map_text_lines(payload: dict) -> list[str]:
             "Use the map to decide what to inspect next; do not cite map links, heat, cold zones, or probes as proof.",
         ]
     )
+    return lines
+
+
+def map_brief_payload(payload: dict, *, limit: int = 6) -> dict:
+    limit = max(1, limit)
+    map_graph = payload.get("map_graph") if isinstance(payload.get("map_graph"), dict) else {}
+    topology = map_graph.get("topology_analysis") if isinstance(map_graph.get("topology_analysis"), dict) else {}
+    clusters = map_graph.get("clusters", []) if isinstance(map_graph.get("clusters"), list) else []
+    topology_clusters = [
+        cluster for cluster in clusters if isinstance(cluster, dict) and cluster.get("kind") == "topology"
+    ]
+    topic_clusters = [
+        cluster for cluster in clusters if isinstance(cluster, dict) and cluster.get("kind") == "topic"
+    ]
+    topology_clusters = sorted(
+        topology_clusters,
+        key=lambda item: (-len(item.get("node_refs", [])), -float(item.get("scores", {}).get("heat", 0.0) or 0.0), str(item.get("id", ""))),
+    )[:limit]
+    topic_clusters = sorted(
+        topic_clusters,
+        key=lambda item: (-float(item.get("scores", {}).get("heat", 0.0) or 0.0), -len(item.get("node_refs", [])), str(item.get("label", ""))),
+    )[:limit]
+    probes = sorted(
+        [probe for probe in payload.get("probes", []) if isinstance(probe, dict)],
+        key=lambda item: (-float(item.get("score", 0.0) or 0.0), item.get("record_refs", [])),
+    )[:limit]
+    cold_zones = payload.get("cold_zones", [])[:limit] if isinstance(payload.get("cold_zones", []), list) else []
+    bridge_nodes = topology.get("bridge_nodes", [])[:limit] if isinstance(topology.get("bridge_nodes", []), list) else []
+    bridge_edges = topology.get("bridge_edges", [])[:limit] if isinstance(topology.get("bridge_edges", []), list) else []
+    recommended_commands = [
+        f"probe-inspect --index {index} --scope {payload.get('scope', 'current')} --mode {payload.get('mode', 'general')}"
+        for index, _probe in enumerate(probes[:3], start=1)
+    ]
+    if bridge_nodes:
+        recommended_commands.append("linked-records --record <bridge-node-ref> --depth 2")
+    return {
+        "map_brief_is_proof": False,
+        "map_graph_version": payload.get("map_graph_version", map_graph.get("format", "")),
+        "scope": payload.get("scope", "all"),
+        "mode": payload.get("mode", "general"),
+        "volume": payload.get("volume", ""),
+        "workspace_ref": payload.get("workspace_ref", ""),
+        "project_ref": payload.get("project_ref", ""),
+        "task_ref": payload.get("task_ref", ""),
+        "limit": limit,
+        "summary": {
+            "node_count": map_graph.get("node_count", 0),
+            "edge_count": map_graph.get("edge_count", 0),
+            "cluster_count": map_graph.get("cluster_count", 0),
+            "component_count": topology.get("component_count", 0),
+            "bridge_node_count": len(topology.get("bridge_node_refs", []) or []),
+            "bridge_edge_count": len(topology.get("bridge_edge_refs", []) or []),
+            "orphan_node_count": len(topology.get("orphan_node_refs", []) or []),
+        },
+        "topology_islands": topology_clusters,
+        "topic_zones": topic_clusters,
+        "bridge_nodes": bridge_nodes,
+        "bridge_edges": bridge_edges,
+        "cold_zones": cold_zones,
+        "candidate_probes": probes,
+        "recommended_commands": recommended_commands,
+        "note": "Compact map brief. Navigation only; inspect canonical records before citing.",
+    }
+
+
+def map_brief_text_lines(payload: dict) -> list[str]:
+    summary = payload.get("summary", {}) if isinstance(payload.get("summary"), dict) else {}
+    lines = [
+        "# Map Brief",
+        "",
+        "Mode: compact generated map projection. Not proof.",
+        f"scope: `{payload.get('scope')}` mode: `{payload.get('mode')}` volume: `{payload.get('volume')}` workspace: `{payload.get('workspace_ref', '')}` project: `{payload.get('project_ref', '')}` task: `{payload.get('task_ref', '')}`",
+        f"graph: nodes=`{summary.get('node_count', 0)}` edges=`{summary.get('edge_count', 0)}` clusters=`{summary.get('cluster_count', 0)}` components=`{summary.get('component_count', 0)}` bridge_nodes=`{summary.get('bridge_node_count', 0)}` bridge_edges=`{summary.get('bridge_edge_count', 0)}` orphans=`{summary.get('orphan_node_count', 0)}`",
+        "",
+        "## Topology Islands",
+    ]
+    for cluster in payload.get("topology_islands", []):
+        scores = cluster.get("scores", {}) if isinstance(cluster.get("scores"), dict) else {}
+        lines.append(
+            f"- `{cluster.get('id')}` nodes=`{len(cluster.get('node_refs', []))}` edges=`{len(cluster.get('edge_refs', []))}` density=`{scores.get('density')}` heat=`{scores.get('heat')}`"
+        )
+    if not payload.get("topology_islands"):
+        lines.append("- none")
+    lines.extend(["", "## Bridge Pressure"])
+    for item in payload.get("bridge_nodes", []):
+        lines.append(
+            f"- node `{item.get('node_ref')}` degree=`{item.get('degree')}` component_delta=`{item.get('component_delta')}` heat=`{item.get('heat')}`"
+        )
+    for item in payload.get("bridge_edges", []):
+        refs = ", ".join(str(ref) for ref in item.get("edge_refs", []))
+        nodes = " <-> ".join(str(ref) for ref in item.get("node_refs", []))
+        lines.append(f"- edge `{refs}` nodes=`{nodes}` component_delta=`{item.get('component_delta')}`")
+    if not payload.get("bridge_nodes") and not payload.get("bridge_edges"):
+        lines.append("- none")
+    lines.extend(["", "## Candidate Probes"])
+    for index, probe in enumerate(payload.get("candidate_probes", []), start=1):
+        refs = ", ".join(str(ref) for ref in probe.get("record_refs", []))
+        lines.append(f"- `{index}` score=`{probe.get('score', 0)}` refs=`{refs}` reason=\"{probe.get('reason') or probe.get('explanation', '')}\"")
+    if not payload.get("candidate_probes"):
+        lines.append("- none")
+    lines.extend(["", "## Recommended Commands"])
+    for command in payload.get("recommended_commands", []):
+        lines.append(f"- `{command}`")
+    if not payload.get("recommended_commands"):
+        lines.append("- none")
+    lines.extend(["", "Use this brief to choose inspection order; do not cite it as evidence."])
     return lines
 
 

@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.2.8"
+SERVER_VERSION = "0.2.9"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -521,6 +521,20 @@ TOOLS: list[JsonObject] = [
             {
                 "context": context_property(),
                 "budget": {"type": "integer", "minimum": 1, "maximum": 100, "default": 8},
+                "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
+                "mode": {"type": "string", "enum": ["general", "research", "theory", "code"], "default": "general"},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "map_brief",
+        "description": "Read a compact Map Graph projection with topology islands, bridge pressure, candidate probes, and next inspection commands. Navigation only, not proof.",
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "volume": {"type": "string", "enum": ["compact", "normal", "wide"], "default": "compact"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 6},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "mode": {"type": "string", "enum": ["general", "research", "theory", "code"], "default": "general"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
@@ -1240,6 +1254,25 @@ def tool_curiosity_map(args: JsonObject) -> tuple[bool, str]:
     return run_cli(args, cli_args)
 
 
+def tool_map_brief(args: JsonObject) -> tuple[bool, str]:
+    return run_cli(
+        args,
+        [
+            "map-brief",
+            "--volume",
+            str(args.get("volume") or "compact"),
+            "--limit",
+            str(as_int(args.get("limit"), 6, 1, 50)),
+            "--scope",
+            str(args.get("scope") or "current"),
+            "--mode",
+            str(args.get("mode") or "general"),
+            "--format",
+            as_format(args.get("format")),
+        ],
+    )
+
+
 def tool_curiosity_probes(args: JsonObject) -> tuple[bool, str]:
     return run_cli(
         args,
@@ -1463,6 +1496,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "attention_diagram": tool_attention_diagram,
     "attention_diagram_compare": tool_attention_diagram_compare,
     "curiosity_map": tool_curiosity_map,
+    "map_brief": tool_map_brief,
     "curiosity_probes": tool_curiosity_probes,
     "probe_inspect": tool_probe_inspect,
     "probe_chain_draft": tool_probe_chain_draft,

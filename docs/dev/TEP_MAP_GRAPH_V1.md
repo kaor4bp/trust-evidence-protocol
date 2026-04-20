@@ -157,7 +157,8 @@ Example:
 
 ## Agent View
 
-Agents should not read the full map graph unless needed. Prefer compact views:
+Agents should not read the full map graph unless needed. Prefer `map-brief`,
+which is a compact projection over `tep.map_graph.v1`.
 
 - cluster layers
 - dense topology components
@@ -168,3 +169,14 @@ Agents should not read the full map graph unless needed. Prefer compact views:
 
 The graph helps choose inspection order. It does not justify conclusions,
 actions, or permission requests.
+
+`map-brief` currently reports:
+
+- topology islands
+- bridge pressure from bridge nodes and bridge edges
+- candidate probes
+- cold zones
+- recommended inspection commands
+
+Use `curiosity-map --format json` only when a caller needs the full typed graph
+payload for visualization, export, or algorithm debugging.
