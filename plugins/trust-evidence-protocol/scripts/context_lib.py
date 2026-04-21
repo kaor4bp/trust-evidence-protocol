@@ -382,6 +382,7 @@ from tep_runtime.schemas import (
     GUIDELINE_PRIORITIES,
     GUIDELINE_STATUSES,
     INPUT_KINDS,
+    MODEL_FLOW_AUTHORITY_STATUSES,
     MODEL_KNOWLEDGE_CLASSES,
     MODEL_STATUSES,
     OPEN_QUESTION_STATUSES,
@@ -401,6 +402,7 @@ from tep_runtime.schemas import (
     WORKING_CONTEXT_STATUSES,
     WORKSPACE_STATUSES,
     artifact_ref_exists,
+    claim_is_user_confirmed_theory,
     validate_record,
     validate_refs,
 )

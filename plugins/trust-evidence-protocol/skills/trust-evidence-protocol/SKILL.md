@@ -285,6 +285,9 @@ Move it to `archived` lifecycle when it should disappear from default retrieval.
 Resolved, historical, and archived claims must not be decisive proof for a new current action unless first restored to active or explicitly re-supported by current sources.
 New `ACT-*` records must not use lifecycle fallback claims as current justification; historical actions dated before the lifecycle transition remain valid.
 `MODEL-*` and `FLOW-*` records with `working` or `stable` status must not depend on lifecycle fallback claims.
+`MODEL-*` and `FLOW-*` records must not be built from tentative theory, runtime-only observations, code-only observations, or agent-only theory.
+To create or update active `MODEL-*`/`FLOW-*`, first create a `CLM-*` with `plane=theory`, `status=supported|corroborated`, and an accepted theory `SRC-*` whose origin is the user/user prompt.
+Runtime/code evidence may support or challenge that theory claim, but cannot by itself become the system picture.
 Active `hypotheses.jsonl` entries must not point to lifecycle fallback claims.
 Do not silently collapse disagreements.
 

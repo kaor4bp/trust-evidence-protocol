@@ -62,6 +62,49 @@ def load_record(context: Path, record_type: str, record_id: str) -> dict:
     return json.loads((context / "records" / record_type / f"{record_id}.json").read_text(encoding="utf-8"))
 
 
+def user_confirmed_theory_claim(context: Path, scope: str, statement: str) -> str:
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            scope,
+            "--source-kind",
+            "theory",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "user",
+            "--origin-ref",
+            "pytest user confirmation",
+            "--quote",
+            statement,
+            "--note",
+            "user-confirmed theory source",
+        ),
+        "source",
+    )
+    return recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            scope,
+            "--plane",
+            "theory",
+            "--status",
+            "supported",
+            "--statement",
+            statement,
+            "--source",
+            source_id,
+            "--note",
+            "user-confirmed theory claim",
+        ),
+        "claim",
+    )
+
+
 def test_install_local_plugin_script_creates_single_active_cache_version(tmp_path: Path) -> None:
     local_source = tmp_path / "plugins" / "trust-evidence-protocol"
     cache = tmp_path / "cache" / "trust-evidence-protocol"
@@ -4327,43 +4370,11 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
 def test_flow_accepted_deviation_allows_user_permission(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
-    run_cli(
+    claim_id = user_confirmed_theory_claim(
         context,
-        "record-source",
-        "--scope",
         "demo.issue",
-        "--source-kind",
-        "runtime",
-        "--critique-status",
-        "accepted",
-        "--origin-kind",
-        "command",
-        "--origin-ref",
-        "pytest demo",
-        "--quote",
-        "observed deviation",
-        "--note",
-        "runtime source",
+        "User confirms that the accepted deviation exists in this flow.",
     )
-    source_id = only_record_id(context, "source")
-
-    run_cli(
-        context,
-        "record-claim",
-        "--scope",
-        "demo.issue",
-        "--plane",
-        "runtime",
-        "--status",
-        "supported",
-        "--statement",
-        "Deviation exists in runtime behavior.",
-        "--source",
-        source_id,
-        "--note",
-        "runtime-backed claim",
-    )
-    claim_id = only_record_id(context, "claim")
 
     run_cli(
         context,
@@ -4439,46 +4450,217 @@ def test_flow_accepted_deviation_allows_user_permission(tmp_path: Path) -> None:
     assert flow["steps"][0]["accepted_deviation_refs"] == [permission_id]
 
 
+def test_models_and_flows_require_user_confirmed_theory_claims(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    runtime_source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.theory-boundary",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest runtime observation",
+            "--quote",
+            "Runtime observed that cache refresh did not happen immediately.",
+            "--note",
+            "runtime source is not enough to define a model",
+        ),
+        "source",
+    )
+    runtime_claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.theory-boundary",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Cache refresh did not happen immediately in this run.",
+            "--source",
+            runtime_source_id,
+            "--note",
+            "runtime-only observation",
+        ),
+        "claim",
+    )
+
+    blocked_runtime_model = run_cli(
+        context,
+        "record-model",
+        "--knowledge-class",
+        "investigation",
+        "--domain",
+        "smartpick",
+        "--scope",
+        "demo.theory-boundary",
+        "--aspect",
+        "cache-refresh",
+        "--status",
+        "working",
+        "--summary",
+        "Runtime-only observation must not define the system model.",
+        "--claim",
+        runtime_claim_id,
+        "--note",
+        "blocked runtime-only model",
+        check=False,
+    )
+    assert blocked_runtime_model.returncode == 1
+    assert "user-confirmed theory claim" in blocked_runtime_model.stdout
+
+    tentative_theory_source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.theory-boundary",
+            "--source-kind",
+            "theory",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "agent",
+            "--origin-ref",
+            "pytest agent hypothesis",
+            "--quote",
+            "The cache may refresh only at startup.",
+            "--note",
+            "agent theory source",
+        ),
+        "source",
+    )
+    tentative_theory_claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.theory-boundary",
+            "--plane",
+            "theory",
+            "--status",
+            "tentative",
+            "--statement",
+            "The cache refreshes only at startup.",
+            "--source",
+            tentative_theory_source_id,
+            "--note",
+            "tentative theory claim",
+        ),
+        "claim",
+    )
+
+    blocked_tentative_model = run_cli(
+        context,
+        "record-model",
+        "--knowledge-class",
+        "investigation",
+        "--domain",
+        "smartpick",
+        "--scope",
+        "demo.theory-boundary",
+        "--aspect",
+        "cache-refresh",
+        "--status",
+        "working",
+        "--summary",
+        "Tentative theory must not define the system model.",
+        "--claim",
+        tentative_theory_claim_id,
+        "--note",
+        "blocked tentative model",
+        check=False,
+    )
+    assert blocked_tentative_model.returncode == 1
+    assert "user-confirmed theory claim" in blocked_tentative_model.stdout
+
+    theory_claim_id = user_confirmed_theory_claim(
+        context,
+        "demo.theory-boundary",
+        "User confirms that the cache refreshes only at startup.",
+    )
+    model_id = recorded_id(
+        run_cli(
+            context,
+            "record-model",
+            "--knowledge-class",
+            "investigation",
+            "--domain",
+            "smartpick",
+            "--scope",
+            "demo.theory-boundary",
+            "--aspect",
+            "cache-refresh",
+            "--status",
+            "working",
+            "--summary",
+            "Cache refreshes only at startup.",
+            "--claim",
+            theory_claim_id,
+            "--note",
+            "allowed user-confirmed theory model",
+        ),
+        "model",
+    )
+    flow_id = recorded_id(
+        run_cli(
+            context,
+            "record-flow",
+            "--knowledge-class",
+            "investigation",
+            "--domain",
+            "smartpick",
+            "--scope",
+            "demo.theory-boundary",
+            "--status",
+            "working",
+            "--summary",
+            "Startup-only cache flow.",
+            "--model",
+            model_id,
+            "--precondition-claim",
+            theory_claim_id,
+            "--oracle-success",
+            theory_claim_id,
+            "--step-id",
+            "step-1",
+            "--step-label",
+            "cache initialized at startup",
+            "--step-status",
+            "aligned",
+            "--step-claims",
+            theory_claim_id,
+            "--step-next",
+            "",
+            "--step-open-questions",
+            "",
+            "--step-accepted-deviation-refs",
+            "",
+            "--note",
+            "allowed user-confirmed theory flow",
+        ),
+        "flow",
+    )
+    assert load_record(context, "flow", flow_id)["model_refs"] == [model_id]
+
+
 def test_promote_model_and_mark_stale_are_conservative(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
-    run_cli(
+    claim_id = user_confirmed_theory_claim(
         context,
-        "record-source",
-        "--scope",
         "demo.issue",
-        "--source-kind",
-        "runtime",
-        "--critique-status",
-        "accepted",
-        "--origin-kind",
-        "command",
-        "--origin-ref",
-        "pytest demo",
-        "--quote",
-        "observed timeout before ack",
-        "--note",
-        "runtime source",
+        "User confirms that gateway timeout happens before provider ack.",
     )
-    source_id = only_record_id(context, "source")
-
-    run_cli(
-        context,
-        "record-claim",
-        "--scope",
-        "demo.issue",
-        "--plane",
-        "runtime",
-        "--status",
-        "supported",
-        "--statement",
-        "Gateway times out before provider ack.",
-        "--source",
-        source_id,
-        "--note",
-        "supported runtime claim",
-    )
-    claim_id = only_record_id(context, "claim")
 
     run_cli(
         context,
@@ -4593,43 +4775,12 @@ def test_promote_model_and_mark_stale_are_conservative(tmp_path: Path) -> None:
 def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
-    run_cli(
+    claim_id = user_confirmed_theory_claim(
         context,
-        "record-source",
-        "--scope",
         "demo.bridge",
-        "--source-kind",
-        "runtime",
-        "--critique-status",
-        "accepted",
-        "--origin-kind",
-        "command",
-        "--origin-ref",
-        "pytest bridge",
-        "--quote",
-        "check-r1 returned 200 OK after retry",
-        "--note",
-        "runtime source",
+        "User confirms that Bridge check-r1 recovers after retry.",
     )
-    source_id = only_record_id(context, "source")
-
-    run_cli(
-        context,
-        "record-claim",
-        "--scope",
-        "demo.bridge",
-        "--plane",
-        "runtime",
-        "--status",
-        "supported",
-        "--statement",
-        "Bridge check-r1 recovers after retry.",
-        "--source",
-        source_id,
-        "--note",
-        "supported runtime claim",
-    )
-    claim_id = only_record_id(context, "claim")
+    source_id = load_record(context, "claim", claim_id)["source_refs"][0]
 
     run_cli(
         context,
@@ -4723,7 +4874,7 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     assert "Reasoning Case" in reasoning
     assert claim_id in reasoning
     assert source_id in reasoning
-    assert "check-r1 returned 200 OK after retry" in reasoning
+    assert "User confirms that Bridge check-r1 recovers after retry." in reasoning
     assert "every listed claim has source refs" in reasoning
 
 

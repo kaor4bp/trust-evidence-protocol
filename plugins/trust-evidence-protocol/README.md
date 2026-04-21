@@ -1045,12 +1045,16 @@ Guideline disclosure for code edits:
   - creates a canonical `MODEL-*` record
   - represents an evidence-backed picture for one `scope + aspect`
   - remains strictly derivative from `claim_refs`
+  - active models (`draft | working | stable | contested`) may depend only on `CLM-*` records with `plane=theory`, `status=supported|corroborated`, and an accepted user/user-prompt theory source
+  - runtime-only, code-only, agent-theory, or tentative claims can support investigation, but cannot define the model until converted into a user-confirmed theory claim
   - attaches the current project automatically and accepts explicit `--project` / `--task`
 
 - `record-flow`
   - creates a canonical `FLOW-*` record
   - represents one integrated flow with `preconditions`, `oracle`, and step-level status
   - binds the flow to `model_refs`
+  - active flow preconditions, oracle claims, and step claims follow the same user-confirmed theory claim rule as models
+  - flow `hypothesis_refs` are not allowed while the flow is active; keep hypotheses as `CLM-*` until the user confirms the theory
   - attaches the current project automatically and accepts explicit `--project` / `--task`
 
 - `record-open-question`

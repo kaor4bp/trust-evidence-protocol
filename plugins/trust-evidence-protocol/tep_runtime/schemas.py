@@ -59,9 +59,11 @@ PLAN_STATUSES = {"proposed", "active", "blocked", "completed", "abandoned"}
 DEBT_STATUSES = {"open", "accepted", "scheduled", "resolved", "invalid", "wont-fix"}
 MODEL_KNOWLEDGE_CLASSES = {"domain", "investigation"}
 MODEL_STATUSES = {"draft", "working", "stable", "contested", "stale", "superseded"}
+MODEL_FLOW_AUTHORITY_STATUSES = {"draft", "working", "stable", "contested"}
 FLOW_STEP_STATUSES = {"aligned", "contradicted", "unresolved", "accepted-deviation"}
 OPEN_QUESTION_STATUSES = {"open", "resolved", "deferred", "invalid"}
 PRIORITY_LEVELS = {"critical", "high", "medium", "low"}
+USER_CONFIRMATION_ORIGINS = {"user", "user_prompt"}
 REF_KEYS = {
     "source_refs",
     "support_refs",
@@ -118,6 +120,35 @@ def artifact_ref_exists(record_path: Path, artifact_ref: str) -> bool:
         if candidate.exists() and root is not None and candidate.is_relative_to(root.resolve()):
             return True
     return False
+
+
+def claim_has_user_confirmed_theory_source(records: dict[str, dict], claim: dict) -> bool:
+    for ref in safe_list(claim, "source_refs"):
+        source = records.get(ref)
+        if not source or source.get("record_type") != "source":
+            continue
+        origin = source.get("origin", {})
+        origin_kind = str(origin.get("kind", "")).strip() if isinstance(origin, dict) else ""
+        if (
+            str(source.get("source_kind", "")).strip() == "theory"
+            and str(source.get("critique_status", "")).strip() == "accepted"
+            and origin_kind in USER_CONFIRMATION_ORIGINS
+        ):
+            return True
+    return False
+
+
+def claim_is_user_confirmed_theory(records: dict[str, dict], ref: str) -> bool:
+    claim = records.get(ref)
+    if not claim or claim.get("record_type") != "claim":
+        return False
+    if str(claim.get("plane", "")).strip() != "theory":
+        return False
+    if str(claim.get("status", "")).strip() not in {"supported", "corroborated"}:
+        return False
+    if claim_is_fallback(claim):
+        return False
+    return claim_has_user_confirmed_theory_source(records, claim)
 
 
 def validate_record(record_id: str, data: dict) -> list[str]:

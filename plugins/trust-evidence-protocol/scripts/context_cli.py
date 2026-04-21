@@ -58,6 +58,7 @@ from context_lib import (
     LOGIC_SOLVER_BACKENDS,
     LOGIC_SOLVER_MODES,
     LOGIC_SOLVER_OPTIONAL_BACKENDS,
+    MODEL_FLOW_AUTHORITY_STATUSES,
     MODEL_KNOWLEDGE_CLASSES,
     MODEL_STATUSES,
     NEXT_STEP_INTENTS,
@@ -83,6 +84,7 @@ from context_lib import (
     WORKING_CONTEXT_KINDS,
     WORKING_CONTEXT_STATUSES,
     WORKSPACE_STATUSES,
+    claim_is_user_confirmed_theory,
     add_remove_values,
     access_report_payload,
     access_report_text_lines,
@@ -6886,6 +6888,11 @@ def cmd_record_model(
     records, exit_code = load_clean_context(root)
     if exit_code:
         return 1
+    authority_errors = model_authority_errors(records, status, claim_refs, hypothesis_refs)
+    if authority_errors:
+        for message in authority_errors:
+            print(message)
+        return 1
 
     payload = build_model_payload(
         record_id=next_record_id(records, "MODEL-"),
@@ -6908,6 +6915,74 @@ def cmd_record_model(
         note=note,
     )
     return persist_candidate(root, records, payload, "model")
+
+
+def model_authority_errors(
+    records: dict[str, dict],
+    status: str,
+    claim_refs: list[str],
+    hypothesis_refs: list[str],
+) -> list[str]:
+    if status not in MODEL_FLOW_AUTHORITY_STATUSES:
+        return []
+    errors = []
+    fallback_refs = [ref for ref in claim_refs if ref in records and claim_is_fallback(records[ref])]
+    if fallback_refs:
+        errors.append("lifecycle fallback claim(s) cannot anchor active models: " + ", ".join(fallback_refs))
+    non_authoritative = [
+        ref
+        for ref in claim_refs
+        if ref in records and not claim_is_user_confirmed_theory(records, ref)
+    ]
+    if non_authoritative:
+        errors.append(
+            "active model must depend only on user-confirmed theory claim(s): "
+            + ", ".join(non_authoritative)
+        )
+    if [ref for ref in hypothesis_refs if str(ref).strip()]:
+        errors.append("active model cannot rely on tentative hypothesis_refs")
+    return errors
+
+
+def flow_authority_errors(
+    records: dict[str, dict],
+    status: str,
+    preconditions: dict,
+    oracle: dict,
+    steps: list[dict],
+) -> list[str]:
+    if status not in MODEL_FLOW_AUTHORITY_STATUSES:
+        return []
+    errors = []
+    for field_name, block in (("preconditions", preconditions), ("oracle", oracle)):
+        for key in ("claim_refs", "success_claim_refs", "failure_claim_refs"):
+            refs = block.get(key, [])
+            if not isinstance(refs, list):
+                continue
+            non_authoritative = [
+                ref
+                for ref in refs
+                if ref in records and not claim_is_user_confirmed_theory(records, ref)
+            ]
+            if non_authoritative:
+                errors.append(
+                    f"active flow {field_name} must depend only on user-confirmed theory claim(s): "
+                    + ", ".join(sorted(set(non_authoritative)))
+                )
+        if [ref for ref in block.get("hypothesis_refs", []) if str(ref).strip()]:
+            errors.append(f"active flow {field_name} cannot rely on tentative hypothesis_refs")
+    for step in steps:
+        non_authoritative = [
+            ref
+            for ref in step.get("claim_refs", [])
+            if ref in records and not claim_is_user_confirmed_theory(records, ref)
+        ]
+        if non_authoritative:
+            errors.append(
+                "active flow step must depend only on user-confirmed theory claim(s): "
+                + ", ".join(non_authoritative)
+            )
+    return errors
 
 
 def cmd_record_flow(
@@ -6949,6 +7024,11 @@ def cmd_record_flow(
         oracle_hypothesis_refs,
         oracle_note,
     )
+    authority_errors = flow_authority_errors(records, status, preconditions, oracle, steps)
+    if authority_errors:
+        for message in authority_errors:
+            print(message)
+        return 1
 
     payload = build_flow_payload(
         record_id=next_record_id(records, "FLOW-"),
