@@ -210,6 +210,10 @@ Operational layers:
 
 Operational layers guide attention and continuity.
 They do not prove truth unless their underlying `CLM-*` records prove it.
+Never say that a fact, rule, permission, or restriction was "saved as `INP-*`".
+Say the input was captured as `INP-*`, then classify it into `SRC-*`, `CLM-*`,
+`GLD-*`, `PRM-*`, `RST-*`, or another canonical record and link it through
+`derived_record_refs` / `input_refs`.
 The current workspace should be visible to the user during hydration; a record may lack precise `project_refs`, but should not lack `workspace_refs` once a current workspace exists.
 `CIX-*` entries guide where to inspect, but file behavior and guideline compliance still require `SRC-*`/`CLM-*` support before they become proof.
 `WCTX-*` and `topic_index/` guide what to read next, but they must not appear as decisive proof in evidence chains.
@@ -484,6 +488,7 @@ For project-claim work:
 5. If beginning or switching to a substantial repeated `task_type`, review past precedents when available.
 6. Search existing TEP context records before deriving from scratch.
 7. Treat hook-captured `INP-*` records as prompt provenance, then classify incoming user messages, files, diffs, docs, outputs, logs, and memory records into appropriate `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, `PRP-*`, or other records when they matter.
+   If `review/inputs.md` reports unclassified input candidates, classify or explicitly defer them before claiming they are remembered facts/rules.
 8. Reconcile new observations against existing supported/corroborated `CLM-*` records.
 9. Publish a `Reasoning Checkpoint` before long or plan-changing analysis.
 10. Build and validate an `Evidence Chain` before non-trivial action.

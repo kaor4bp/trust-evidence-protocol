@@ -264,11 +264,13 @@ Validation candidates are not proof and do not make a claim supported.
 Prompt capture mechanics:
 
 - `record-input` creates canonical `INP-*` provenance records.
+- `INP-*` means "the agent received this input"; it never means "the fact/rule was memorized".
 - UserPromptSubmit hook capture follows `settings.input_capture.user_prompts`.
 - `capture` stores the prompt text in the `INP-*` record.
 - `metadata-only` stores a placeholder and prompt/session metadata without raw text.
 - `off` disables prompt capture.
 - The hook rehydrates after a successful capture so prompt provenance does not leave the next agent turn mechanically stale.
+- `review-context` writes `review/inputs.md` and warns when a fact/rule/guideline-like `INP-*` has no valid `derived_record_refs`.
 
 ## Agent Operating Path
 
@@ -952,6 +954,7 @@ Guideline disclosure for code edits:
 
 - `record-input`
   - creates a canonical `INP-*` provenance record for prompts, referenced files, attachments, or tool payloads
+  - prints a reminder that `INP-*` is provenance only, not proof
   - requires explicit `input_kind`, `origin.kind`, `origin.ref`, `scope`, and `note`
   - requires prompt `text` or `artifact_refs`
   - accepts `--text-stdin` for hook capture without passing large prompts as command arguments
@@ -1122,7 +1125,9 @@ Current prioritization behavior:
 
 - canonical input records live in `records/input/INP-*.json`
 - input records are not proof and cannot support truth directly
+- do not say "fact saved as `INP-*`"; say "input captured as `INP-*`" and then create/link the derived `SRC-*`, `CLM-*`, `GLD-*`, `PRM-*`, or `RST-*`
 - use `derived_record_refs` to record canonical records produced from the input
+- `review/inputs.md` lists classification-worthy inputs that still lack valid `derived_record_refs`
 - use `input_refs` on other records when the input itself must remain traceable
 - fresh orphan `INP-*` records are retained until `settings.cleanup.orphan_input_stale_after_days`
 - stale orphan `INP-*` records should be archived before deletion is considered

@@ -2735,13 +2735,79 @@ def cmd_build_reasoning_case(
     return 0
 
 
+INPUT_CLASSIFICATION_TERMS = {
+    "claim",
+    "fact",
+    "guideline",
+    "hypothesis",
+    "permission",
+    "restriction",
+    "rule",
+    "should",
+    "must",
+    "candidate",
+    "клейм",
+    "факт",
+    "гипотез",
+    "правил",
+    "надо",
+    "нужно",
+}
+
+
+def input_needs_classification(data: dict, records: dict[str, dict]) -> bool:
+    if data.get("record_type") != "input":
+        return False
+    derived_refs = [
+        str(ref).strip()
+        for ref in data.get("derived_record_refs", [])
+        if str(ref).strip() in records
+    ]
+    if derived_refs:
+        return False
+    haystack = " ".join(
+        [
+            str(data.get("text", "")),
+            str(data.get("note", "")),
+            " ".join(str(tag) for tag in data.get("tags", []) if str(tag).strip()),
+        ]
+    ).lower()
+    return any(term in haystack for term in INPUT_CLASSIFICATION_TERMS)
+
+
+def unclassified_input_review_lines(records: dict[str, dict]) -> list[str]:
+    lines = [
+        "# Generated Input Classification Review",
+        "",
+        "INP-* records are prompt provenance only. They are not facts, rules, permissions, "
+        "restrictions, or proof until classified into canonical records.",
+        "",
+    ]
+    for record_id, data in sorted(records.items()):
+        if not input_needs_classification(data, records):
+            continue
+        summary = concise(str(data.get("text") or data.get("note") or ""), 180)
+        lines.append(
+            f"- `{record_id}` appears classification-worthy but has no valid `derived_record_refs`: {summary}"
+        )
+    if len(lines) == 4:
+        lines.append("- No unclassified input candidates detected.")
+    return lines
+
+
 def cmd_review_context(root: Path) -> int:
     records, errors = collect_validation_errors(root)
     write_validation_report(root, errors)
     conflict_lines = refresh_generated_outputs(root, records)
+    input_lines = unclassified_input_review_lines(records)
+    write_text_file(root / "review" / "inputs.md", "\n".join(input_lines) + "\n")
     if errors:
         print_errors(errors)
         return 1
+    issue_count = sum(1 for line in input_lines if line.startswith("- `INP-"))
+    if issue_count:
+        print(f"{root / 'review' / 'inputs.md'}: {issue_count} unclassified input candidate(s)")
+        print("INP-* is prompt provenance only; classify into SRC/CLM/GLD/etc before calling it fact or rule.")
     if conflict_lines:
         print(f"{root / 'review' / 'conflicts.md'}: {len(conflict_lines)} conflict issue(s)")
         print("Reviewed context with conflict issues; flow may continue, but conflict-aware preflight may still block planning or mutation.")

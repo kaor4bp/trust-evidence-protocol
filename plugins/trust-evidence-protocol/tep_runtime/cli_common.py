@@ -143,6 +143,11 @@ def persist_candidate(
     refresh_generated_outputs(root, updated_records)
     invalidate_hydration_state(root, f"recorded {record_type} {payload['id']}")
     print(f"Recorded {record_type} {payload['id']} at {record_path(root, record_type, payload['id'])}")
+    if record_type == "input":
+        print(
+            "Input records are prompt provenance only; classify them into "
+            "SRC/CLM/GLD/PRM/RST/etc before calling them facts, rules, or permissions."
+        )
     return 0
 
 

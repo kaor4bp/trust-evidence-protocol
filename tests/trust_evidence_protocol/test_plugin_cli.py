@@ -288,13 +288,19 @@ def test_record_input_creates_prompt_provenance_and_runtime_configures_capture(t
     input_id = recorded_id(result, "input")
     record = load_record(context, "input", input_id)
 
+    assert "Input records are prompt provenance only" in result.stdout
     assert input_id.startswith("INP-")
     assert record["text"] == prompt
     assert record["input_kind"] == "user_prompt"
     assert record["origin"] == {"kind": "user", "ref": "chat-turn-1"}
     assert record["session_ref"] == "session-1"
     assert record["tags"] == ["guideline-candidate"]
-    assert run_cli(context, "review-context").returncode == 0
+    review = run_cli(context, "review-context")
+    assert review.returncode == 0
+    assert "unclassified input candidate" in review.stdout
+    input_review = (context / "review" / "inputs.md").read_text(encoding="utf-8")
+    assert input_id in input_review
+    assert "prompt provenance only" in input_review
 
 
 def test_record_feedback_creates_source_and_debt(tmp_path: Path) -> None:
