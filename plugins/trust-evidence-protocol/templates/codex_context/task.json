@@ -6,6 +6,7 @@
   "description": "Current execution focus for the agent.",
   "status": "active",
   "task_type": "investigation",
+  "execution_mode": "manual",
   "related_claim_refs": [
     "CLM-YYYYMMDD-xxxxxxxx"
   ],

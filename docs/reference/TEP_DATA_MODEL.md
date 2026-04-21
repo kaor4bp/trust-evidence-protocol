@@ -279,7 +279,8 @@ workspace from leaking into each other.
 
 `TASK-*` records define execution focus.
 
-They may contain task type, related claims/models/flows/open questions, plans/debt/actions, and restrictions.
+They may contain task type, `execution_mode=manual|autonomous`, related claims/models/flows/open questions, plans/debt/actions, and restrictions.
+Autonomous tasks are a runtime continuation contract: the agent should only stop when the task is done, blocked, or waiting for a user answer.
 
 Tasks do not prove truth or grant permission.
 

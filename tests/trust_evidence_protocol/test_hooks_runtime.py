@@ -15,6 +15,7 @@ RUNTIME_GATE = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "
 HYDRATE_WRAPPER = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / "hydrate_context.sh"
 PREFLIGHT_WRAPPER = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / "preflight_task.sh"
 HOOK_DIR = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / "codex"
+CLAUDE_HOOK_DIR = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / "claude"
 
 
 def run_script(script: Path, payload: dict | None = None, *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -467,6 +468,92 @@ def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:
         (context / "records" / "task" / f"{stopped_task_id}.json").read_text(encoding="utf-8")
     )
     assert stopped_task["status"] == "stopped"
+
+
+def test_autonomous_task_stop_guard_requires_terminal_outcome(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    start = run_cli(
+        context,
+        "start-task",
+        "--scope",
+        "demo.autonomous",
+        "--title",
+        "Autonomous completion guard",
+        "--autonomous",
+        "--note",
+        "autonomous task must not stop silently",
+    )
+    task_id = recorded_id(start, "task")
+    task = json.loads((context / "records" / "task" / f"{task_id}.json").read_text(encoding="utf-8"))
+    assert task["execution_mode"] == "autonomous"
+
+    hydrate = run_runtime(context, "hydrate-context")
+    assert f"Current task: {task_id}" in hydrate.stdout
+    assert "mode=autonomous" in hydrate.stdout
+
+    blocked = run_runtime(context, "stop-guard", "--last-assistant-message", "partial status", check=False)
+    assert blocked.returncode == 1
+    assert "Autonomous TASK-* cannot stop" in blocked.stdout
+    assert "TEP TASK OUTCOME: done" in blocked.stdout
+
+    accepted = run_runtime(
+        context,
+        "stop-guard",
+        "--last-assistant-message",
+        "TEP TASK OUTCOME: done\nCompleted the requested work.",
+    )
+    assert "Autonomous task stop accepted: done" in accepted.stdout
+
+    codex_payload = hook_json(
+        HOOK_DIR / "stop_guard.py",
+        {
+            "cwd": str(context.parent),
+            "last_assistant_message": "Stopping without classifying the autonomous task.",
+        },
+    )
+    assert codex_payload["decision"] == "block"
+    assert codex_payload["hookSpecificOutput"]["hookEventName"] == "Stop"
+    assert "TEP TASK OUTCOME" in codex_payload["reason"]
+
+    claude_payload = hook_json(
+        CLAUDE_HOOK_DIR / "stop_guard.py",
+        {
+            "cwd": str(context.parent),
+            "last_assistant_message": "Stopping without classifying the autonomous task.",
+        },
+    )
+    assert claude_payload["decision"] == "block"
+    assert claude_payload["hookSpecificOutput"]["hookEventName"] == "Stop"
+    assert "TEP TASK OUTCOME" in claude_payload["reason"]
+
+    recursive = run_script(
+        HOOK_DIR / "stop_guard.py",
+        {
+            "cwd": str(context.parent),
+            "last_assistant_message": "Still no marker.",
+            "stop_hook_active": True,
+        },
+    )
+    assert recursive.stdout.strip() == ""
+
+
+def test_manual_task_stop_guard_allows_silent_stop(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    run_cli(
+        context,
+        "start-task",
+        "--scope",
+        "demo.manual",
+        "--title",
+        "Manual task",
+        "--note",
+        "manual task should not require terminal outcome marker",
+    )
+    run_runtime(context, "hydrate-context")
+
+    allowed = run_runtime(context, "stop-guard", "--last-assistant-message", "ordinary final answer")
+    assert allowed.stdout.strip() == ""
 
 
 def test_project_and_restriction_layers_scope_context(tmp_path: Path) -> None:

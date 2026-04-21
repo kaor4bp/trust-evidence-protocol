@@ -35,6 +35,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/claude/stop_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

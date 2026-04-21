@@ -337,6 +337,8 @@ def test_install_local_plugin_script_creates_single_active_cache_version(tmp_pat
     claude_hooks = json.loads((claude_cache / version / "hooks" / "claude" / "hooks.json").read_text(encoding="utf-8"))
     user_prompt_command = claude_hooks["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
     assert "\"${CLAUDE_PLUGIN_ROOT}/hooks/claude/user_prompt_hydration_notice.py\"" in user_prompt_command
+    stop_command = claude_hooks["hooks"]["Stop"][0]["hooks"][0]["command"]
+    assert "\"${CLAUDE_PLUGIN_ROOT}/hooks/claude/stop_guard.py\"" in stop_command
     assert (cache / "_archived-pre-active" / "0.1.1" / "old.txt").read_text(encoding="utf-8") == "old"
     assert (claude_cache / "_archived-pre-active" / "0.1.1" / "old.txt").read_text(encoding="utf-8") == "old"
     active_dirs = sorted(path.name for path in cache.iterdir() if path.is_dir())

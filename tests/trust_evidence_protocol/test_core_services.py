@@ -1428,7 +1428,7 @@ def test_reasoning_case_core_builds_payload_and_text() -> None:
         "# Reasoning Case",
         "",
         'Current Project: `PRJ-20260418-project1` status=`active` key=`tep` title="TEP Project"',
-        'Current Task: `TASK-20260418-task111` status=`active` type=`coding` scope=`tep-runtime` '
+        'Current Task: `TASK-20260418-task111` status=`active` type=`coding` mode=`manual` scope=`tep-runtime` '
         'title="Extract reasoning case"',
         "Requested Task: extract reasoning case flow",
         "",
@@ -1746,6 +1746,7 @@ def test_task_core_builds_payload_and_lifecycle_mutations() -> None:
         scope=" tep-plugin-development ",
         title=" Extract TASK helpers ",
         task_type=" coding ",
+        execution_mode=" autonomous ",
         description=" Move pure task logic. ",
         related_claim_refs=["CLM-20260418-aaaa1111"],
         related_model_refs=["MODEL-20260418-bbbb2222"],
@@ -1766,6 +1767,7 @@ def test_task_core_builds_payload_and_lifecycle_mutations() -> None:
         "description": "Move pure task logic.",
         "status": "active",
         "task_type": "coding",
+        "execution_mode": "autonomous",
         "related_claim_refs": ["CLM-20260418-aaaa1111"],
         "related_model_refs": ["MODEL-20260418-bbbb2222"],
         "related_flow_refs": ["FLOW-20260418-cccc3333"],
@@ -1781,11 +1783,11 @@ def test_task_core_builds_payload_and_lifecycle_mutations() -> None:
         "note": "task note",
     }
     assert task_summary_line(task) == (
-        '`TASK-20260418-abcdef12` status=`active` type=`coding` scope=`tep-plugin-development` '
+        '`TASK-20260418-abcdef12` status=`active` type=`coding` mode=`autonomous` scope=`tep-plugin-development` '
         'title="Extract TASK helpers"'
     )
     assert task_detail_lines(task) == [
-        '- `TASK-20260418-abcdef12` status=`active` type=`coding` scope=`tep-plugin-development` title="Extract TASK helpers"',
+        '- `TASK-20260418-abcdef12` status=`active` type=`coding` mode=`autonomous` scope=`tep-plugin-development` title="Extract TASK helpers"',
         "  description: Move pure task logic.",
         "  related_claim_refs: ['CLM-20260418-aaaa1111']",
         "  related_model_refs: ['MODEL-20260418-bbbb2222']",
@@ -1917,7 +1919,7 @@ def test_task_core_builds_payload_and_lifecycle_mutations() -> None:
     assert review_lines[:6] == [
         "# Precedent Review",
         'Current task: `TASK-20260418-abcdef12` status=`active` type=`investigation` '
-        'scope=`tep-plugin-development` title="Extract TASK helpers"',
+        'mode=`autonomous` scope=`tep-plugin-development` title="Extract TASK helpers"',
         "task_type=`investigation`",
         'query="prompt retry"',
         "",

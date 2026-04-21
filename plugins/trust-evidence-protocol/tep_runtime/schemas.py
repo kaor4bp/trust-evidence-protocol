@@ -42,6 +42,7 @@ GUIDELINE_APPLIES_TO = {"global", "project", "task"}
 GUIDELINE_PRIORITIES = {"required", "preferred", "optional"}
 PROPOSAL_STATUSES = {"active", "accepted", "rejected", "superseded", "abandoned"}
 TASK_STATUSES = {"active", "completed", "paused", "stopped"}
+TASK_EXECUTION_MODES = {"manual", "autonomous"}
 TASK_TYPES = {
     "general",
     "investigation",
@@ -532,6 +533,9 @@ def validate_record(record_id: str, data: dict) -> list[str]:
             errors.append("title is required")
         if str(data.get("status", "")).strip() not in TASK_STATUSES:
             errors.append("invalid task status")
+        execution_mode = str(data.get("execution_mode", "manual")).strip() or "manual"
+        if execution_mode not in TASK_EXECUTION_MODES:
+            errors.append("invalid task execution_mode")
         task_type = str(data.get("task_type", "general")).strip() or "general"
         if task_type not in TASK_TYPES:
             errors.append("invalid task_type")

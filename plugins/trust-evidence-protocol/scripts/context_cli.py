@@ -77,6 +77,7 @@ from context_lib import (
     CURIOSITY_MAP_VOLUMES,
     TAP_KINDS,
     TASK_STATUSES,
+    TASK_EXECUTION_MODES,
     TASK_TYPES,
     TOPIC_PREFILTER_BACKENDS,
     TOPIC_PREFILTER_OPTIONAL_BACKENDS,
@@ -1369,6 +1370,7 @@ def cmd_start_task(
     scope: str,
     title: str,
     task_type: str,
+    execution_mode: str,
     description: str | None,
     related_claim_refs: list[str],
     related_model_refs: list[str],
@@ -1398,6 +1400,7 @@ def cmd_start_task(
         scope=scope,
         title=title,
         task_type=task_type,
+        execution_mode=execution_mode,
         description=description,
         related_claim_refs=related_claim_refs,
         related_model_refs=related_model_refs,
@@ -8097,6 +8100,8 @@ def parse_args() -> argparse.Namespace:
     start_task.add_argument("--scope", required=True)
     start_task.add_argument("--title", required=True)
     start_task.add_argument("--type", dest="task_type", choices=sorted(TASK_TYPES), default="general")
+    start_task.add_argument("--execution-mode", choices=sorted(TASK_EXECUTION_MODES), default="manual")
+    start_task.add_argument("--autonomous", action="store_true", help="Shortcut for --execution-mode autonomous.")
     start_task.add_argument("--description")
     start_task.add_argument("--related-claim", dest="related_claim_refs", action="append", default=[])
     start_task.add_argument("--related-model", dest="related_model_refs", action="append", default=[])
@@ -9346,6 +9351,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 scope=args.scope,
                 title=args.title,
                 task_type=args.task_type,
+                execution_mode="autonomous" if args.autonomous else args.execution_mode,
                 description=args.description,
                 related_claim_refs=args.related_claim_refs,
                 related_model_refs=args.related_model_refs,

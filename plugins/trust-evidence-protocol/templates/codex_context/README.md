@@ -154,6 +154,7 @@ Default hook modes:
 - `hooks.user_prompt_notice = "remind"`
 - `hooks.pre_tool_use_guard = "enforce"`
 - `hooks.post_tool_use_review = "invalidate"`
+- `hooks.stop_guard = "enforce"`
 - `hooks.verbosity = "normal"`
 
 Context budget defaults:

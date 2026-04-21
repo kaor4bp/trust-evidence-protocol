@@ -14,6 +14,7 @@ Supported hook settings:
 - `hooks.user_prompt_notice`: `off | on`
 - `hooks.pre_tool_use_guard`: `off | warn | enforce`
 - `hooks.post_tool_use_review`: `off | notify | invalidate`
+- `hooks.stop_guard`: `off | warn | enforce`
 
 Human-facing hook `systemMessage` values use the `🛡️` TEP marker.
 Do not add the marker to canonical records or machine-readable ids.
@@ -34,10 +35,14 @@ Current adapters:
   - runs on Codex `PostToolUse` for `Bash`
   - can warn or mark hydration stale after obvious mutating shell commands complete
   - injects a warning to re-run hydration before relying on project facts
+- `stop_guard.py`
+  - runs on `Stop` when the host supports it
+  - blocks ending an active `execution_mode=autonomous` task unless the final answer declares `TEP TASK OUTCOME: done`, `TEP TASK OUTCOME: blocked`, or `TEP TASK OUTCOME: user-question`
+  - allows one recursive Stop-hook continuation to end to avoid hook loops
 
 These are intentionally conservative:
 
-- no automatic `Stop` continuation loops
+- `Stop` can only force a continuation when the host exposes a Stop hook
 - `PreToolUse` only covers obvious Bash mutations
 - `PostToolUse` cannot undo completed side effects
 - no claim of complete enforcement across non-Bash tools

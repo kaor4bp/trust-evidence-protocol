@@ -14,6 +14,7 @@ def build_task_payload(
     scope: str,
     title: str,
     task_type: str,
+    execution_mode: str,
     description: str | None,
     related_claim_refs: list[str],
     related_model_refs: list[str],
@@ -34,6 +35,7 @@ def build_task_payload(
         "description": (description or "").strip(),
         "status": "active",
         "task_type": task_type.strip() or "general",
+        "execution_mode": execution_mode.strip() or "manual",
         "related_claim_refs": related_claim_refs,
         "related_model_refs": related_model_refs,
         "related_flow_refs": related_flow_refs,
@@ -52,8 +54,9 @@ def build_task_payload(
 
 def task_summary_line(task: dict) -> str:
     task_type = str(task.get("task_type", "general")).strip() or "general"
+    execution_mode = str(task.get("execution_mode", "manual")).strip() or "manual"
     return (
-        f"`{task.get('id')}` status=`{task.get('status')}` type=`{task_type}` scope=`{task.get('scope')}` "
+        f"`{task.get('id')}` status=`{task.get('status')}` type=`{task_type}` mode=`{execution_mode}` scope=`{task.get('scope')}` "
         f"title=\"{concise(task.get('title', ''), 160)}\""
     )
 

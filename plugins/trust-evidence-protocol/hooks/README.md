@@ -13,6 +13,9 @@ Current wrappers:
   - calls `scripts/runtime_gate.py hydrate-context`
 - `preflight_task.sh`
   - calls `scripts/runtime_gate.py preflight-task`
+- `hooks/codex/stop_guard.py` and `hooks/claude/stop_guard.py`
+  - call `scripts/runtime_gate.py stop-guard`
+  - block unclassified final responses only for active autonomous tasks
 
 Use these wrappers from hook adapters or any external runner that needs a stable path.
 

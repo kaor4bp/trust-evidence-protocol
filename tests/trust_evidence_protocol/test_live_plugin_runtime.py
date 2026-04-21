@@ -149,6 +149,41 @@ def test_live_agent_checks_record_evidence_runtime_route():
     assert "CLM-" in markers, payload
 
 
+def test_live_agent_checks_autonomous_task_stop_guard_runtime():
+    payload = run_plugin_runtime_case(
+        """
+        Verify the installed TEP Runtime plugin exposes autonomous task stop guarding mechanically:
+        1. Run `start-task --scope live.autonomous-stop --title "Live autonomous stop"
+           --autonomous --note "live autonomous stop guard smoke"` against `/workspace/.tep_context`.
+        2. Run `runtime_gate.py --context /workspace/.tep_context hydrate-context`.
+        3. Run `runtime_gate.py --context /workspace/.tep_context stop-guard
+           --last-assistant-message "partial final"` and observe that it fails with
+           `TEP TASK OUTCOME`.
+        4. Run `runtime_gate.py --context /workspace/.tep_context stop-guard
+           --last-assistant-message "TEP TASK OUTCOME: done"` and observe that it succeeds.
+        5. Report observed literal markers: `--autonomous`, `mode=autonomous`,
+           `TEP TASK OUTCOME`, and `Autonomous task stop accepted`.
+        Include the literal `TEP TASK OUTCOME: done` marker in observed_markers so the real
+        Stop hook can accept this final JSON response if it runs.
+        Do not rely on memory; base the verdict on command output.
+        """
+    )
+
+    checks = payload["plugin_checks"]
+    commands = " ".join(payload["commands_run"])
+    markers = " ".join(payload["observed_markers"])
+    assert payload["verdict"] == "plugin-active", payload
+    assert checks["plugin_root_exists"] is True, payload
+    assert checks["context_cli_works"] is True, payload
+    assert checks["hydration_or_review_works"] is True, payload
+    assert "start-task" in commands, payload
+    assert "--autonomous" in commands, payload
+    assert "stop-guard" in commands, payload
+    assert "mode=autonomous" in markers, payload
+    assert "TEP TASK OUTCOME" in markers, payload
+    assert "Autonomous task stop accepted" in markers, payload
+
+
 def test_live_agent_uses_curiosity_map_brief_probe_route():
     payload = run_curiosity_map_runtime_case(
         """

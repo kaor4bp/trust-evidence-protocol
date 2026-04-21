@@ -940,10 +940,11 @@ Guideline disclosure for code edits:
 - `show-restrictions [--all]`
   - prints active restrictions for the current project/task, or all restrictions with `--all`
 
-- `start-task --scope ... --title ... --note ... [--project PRJ-*]`
+- `start-task --scope ... --title ... --note ... [--project PRJ-*] [--execution-mode manual|autonomous] [--autonomous]`
   - creates a canonical `TASK-*` record
   - stores the active execution focus in `.codex_context/settings.json.current_task_ref`
   - attaches the current project automatically when `settings.json.current_project_ref` is set
+  - defaults to `execution_mode=manual`; `--autonomous` is a shortcut for `--execution-mode autonomous`
   - refuses to replace an already active current task; use `complete-task` or `stop-task` first
   - refreshes generated views and marks hydration stale
 
@@ -1175,6 +1176,7 @@ Current prioritization behavior:
 - canonical task records live in `records/task/TASK-*.json`
 - the current task pointer lives in `settings.json.current_task_ref`
 - task records have `task_type`, such as `investigation`, `implementation`, `review`, `debugging`, `refactor`, `migration`, `test-writing`, `release`, or `general`
+- task records have `execution_mode=manual|autonomous`; autonomous tasks should keep going until done, blocked, or waiting for a user answer
 - task records may be `active`, `paused`, `completed`, or `stopped`
 - hydration prints the current task when the pointer is set
 - the session-start hook injects the current task into agent context when present
@@ -1182,6 +1184,7 @@ Current prioritization behavior:
 - use `task-drift-check` before substantial work that may not match the current task
 - use `pause-task`, `resume-task`, or `switch-task` instead of silently continuing in the wrong task context
 - use `review-precedents` before repeating a substantial task type to inspect similar past tasks and linked plans/debt/actions/open questions
+- when a `Stop` hook is configured and the current active task is autonomous, the final answer must include one exact marker: `TEP TASK OUTCOME: done`, `TEP TASK OUTCOME: blocked`, or `TEP TASK OUTCOME: user-question`
 
 ## Projects And Restrictions
 
@@ -1343,7 +1346,7 @@ Current behavior is intentionally conservative:
 - If a hook runs from a cwd without a `.tep` anchor, no anchored snapshot exists, and the context has multiple active workspaces, hooks defer automatic hydration and ask for an explicit `.tep` anchor or manual hydrate from the intended workdir
 - `PreToolUse` inspects `Bash` commands for obvious mutating intent and denies them when runtime preflight fails
 - `PostToolUse` marks hydration stale after obvious mutating `Bash` commands complete and injects a re-hydration warning
-- no automatic `Stop` continuation loop is configured
+- `Stop` blocks ending an active autonomous task unless the assistant declares `TEP TASK OUTCOME: done|blocked|user-question`; recursive Stop-hook continuations are allowed once to avoid an infinite loop
 
 Write safety:
 
@@ -1376,7 +1379,8 @@ Hook modes are configured in `.codex_context/settings.json` under:
     "session_start_hydrate": "on",
     "user_prompt_notice": "remind",
     "pre_tool_use_guard": "enforce",
-    "post_tool_use_review": "invalidate"
+    "post_tool_use_review": "invalidate",
+    "stop_guard": "enforce"
   }
 }
 ```
@@ -1393,3 +1397,4 @@ Mode meanings:
 - `remind` also reminds the agent to show public `Reasoning Checkpoint` panels before long analysis or tool-heavy work
 - `pre_tool_use_guard`: `off | warn | enforce`
 - `post_tool_use_review`: `off | notify | invalidate`
+- `stop_guard`: `off | warn | enforce`

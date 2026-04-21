@@ -854,7 +854,7 @@ def test_mcp_uses_cwd_for_local_tep_anchor_resolution(tmp_path: Path) -> None:
     assert "requested: mcp cwd anchor lookup" in text
     assert f"`{workspace_id}` status=`active` key=`mcp-anchored`" in text
     assert f"`{project_id}` status=`active` key=`mcp-project`" in text
-    assert f"`{task_id}` status=`paused` type=`general` scope=`mcp.anchor.task`" in text
+    assert f"`{task_id}` status=`paused` type=`general` mode=`manual` scope=`mcp.anchor.task`" in text
     assert global_task_id not in text
 
     mcp_server_cwd = tmp_path / "mcp-server-cwd"

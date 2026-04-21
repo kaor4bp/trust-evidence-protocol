@@ -331,7 +331,7 @@ Current templates live in `plugins/trust-evidence-protocol/templates/codex_conte
 | `proposal.json` | constructive critique/options | `position`, `proposals`, `risks`, `stop_conditions`, `claim_refs`, `model_refs`, `flow_refs` |
 | `action.json` | intended/executed operation | `kind`, `status`, `safety_class`, `justified_by`, `planned_at` |
 | `project.json` | project boundary | `project_key`, `root_refs`, `related_project_refs`, `status` |
-| `task.json` | execution focus | `task_type`, `status`, `plan_refs`, `debt_refs`, `related_claim_refs` |
+| `task.json` | execution focus | `task_type`, `execution_mode`, `status`, `plan_refs`, `debt_refs`, `related_claim_refs` |
 | `working_context.json` | operational handoff/focus | `context_kind`, `pinned_refs`, `focus_paths`, `assumptions`, `concerns` |
 | `plan.json` | intended future work | `priority`, `status`, `justified_by`, `steps`, `success_criteria` |
 | `debt.json` | persistent liability | `priority`, `status`, `evidence_refs`, `plan_refs` |

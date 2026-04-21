@@ -69,6 +69,8 @@ def raw_runtime_command(argv: list[str]) -> str | None:
 
 VALID_HYDRATION_STATUSES = {"hydrated", "hydrated-with-conflicts"}
 TEP_ICON = "🛡️"
+TASK_OUTCOME_MARKER = "TEP TASK OUTCOME:"
+TASK_TERMINAL_OUTCOMES = {"done", "blocked", "user-question"}
 
 
 def active_workspace_summaries_for_guard(records: dict[str, dict]) -> list[dict]:
@@ -133,6 +135,7 @@ def current_task_summary(root: Path, records: dict[str, dict]) -> dict | None:
         "status": str(task.get("status", "")).strip(),
         "scope": str(task.get("scope", "")).strip(),
         "task_type": str(task.get("task_type", "general")).strip() or "general",
+        "execution_mode": str(task.get("execution_mode", "manual")).strip() or "manual",
         "title": str(task.get("title", "")).strip(),
     }
 
@@ -228,9 +231,10 @@ def active_guideline_summaries(records: dict[str, dict], project_ref: str | None
 def render_current_task(task: dict) -> str:
     title = str(task.get("title", "")).strip()
     title_suffix = f" | {title}" if title else ""
+    execution_mode = str(task.get("execution_mode", "manual")).strip() or "manual"
     return (
         f"Current task: {task.get('id')} | status={task.get('status', '')} "
-        f"| type={task.get('task_type', 'general')} | scope={task.get('scope', '')}{title_suffix}"
+        f"| type={task.get('task_type', 'general')} | mode={execution_mode} | scope={task.get('scope', '')}{title_suffix}"
     )
 
 
@@ -267,9 +271,62 @@ def task_confirmation_token(state: dict) -> str:
             str(task.get("id", "")).strip(),
             str(task.get("status", "")).strip(),
             str(task.get("task_type", "")).strip(),
+            str(task.get("execution_mode", "manual")).strip(),
             str(task.get("scope", "")).strip(),
         ]
     )
+
+
+def parse_task_outcome(message: str) -> str:
+    for line in message.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith(TASK_OUTCOME_MARKER.lower()):
+            value = stripped[len(TASK_OUTCOME_MARKER) :].strip().lower()
+            return value.split()[0].strip("`.,;:") if value else ""
+    return ""
+
+
+def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bool) -> int:
+    state = load_hydration_state(root)
+    current_fingerprint = compute_context_fingerprint(root)
+    stored_fingerprint = str(state.get("fingerprint", ""))
+    status = str(state.get("status", "unhydrated")).strip()
+    if status not in VALID_HYDRATION_STATUSES or stored_fingerprint != current_fingerprint:
+        return 0
+
+    current_task = state.get("current_task")
+    if not isinstance(current_task, dict) or not current_task.get("id"):
+        return 0
+    if str(current_task.get("status", "")).strip() != "active":
+        return 0
+    if str(current_task.get("execution_mode", "manual")).strip() != "autonomous":
+        return 0
+
+    outcome = parse_task_outcome(last_assistant_message)
+    if outcome in TASK_TERMINAL_OUTCOMES:
+        print(f"Autonomous task stop accepted: {outcome}")
+        return 0
+
+    if stop_hook_active:
+        print(
+            "Autonomous task stop guard already forced one continuation for this response; "
+            "allowing stop to avoid an infinite hook loop."
+        )
+        return 0
+
+    print("Autonomous TASK-* cannot stop without an explicit terminal outcome.")
+    print(render_current_task(current_task))
+    print(
+        "Before stopping, state one of these exact markers in the final answer: "
+        "`TEP TASK OUTCOME: done`, `TEP TASK OUTCOME: blocked`, or "
+        "`TEP TASK OUTCOME: user-question`."
+    )
+    print(
+        "Use `done` only if the requested autonomous task is fully handled. "
+        "Use `blocked` only for a concrete blocker. Use `user-question` only when a user answer is required. "
+        "If none applies, continue the task instead of ending the turn."
+    )
+    return 1
 
 
 def cmd_hydrate_context(root: Path, *, allow_unanchored: bool = False) -> int:
@@ -396,7 +453,7 @@ def cmd_show_hydration(root: Path) -> int:
         print(
             "current_task="
             f"{current_task.get('id')} status={current_task.get('status', '')} "
-            f"type={current_task.get('task_type', 'general')} scope={current_task.get('scope', '')} "
+            f"type={current_task.get('task_type', 'general')} mode={current_task.get('execution_mode', 'manual')} scope={current_task.get('scope', '')} "
             f"title={current_task.get('title', '')}"
         )
     active_restrictions = state.get("active_restrictions")
@@ -572,7 +629,7 @@ def parse_args() -> argparse.Namespace:
     if command in FULL_CLI_COMMANDS:
         print(
             "runtime_gate.py only handles hook gates: "
-            "hydrate-context, show-hydration, preflight-task, confirm-task, invalidate-hydration.\n"
+            "hydrate-context, show-hydration, preflight-task, stop-guard, confirm-task, invalidate-hydration.\n"
             f"For `{command}`, use scripts/context_cli.py --context <context> {command}",
             file=sys.stderr,
         )
@@ -599,6 +656,22 @@ def parse_args() -> argparse.Namespace:
     )
     preflight.add_argument("--mode", required=True, choices=["reasoning", "planning", "edit", "action", "final"])
     preflight.add_argument("--kind")
+
+    stop_guard = subparsers.add_parser(
+        "stop-guard",
+        help="Block stopping an autonomous TASK-* unless the assistant declares a terminal task outcome.",
+    )
+    stop_guard.add_argument("--last-assistant-message", default="")
+    stop_guard.add_argument(
+        "--last-assistant-message-stdin",
+        action="store_true",
+        help="Read the last assistant message from stdin.",
+    )
+    stop_guard.add_argument(
+        "--stop-hook-active",
+        action="store_true",
+        help="Allow one recursive Stop-hook continuation to end instead of looping forever.",
+    )
 
     confirm_task = subparsers.add_parser(
         "confirm-task",
@@ -633,6 +706,9 @@ def main() -> None:
         raise SystemExit(cmd_show_hydration(root))
     if args.command == "preflight-task":
         raise SystemExit(cmd_preflight_task(root, mode=args.mode, kind=args.kind))
+    if args.command == "stop-guard":
+        message = sys.stdin.read() if args.last_assistant_message_stdin else args.last_assistant_message
+        raise SystemExit(cmd_stop_guard(root, last_assistant_message=message, stop_hook_active=args.stop_hook_active))
     if args.command == "confirm-task":
         try:
             with context_write_lock(root):

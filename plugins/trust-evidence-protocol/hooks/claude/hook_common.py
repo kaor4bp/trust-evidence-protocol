@@ -469,9 +469,14 @@ def infer_action_kind(command: str, context_root: Path | None = None) -> str | N
     return None
 
 
-def run_runtime_gate(*args: str, cwd: str | Path | None = None) -> subprocess.CompletedProcess[str]:
+def run_runtime_gate(
+    *args: str,
+    input_text: str | None = None,
+    cwd: str | Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(RUNTIME_GATE), *args],
+        input=input_text,
         capture_output=True,
         text=True,
         cwd=str(cwd or REPO_ROOT),

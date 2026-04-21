@@ -28,6 +28,7 @@ HOOK_MODE_VALUES = {
     "user_prompt_notice": {"off", "on", "remind"},
     "pre_tool_use_guard": {"off", "warn", "enforce"},
     "post_tool_use_review": {"off", "notify", "invalidate"},
+    "stop_guard": {"off", "warn", "enforce"},
     "verbosity": {"quiet", "normal", "debug"},
 }
 
@@ -37,6 +38,7 @@ DEFAULT_HOOK_SETTINGS = {
     "user_prompt_notice": "remind",
     "pre_tool_use_guard": "enforce",
     "post_tool_use_review": "invalidate",
+    "stop_guard": "enforce",
     "verbosity": "normal",
 }
 

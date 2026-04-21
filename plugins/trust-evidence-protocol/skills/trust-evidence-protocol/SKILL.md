@@ -203,6 +203,7 @@ Operational layers:
 - `Workspace`: current memory boundary; every new canonical record should link to the current workspace when one is set
 - `Project`: optional narrower repository/product/service/domain boundary and relevance filter inside a workspace
 - `Task`: current execution focus with `task_type` for drift checks and precedent review
+- `Task execution mode`: `manual` lets the agent finish normally; `autonomous` means the agent should continue until the task is done, blocked, or waiting on a user answer
 - `Model`: evidence-backed picture over claims for one domain/aspect
 - `Flow`: integrated process understanding over models and claims
 - `Plan`: persistent intended work
@@ -517,6 +518,7 @@ For project-claim work:
 14. Persist reconstructable sources, claims, guidelines, restrictions, permissions, proposals, actions, models, flows, plans, debt, projects, tasks, and open questions when they will matter later.
 15. Rehydrate when plugin hooks mark context stale.
 16. Complete, pause, or stop the current task when done, deferred, or abandoned.
+17. If the current active task is autonomous, do not end the turn casually. The final answer must include exactly one terminal marker: `TEP TASK OUTCOME: done`, `TEP TASK OUTCOME: blocked`, or `TEP TASK OUTCOME: user-question`. Use no marker if the task should continue.
 
 For small local actions, short form is allowed, but decisive ids and support edges must remain explicit.
 
@@ -543,3 +545,4 @@ For low-risk straightforward work, stay concise, but preserve decisive ids and q
 
 Because plugin UI cannot add arbitrary custom chat components, use chat-native markdown panels.
 Do not replace these panels with prose about the protocol.
+If the current `TASK-*` has `execution_mode=autonomous`, treat a final response as a task outcome declaration. Use `TEP TASK OUTCOME: done` only when the task is actually complete, `TEP TASK OUTCOME: blocked` only for a concrete blocker, and `TEP TASK OUTCOME: user-question` only when a user answer is required. Otherwise continue working instead of ending the turn.
