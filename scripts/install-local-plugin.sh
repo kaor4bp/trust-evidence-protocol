@@ -129,6 +129,45 @@ for root_arg in sys.argv[1:]:
 print("verified bytecode-free install")
 PY
 
+codex_config="${TEP_CODEX_CONFIG:-$HOME/.codex/config.toml}"
+python3 - "$codex_config" "$cache_target" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+cache_target = Path(sys.argv[2])
+if not config_path.exists():
+    raise SystemExit(0)
+
+text = config_path.read_text(encoding="utf-8")
+section_header = "[mcp_servers.trust_evidence_protocol]"
+section_body = "\n".join(
+    [
+        section_header,
+        f'args = ["{cache_target / "mcp" / "tep_server.py"}"]',
+        'command = "python3"',
+        f'cwd = "{cache_target}"',
+        "enabled = true",
+        "",
+        "",
+    ]
+)
+pattern = re.compile(
+    r"(?ms)^\[mcp_servers\.trust_evidence_protocol\]\n.*?(?=^\[|\Z)"
+)
+if pattern.search(text):
+    updated = pattern.sub(section_body, text)
+else:
+    separator = "" if text.endswith("\n") else "\n"
+    updated = f"{text}{separator}\n{section_body}"
+if updated != text:
+    config_path.write_text(updated, encoding="utf-8")
+    print(f"updated Codex TEP MCP server: {cache_target}")
+else:
+    print(f"verified Codex TEP MCP server: {cache_target}")
+PY
+
 echo "active_cache_dirs (codex):"
 find "$cache_base" -mindepth 1 -maxdepth 1 -type d -print | sort
 echo "active_cache_dirs (claude):"

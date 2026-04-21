@@ -79,13 +79,34 @@ def test_install_local_plugin_script_creates_single_active_cache_version(tmp_pat
     stale_cache_bytecode.mkdir(parents=True)
     (stale_local_bytecode / "stale.pyc").write_bytes(b"stale")
     (stale_cache_bytecode / "stale.pyc").write_bytes(b"stale")
+    home = tmp_path / "home"
+    codex_config = home / ".codex" / "config.toml"
+    codex_config.parent.mkdir(parents=True)
+    codex_config.write_text(
+        "\n".join(
+            [
+                'model = "gpt-5.4"',
+                "",
+                "[mcp_servers.trust_evidence_protocol]",
+                'args = ["/old/trust-evidence-protocol/0.1.1/mcp/tep_server.py"]',
+                'command = "python3"',
+                'cwd = "/old/trust-evidence-protocol/0.1.1"',
+                "enabled = true",
+                "",
+                '[plugins."trust-evidence-protocol@home-local-plugins"]',
+                "enabled = true",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     result = subprocess.run(
         [str(INSTALL_LOCAL_PLUGIN)],
         cwd=REPO_ROOT,
         env={
             **os.environ,
-            "HOME": str(tmp_path / "home"),
+            "HOME": str(home),
             "TEP_LOCAL_PLUGIN_SOURCE": str(local_source),
             "TEP_CODEX_PLUGIN_CACHE": str(cache),
             "TEP_CLAUDE_PLUGIN_CACHE": str(claude_cache),
@@ -113,6 +134,10 @@ def test_install_local_plugin_script_creates_single_active_cache_version(tmp_pat
     assert active_dirs == [version, "_archived-pre-active"]
     active_claude_dirs = sorted(path.name for path in claude_cache.iterdir() if path.is_dir())
     assert active_claude_dirs == [version, "_archived-pre-active"]
+    updated_config = codex_config.read_text(encoding="utf-8")
+    assert f'args = ["{cache / version / "mcp" / "tep_server.py"}"]' in updated_config
+    assert f'cwd = "{cache / version}"' in updated_config
+    assert "/old/trust-evidence-protocol/0.1.1" not in updated_config
     installed_roots = [local_source, cache / version, claude_cache / version]
     for root in installed_roots:
         assert not list(root.rglob("__pycache__")), root
