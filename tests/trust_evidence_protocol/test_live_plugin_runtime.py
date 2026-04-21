@@ -115,6 +115,40 @@ def test_live_agent_checks_compact_lookup_help_route():
     assert "telemetry-report" in markers, payload
 
 
+def test_live_agent_checks_record_evidence_runtime_route():
+    payload = run_plugin_runtime_case(
+        """
+        Verify the installed TEP Runtime plugin exposes and executes the mechanical
+        evidence write route:
+        1. Run `help commands` through the installed plugin runtime CLI and observe
+           the literal `record-evidence` marker.
+        2. Run `record-evidence --scope live.record-evidence --kind command-output
+           --command "printf live-record-evidence" --quote "live record-evidence route works"
+           --claim "The live record-evidence route works." --claim-status supported
+           --note "live plugin record-evidence smoke"` against `/workspace/.tep_context`.
+        3. Run `claim-graph --query "record-evidence route" --format json`.
+        4. Report observed literal markers: `record-evidence`, `Recorded source`,
+           `Recorded claim`, `SRC-`, `CLM-`, and `claim-graph`.
+        Do not infer these markers from memory; base the verdict on command output.
+        """
+    )
+
+    checks = payload["plugin_checks"]
+    commands = " ".join(payload["commands_run"])
+    markers = " ".join(payload["observed_markers"])
+    assert payload["verdict"] == "plugin-active", payload
+    assert checks["plugin_root_exists"] is True, payload
+    assert checks["context_cli_works"] is True, payload
+    assert checks["hydration_or_review_works"] is True, payload
+    assert "record-evidence" in commands, payload
+    assert "claim-graph" in commands, payload
+    assert "record-evidence" in markers, payload
+    assert "Recorded source" in markers, payload
+    assert "Recorded claim" in markers, payload
+    assert "SRC-" in markers, payload
+    assert "CLM-" in markers, payload
+
+
 def test_live_agent_uses_curiosity_map_brief_probe_route():
     payload = run_curiosity_map_runtime_case(
         """

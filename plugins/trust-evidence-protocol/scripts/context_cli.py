@@ -2381,7 +2381,7 @@ def cmd_help(topic: str) -> int:
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|model|flow|proposal|final --chain evidence-chain.json",
-            "record-input ... | classify-input --input INP-* --derived-record REF",
+            "record-input ... | record-evidence --kind file-line|command-output|user-confirmation --quote ... [--claim ...] | classify-input --input INP-* --derived-record REF",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
             "start-task --type investigation --scope ... --title ... --note ...",
             "pause-task | resume-task --task TASK-* | switch-task --task TASK-*",
@@ -2591,6 +2591,7 @@ def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str,
             "Use lookup first when unsure where to search.",
             "Treat lookup and generated maps as navigation only, not proof.",
             "Open record-detail or linked-records before citing a canonical record.",
+            "When new support is found, prefer record-evidence over separate manual record-source/record-claim calls.",
             "Use code-search through TEP; do not call external code backends directly in normal work.",
         ],
     }
@@ -6500,6 +6501,225 @@ def cmd_record_source(
     return persist_candidate(root, records, payload, "source")
 
 
+EVIDENCE_KIND_DEFAULTS = {
+    "file-line": ("code", "file"),
+    "command-output": ("runtime", "command"),
+    "user-confirmation": ("theory", "user_prompt"),
+    "artifact": ("runtime", "artifact"),
+}
+
+
+def resolve_record_evidence_origin(
+    kind: str,
+    path_value: str | None,
+    line: int | None,
+    end_line: int | None,
+    command: str | None,
+    input_refs: list[str],
+    artifact_refs: list[str],
+    origin_ref: str | None,
+) -> tuple[str, str, str, list[str]]:
+    source_kind, origin_kind = EVIDENCE_KIND_DEFAULTS[kind]
+    errors: list[str] = []
+    if origin_ref and origin_ref.strip():
+        return source_kind, origin_kind, origin_ref.strip(), errors
+
+    if kind == "file-line":
+        if not path_value or not path_value.strip():
+            errors.append("record-evidence --kind file-line requires --path")
+        if line is None:
+            errors.append("record-evidence --kind file-line requires --line")
+        if line is not None and line <= 0:
+            errors.append("--line must be positive")
+        if end_line is not None and end_line <= 0:
+            errors.append("--end-line must be positive")
+        if line is not None and end_line is not None and end_line < line:
+            errors.append("--end-line must be greater than or equal to --line")
+        if errors:
+            return source_kind, origin_kind, "", errors
+        if end_line and end_line != line:
+            return source_kind, origin_kind, f"{path_value.strip()}:{line}-{end_line}", errors
+        return source_kind, origin_kind, f"{path_value.strip()}:{line}", errors
+
+    if kind == "command-output":
+        if not command or not command.strip():
+            errors.append("record-evidence --kind command-output requires --command")
+            return source_kind, origin_kind, "", errors
+        return source_kind, origin_kind, command.strip(), errors
+
+    if kind == "user-confirmation":
+        if input_refs:
+            return source_kind, origin_kind, "inputs:" + ",".join(input_refs), errors
+        return source_kind, origin_kind, "user-confirmation", errors
+
+    if kind == "artifact":
+        if not artifact_refs:
+            errors.append("record-evidence --kind artifact requires at least one --artifact-ref")
+            return source_kind, origin_kind, "", errors
+        return source_kind, origin_kind, artifact_refs[0], errors
+
+    errors.append(f"unsupported evidence kind: {kind}")
+    return source_kind, origin_kind, "", errors
+
+
+def cmd_record_evidence(
+    root: Path,
+    scope: str,
+    kind: str,
+    quote: str,
+    path_value: str | None,
+    line: int | None,
+    end_line: int | None,
+    command: str | None,
+    input_refs: list[str],
+    artifact_refs: list[str],
+    origin_ref: str | None,
+    critique_status: str,
+    confidence: str | None,
+    project_refs: list[str],
+    task_refs: list[str],
+    tags: list[str],
+    red_flags: list[str],
+    note: str,
+    claim_statement: str | None,
+    claim_plane: str | None,
+    claim_status: str,
+    claim_kind: str | None,
+    support_refs: list[str],
+    contradiction_refs: list[str],
+    derived_from: list[str],
+    recorded_at: str | None,
+) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+
+    resolved_input_refs = list(dict.fromkeys(ref.strip() for ref in input_refs if ref.strip()))
+    for input_ref in resolved_input_refs:
+        record = records.get(input_ref)
+        if not record or record.get("record_type") != "input":
+            print(f"{input_ref} must reference an input record")
+            return 1
+
+    source_kind, origin_kind, resolved_origin_ref, origin_errors = resolve_record_evidence_origin(
+        kind,
+        path_value,
+        line,
+        end_line,
+        command,
+        resolved_input_refs,
+        artifact_refs,
+        origin_ref,
+    )
+    if origin_errors:
+        for error in origin_errors:
+            print(error)
+        return 1
+
+    timestamp = now_timestamp()
+    resolved_project_refs = project_refs_for_write(root, project_refs)
+    resolved_task_refs = task_refs_for_write(root, task_refs)
+    resolved_workspace_refs = workspace_refs_for_write(root, [])
+    source_id = next_record_id(records, "SRC-")
+    source_payload = build_source_payload(
+        record_id=source_id,
+        source_kind=source_kind,
+        scope=scope,
+        critique_status=critique_status,
+        origin_kind=origin_kind,
+        origin_ref=resolved_origin_ref,
+        quote=quote,
+        artifact_refs=artifact_refs,
+        confidence=confidence,
+        independence_group=None,
+        captured_at=None,
+        captured_timestamp=timestamp,
+        independence_timestamp=timestamp,
+        project_refs=resolved_project_refs,
+        task_refs=resolved_task_refs,
+        tags=[*tags, f"evidence-kind:{kind}"],
+        red_flags=red_flags,
+        note=note.strip() or f"record-evidence source from {kind}",
+    )
+    if resolved_input_refs:
+        source_payload["input_refs"] = resolved_input_refs
+    if resolved_workspace_refs:
+        source_payload["workspace_refs"] = resolved_workspace_refs
+
+    updates: dict[str, dict] = {source_id: source_payload}
+    changed_ids = [source_id]
+    claim_id = ""
+    if claim_statement and claim_statement.strip():
+        resolved_claim_plane = claim_plane or {
+            "code": "code",
+            "runtime": "runtime",
+            "theory": "theory",
+            "memory": "theory",
+        }.get(source_kind, "theory")
+        claim_id = next_record_id({**records, source_id: source_payload}, "CLM-")
+        claim_payload = build_claim_payload(
+            record_id=claim_id,
+            timestamp=timestamp,
+            scope=scope,
+            plane=resolved_claim_plane,
+            status=claim_status,
+            statement=claim_statement,
+            source_refs=[source_id],
+            support_refs=support_refs,
+            contradiction_refs=contradiction_refs,
+            derived_from=derived_from,
+            claim_kind=claim_kind,
+            confidence=confidence,
+            comparison=None,
+            logic=None,
+            recorded_at=recorded_at,
+            project_refs=resolved_project_refs,
+            task_refs=resolved_task_refs,
+            tags=[*tags, f"evidence-kind:{kind}"],
+            red_flags=red_flags,
+            note=note.strip() or f"record-evidence claim from {kind}",
+        )
+        if resolved_input_refs:
+            claim_payload["input_refs"] = resolved_input_refs
+        if resolved_workspace_refs:
+            claim_payload["workspace_refs"] = resolved_workspace_refs
+        updates[claim_id] = claim_payload
+        changed_ids.append(claim_id)
+
+    derived_refs = [source_id]
+    if claim_id:
+        derived_refs.append(claim_id)
+    for input_ref in resolved_input_refs:
+        input_payload = public_record_payload(records[input_ref])
+        existing = [str(ref).strip() for ref in input_payload.get("derived_record_refs", []) if str(ref).strip()]
+        input_payload["derived_record_refs"] = sorted(set(existing + derived_refs))
+        input_payload["note"] = append_note(
+            str(input_payload.get("note", "")),
+            f"record-evidence linked derived records: {', '.join(derived_refs)}",
+        )
+        updates[input_ref] = input_payload
+        changed_ids.append(input_ref)
+
+    merged_records, errors = validate_mutated_records(root, records, updates)
+    if errors:
+        print_errors(errors)
+        return 1
+    result = persist_mutated_records(
+        root,
+        merged_records,
+        changed_ids,
+        f"Recorded evidence {source_id}{f' and claim {claim_id}' if claim_id else ''}",
+    )
+    if result:
+        return result
+    print(f"Recorded source {source_id} at {record_path(root, 'source', source_id)}")
+    if claim_id:
+        print(f"Recorded claim {claim_id} at {record_path(root, 'claim', claim_id)}")
+    if resolved_input_refs:
+        print(f"Classified input(s) {', '.join(resolved_input_refs)} with derived record(s): {', '.join(derived_refs)}")
+    return 0
+
+
 def cmd_record_input(
     root: Path,
     scope: str,
@@ -8139,6 +8359,36 @@ def parse_args() -> argparse.Namespace:
     input_triage_link.add_argument("--input", dest="input_refs", action="append", default=[])
     input_triage_link.add_argument("--note")
 
+    record_evidence = subparsers.add_parser(
+        "record-evidence",
+        help="Create a SRC-* and optional CLM-* from compact evidence inputs.",
+    )
+    record_evidence.add_argument("--scope", required=True)
+    record_evidence.add_argument("--kind", required=True, choices=sorted(EVIDENCE_KIND_DEFAULTS))
+    record_evidence.add_argument("--quote", default="")
+    record_evidence.add_argument("--path", dest="path_value")
+    record_evidence.add_argument("--line", type=int)
+    record_evidence.add_argument("--end-line", type=int)
+    record_evidence.add_argument("--command", dest="shell_command")
+    record_evidence.add_argument("--input", dest="input_refs", action="append", default=[])
+    record_evidence.add_argument("--artifact-ref", dest="artifact_refs", action="append", default=[])
+    record_evidence.add_argument("--origin-ref")
+    record_evidence.add_argument("--critique-status", choices=sorted(CRITIQUE_STATUSES), default="accepted")
+    record_evidence.add_argument("--confidence", choices=sorted(CONFIDENCE_LEVELS))
+    record_evidence.add_argument("--project", dest="project_refs", action="append", default=[])
+    record_evidence.add_argument("--task", dest="task_refs", action="append", default=[])
+    record_evidence.add_argument("--tag", dest="tags", action="append", default=[])
+    record_evidence.add_argument("--red-flag", dest="red_flags", action="append", default=[])
+    record_evidence.add_argument("--note", default="")
+    record_evidence.add_argument("--claim", "--claim-statement", dest="claim_statement")
+    record_evidence.add_argument("--claim-plane", choices=sorted(CLAIM_PLANES))
+    record_evidence.add_argument("--claim-status", choices=sorted(CLAIM_STATUSES), default="supported")
+    record_evidence.add_argument("--claim-kind", choices=sorted(CLAIM_KINDS))
+    record_evidence.add_argument("--support", dest="support_refs", action="append", default=[])
+    record_evidence.add_argument("--contradiction", dest="contradiction_refs", action="append", default=[])
+    record_evidence.add_argument("--derived-from", dest="derived_from", action="append", default=[])
+    record_evidence.add_argument("--recorded-at")
+
     record_source = subparsers.add_parser(
         "record-source",
         help="Create a canonical source record and refresh generated views.",
@@ -9298,6 +9548,37 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 )
             )
         raise SystemExit(2)
+    if args.command == "record-evidence":
+        raise SystemExit(
+            cmd_record_evidence(
+                root,
+                scope=args.scope,
+                kind=args.kind,
+                quote=args.quote,
+                path_value=args.path_value,
+                line=args.line,
+                end_line=args.end_line,
+                command=args.shell_command,
+                input_refs=args.input_refs,
+                artifact_refs=args.artifact_refs,
+                origin_ref=args.origin_ref,
+                critique_status=args.critique_status,
+                confidence=args.confidence,
+                project_refs=args.project_refs,
+                task_refs=args.task_refs,
+                tags=args.tags,
+                red_flags=args.red_flags,
+                note=args.note,
+                claim_statement=args.claim_statement,
+                claim_plane=args.claim_plane,
+                claim_status=args.claim_status,
+                claim_kind=args.claim_kind,
+                support_refs=args.support_refs,
+                contradiction_refs=args.contradiction_refs,
+                derived_from=args.derived_from,
+                recorded_at=args.recorded_at,
+            )
+        )
     if args.command == "record-source":
         raise SystemExit(
             cmd_record_source(

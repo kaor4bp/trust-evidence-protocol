@@ -126,6 +126,14 @@ Persistence write boundary:
 - CIX `smell` annotations are local critique/search signals on the smallest applicable code target, not facts, restrictions, or hard guidelines.
 - Promote repeated supported smells through `PRP-*` proposals or `GLD-*` guidelines only after support/generalization is explicit.
 
+Mechanical persistence route:
+
+- Prefer `record-evidence` when a new quote, command result, file line, artifact, or user confirmation supports a reusable claim.
+- Pass existing `INP-*` with `record-evidence --input INP-*` so the input is mechanically linked to derived `SRC-*` / `CLM-*`.
+- Use separate `record-source` and `record-claim` only when you need advanced fields such as comparison, logic atoms, migration repair, or source-only staging.
+- Do not tell the user an `INP-*` is a remembered fact; the fact is the derived `CLM-*`.
+- After recording evidence, use `record-detail`, `linked-records`, `augment-chain`, or `validate-evidence-chain` before presenting the claim as proof.
+
 Highest-priority decision guardrails:
 
 - In `green/red/ask` decisions, never make a test `green` by solving unknown concrete values from the desired assertion, expected total, or "make it green" instruction.

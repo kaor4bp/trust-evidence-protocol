@@ -217,6 +217,7 @@ action. They do not prove factual claims.
 ### Canonical Record Writes
 
 - `record-action`
+- `record-evidence`
 - `record-source`
 - `record-claim`
 - `record-plan`
@@ -280,6 +281,7 @@ record-action
 record-artifact
 record-claim
 record-debt
+record-evidence
 record-feedback
 record-flow
 record-guideline

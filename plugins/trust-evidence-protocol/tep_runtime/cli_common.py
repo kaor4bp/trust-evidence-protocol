@@ -58,6 +58,7 @@ MUTATING_COMMANDS = {
     "record-permission",
     "record-action",
     "record-input",
+    "record-evidence",
     "record-source",
     "record-claim",
     "record-link",

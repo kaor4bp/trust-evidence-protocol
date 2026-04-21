@@ -22,6 +22,7 @@ Responsibilities:
 - capture `INP-*` user-prompt provenance through the UserPromptSubmit hook when enabled by `input_capture`
 - collect append-only lookup telemetry in `activity/access.jsonl`, including MCP/CLI lookup events and hook-detected raw claim-file reads
 - provide one `lookup` front door that routes agents to fact, code, theory, research, or policy lookup instead of making them guess between overlapping tools
+- provide `record-evidence` as the default mechanical Source -> Claim write path so agents can preserve quotes, command output, file lines, artifacts, and user confirmations without hand-authoring two records
 - push agents to preserve reusable discoveries, rules, actions, plans, debt, questions, models, flows, and proposals as records
 
 Non-responsibilities:
@@ -154,6 +155,18 @@ also emits mechanical anomaly hints for raw reads, tool concentration, low MCP
 usage, and hot records; each anomaly includes suggested compact tools and a
 next action so agents do not spend tokens inventing the lookup route. Attention
 maps combine explicit taps and lookup telemetry as navigation/heatmap signals.
+
+Agents should use `record-evidence` for the common persistence path. The command
+maps structured evidence kinds to canonical source/claim records:
+
+- `file-line` -> `SRC.source_kind=code`, optional code-plane `CLM-*`
+- `command-output` -> `SRC.source_kind=runtime`, optional runtime-plane `CLM-*`
+- `user-confirmation` -> `SRC.source_kind=theory`, optional theory-plane `CLM-*`
+- `artifact` -> `SRC.source_kind=runtime`, optional runtime-plane `CLM-*`
+
+Supplying `--input INP-*` links captured prompt provenance to the derived records
+mechanically. Use separate `record-source` / `record-claim` only for advanced
+comparison, logic, migration, or source-only staging.
 
 `.codex_context/settings.json` is the policy layer for:
 

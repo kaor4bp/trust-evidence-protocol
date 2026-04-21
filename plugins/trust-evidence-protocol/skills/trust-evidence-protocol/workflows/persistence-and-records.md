@@ -77,6 +77,14 @@ Predicate conflicts are candidates until the underlying `CLM-*` records are revi
 - Durable cleanup/risk -> `DEBT-*`
 - Deferred uncertainty -> `OPEN-*`
 
+Default write route:
+
+- Use `record-evidence` for the common Source -> Claim path.
+- Use `record-evidence --kind user-confirmation --input INP-* --quote "..." --claim "..."` when classifying a captured user prompt into a supported theory claim.
+- Use `record-evidence --kind file-line --path path --line N --quote "..." --claim "..."` when a code line supports a code-plane claim.
+- Use `record-evidence --kind command-output --command "..." --quote "..." --claim "..."` when test or runtime output supports a runtime-plane claim.
+- Use separate `record-source` and `record-claim` only for source-only staging, complex comparison/logic payloads, migration repair, or explicit forensic work.
+
 ## Quality Bar
 
 Records should be:

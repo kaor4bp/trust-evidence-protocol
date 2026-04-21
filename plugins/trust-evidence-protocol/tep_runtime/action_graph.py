@@ -38,11 +38,11 @@ def _intent_route(intent: str, task: str) -> tuple[str, list[str]]:
         "answer": ("answering", [f"brief-context{task_arg}", "record-detail / linked-records before citing proof"]),
         "plan": ("planning", [f"brief-context{task_arg}", "publish Reasoning Checkpoint", "validate-planning-chain if chain is explicit"]),
         "edit": ("editing", [f"guidelines-for{task_arg}", "build/validate evidence chain", "preflight-task --mode edit"]),
-        "test": ("testing", [f"brief-context{task_arg}", "record-source for meaningful test output", "hydrate-context after mutation"]),
+        "test": ("testing", [f"brief-context{task_arg}", "record-evidence for meaningful test output", "hydrate-context after mutation"]),
         "persist": ("persisting", ["classify input/source first", "record-* through context_cli", "hydrate-context"]),
         "permission": ("permission", ["build-reasoning-case", "cite CLM/GLD/PRM ids + quotes", "request explicit approval if needed"]),
         "debug": ("debugging", ["show-hydration", "review-context", "scan-conflicts / reindex-context if needed"]),
-        "after-mutation": ("after mutation", ["hydrate-context", "record-source/claim/action if meaningful", "show-hydration"]),
+        "after-mutation": ("after mutation", ["hydrate-context", "record-evidence/action if meaningful", "show-hydration"]),
     }
     return routes.get(intent, ("general", [f"brief-context{task_arg}", "choose answer|plan|edit|test|persist|permission|debug route"]))
 
@@ -73,13 +73,13 @@ def _route_graph(intent: str) -> dict:
             {"if": "edited", "then": "after-mutation"},
         ],
         "test": [
-            {"if": "test output meaningful", "then": "record-source"},
+            {"if": "test output meaningful", "then": "record-evidence"},
             {"if": "failure unexplained", "then": "debug"},
             {"if": "state changed", "then": "after-mutation"},
         ],
         "persist": [
-            {"if": "raw input", "then": "record-input|record-source"},
-            {"if": "truth claim", "then": "record-claim"},
+            {"if": "raw input", "then": "record-input|record-evidence"},
+            {"if": "truth claim", "then": "record-evidence"},
             {"if": "work remains", "then": "record-plan|record-debt|record-open-question"},
         ],
         "permission": [
@@ -93,7 +93,7 @@ def _route_graph(intent: str) -> dict:
             {"if": "runtime unknown", "then": "safe probe"},
         ],
         "after-mutation": [
-            {"if": "test/log supports fact", "then": "record-source|record-claim"},
+            {"if": "test/log supports fact", "then": "record-evidence"},
             {"if": "follow-up work remains", "then": "record-plan|record-debt"},
             {"if": "context changed", "then": "hydrate-context"},
         ],

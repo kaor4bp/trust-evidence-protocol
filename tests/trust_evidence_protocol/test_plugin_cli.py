@@ -105,6 +105,172 @@ def user_confirmed_theory_claim(context: Path, scope: str, statement: str) -> st
     )
 
 
+def test_record_evidence_creates_source_claim_and_classifies_input(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    input_id = recorded_id(
+        run_cli(
+            context,
+            "record-input",
+            "--scope",
+            "demo.record-evidence",
+            "--input-kind",
+            "user_prompt",
+            "--origin-kind",
+            "user",
+            "--origin-ref",
+            "pytest prompt",
+            "--text",
+            "User confirmed that cache refresh happens only at startup.",
+            "--note",
+            "prompt provenance",
+        ),
+        "input",
+    )
+
+    result = run_cli(
+        context,
+        "record-evidence",
+        "--scope",
+        "demo.record-evidence",
+        "--kind",
+        "user-confirmation",
+        "--input",
+        input_id,
+        "--quote",
+        "User confirmed that cache refresh happens only at startup.",
+        "--claim",
+        "Cache refresh happens only at application startup.",
+        "--claim-status",
+        "supported",
+        "--claim-kind",
+        "factual",
+        "--note",
+        "mechanical user-confirmed evidence",
+    )
+    source_id = recorded_id(result, "source")
+    claim_id = recorded_id(result, "claim")
+
+    source = load_record(context, "source", source_id)
+    claim = load_record(context, "claim", claim_id)
+    input_record = load_record(context, "input", input_id)
+    assert source["source_kind"] == "theory"
+    assert source["origin"]["kind"] == "user_prompt"
+    assert source["origin"]["ref"] == f"inputs:{input_id}"
+    assert source["input_refs"] == [input_id]
+    assert claim["plane"] == "theory"
+    assert claim["status"] == "supported"
+    assert claim["source_refs"] == [source_id]
+    assert claim["input_refs"] == [input_id]
+    assert input_record["derived_record_refs"] == [claim_id, source_id]
+
+    model_result = run_cli(
+        context,
+        "record-model",
+        "--knowledge-class",
+        "domain",
+        "--domain",
+        "cache",
+        "--scope",
+        "demo.record-evidence",
+        "--aspect",
+        "refresh",
+        "--status",
+        "working",
+        "--summary",
+        "Cache refresh is startup-bound.",
+        "--claim",
+        claim_id,
+        "--note",
+        "model from user-confirmed theory claim",
+        check=False,
+    )
+    assert model_result.returncode == 0, model_result.stdout
+
+
+def test_record_evidence_maps_file_and_command_evidence(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    command_result = run_cli(
+        context,
+        "record-evidence",
+        "--scope",
+        "demo.record-evidence.command",
+        "--kind",
+        "command-output",
+        "--command",
+        "uv run pytest tests/unit/test_cache.py -q",
+        "--quote",
+        "1 passed",
+        "--claim",
+        "The focused cache test passed.",
+        "--claim-status",
+        "supported",
+        "--note",
+        "focused runtime evidence",
+    )
+    command_source_id = recorded_id(command_result, "source")
+    command_claim_id = recorded_id(command_result, "claim")
+    command_source = load_record(context, "source", command_source_id)
+    command_claim = load_record(context, "claim", command_claim_id)
+    assert command_source["source_kind"] == "runtime"
+    assert command_source["origin"] == {
+        "kind": "command",
+        "ref": "uv run pytest tests/unit/test_cache.py -q",
+    }
+    assert command_claim["plane"] == "runtime"
+
+    file_result = run_cli(
+        context,
+        "record-evidence",
+        "--scope",
+        "demo.record-evidence.file",
+        "--kind",
+        "file-line",
+        "--path",
+        "src/cache.py",
+        "--line",
+        "12",
+        "--end-line",
+        "14",
+        "--quote",
+        "def refresh_cache():",
+        "--claim",
+        "src/cache.py defines refresh_cache.",
+        "--claim-status",
+        "supported",
+        "--note",
+        "file-line evidence",
+    )
+    file_source_id = recorded_id(file_result, "source")
+    file_claim_id = recorded_id(file_result, "claim")
+    file_source = load_record(context, "source", file_source_id)
+    file_claim = load_record(context, "claim", file_claim_id)
+    assert file_source["source_kind"] == "code"
+    assert file_source["origin"] == {"kind": "file", "ref": "src/cache.py:12-14"}
+    assert file_claim["plane"] == "code"
+
+
+def test_record_evidence_rejects_incomplete_structured_origin(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    missing_path = run_cli(
+        context,
+        "record-evidence",
+        "--scope",
+        "demo.record-evidence.invalid",
+        "--kind",
+        "file-line",
+        "--line",
+        "1",
+        "--quote",
+        "x",
+        "--claim",
+        "x exists.",
+        check=False,
+    )
+    assert missing_path.returncode == 1
+    assert "requires --path" in missing_path.stdout
+
+
 def test_install_local_plugin_script_creates_single_active_cache_version(tmp_path: Path) -> None:
     local_source = tmp_path / "plugins" / "trust-evidence-protocol"
     cache = tmp_path / "cache" / "trust-evidence-protocol"

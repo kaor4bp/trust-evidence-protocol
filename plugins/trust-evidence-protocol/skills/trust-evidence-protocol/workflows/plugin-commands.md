@@ -163,6 +163,43 @@ If a chain uses `role=hypothesis`, first record it as `CLM-* status=tentative` a
 Use `working-context check-drift` when the user changes topic, task type, or repository; switch/fork/create `WCTX-*` before persisting task-local conclusions under the wrong focus.
 Use `workspace-admission check` before attaching or analyzing an unknown checkout; if it requires a decision, ask whether to create a new workspace, add a project to the current workspace, or inspect read-only without persistence.
 
+## Mechanical Evidence Writes
+
+Use `record-evidence` as the default write API when new support should become a durable source-backed claim.
+It creates `SRC-*`, optionally creates `CLM-*`, and links any supplied `INP-*` through `derived_record_refs`.
+
+```bash
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-evidence \
+  --scope smartpick.cache \
+  --kind user-confirmation \
+  --input INP-* \
+  --quote "User confirmed SmartPick cache refresh happens only at startup." \
+  --claim "SmartPick cache refresh happens only at application startup." \
+  --claim-status supported \
+  --note "classified captured user input into source-backed theory claim"
+
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-evidence \
+  --scope tests.cache \
+  --kind command-output \
+  --command "uv run pytest tests/unit/test_cache.py -q" \
+  --quote "1 passed" \
+  --claim "The focused cache unit test passed." \
+  --claim-status supported \
+  --note "focused test evidence"
+
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-evidence \
+  --scope code.cache \
+  --kind file-line \
+  --path src/cache.py \
+  --line 42 \
+  --quote "def refresh_cache():" \
+  --claim "src/cache.py defines refresh_cache." \
+  --claim-status supported \
+  --note "file-line code evidence"
+```
+
+Use separate `record-source` and `record-claim` only for advanced comparison, logic predicates, source-only staging, migration, or debugging.
+
 ## Runtime Configuration
 
 ```bash

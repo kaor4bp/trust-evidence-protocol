@@ -1539,6 +1539,7 @@ def test_cli_common_core_handles_small_payload_and_mutation_helpers() -> None:
     assert append_note("base\n\nextra", "extra") == "base\n\nextra"
 
     assert command_requires_write_lock(SimpleNamespace(command="record-claim"))
+    assert command_requires_write_lock(SimpleNamespace(command="record-evidence"))
     assert command_requires_write_lock(SimpleNamespace(command="hypothesis", hypothesis_command="add"))
     assert command_requires_write_lock(SimpleNamespace(command="topic-index", topic_index_command="build"))
     assert command_requires_write_lock(SimpleNamespace(command="logic-index", logic_index_command="build"))
