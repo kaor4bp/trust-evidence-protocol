@@ -11,6 +11,8 @@ from typing import Iterable
 
 
 CLAIM_JSON_PATTERN = re.compile(r"(?P<ref>CLM-\d{8}-[0-9a-f]{8})\.json")
+POLICY_TELEMETRY_EVENT_KEYS = {"reason", "working_context_ref"}
+RECENT_POLICY_WINDOW = 50
 
 
 def now_utc_timestamp() -> str:
@@ -75,6 +77,35 @@ def access_event_record_refs(event: dict) -> list[str]:
     return [ref] if ref else []
 
 
+def policy_event(event: dict) -> bool:
+    access_kind = str(event.get("access_kind") or "")
+    return any(key in event for key in POLICY_TELEMETRY_EVENT_KEYS) or access_kind in {"raw_claim_read", "raw_claim_read_blocked"}
+
+
+def ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
+
+
+def event_window_summary(events: list[dict]) -> dict:
+    by_reason = Counter(str(event.get("reason") or "unspecified") for event in events)
+    by_wctx = Counter(str(event.get("working_context_ref") or "none") for event in events)
+    by_kind = Counter(str(event.get("access_kind") or "unknown") for event in events)
+    total = len(events)
+    unspecified_reason = by_reason.get("unspecified", 0)
+    missing_wctx = by_wctx.get("none", 0)
+    return {
+        "event_count": total,
+        "by_reason": dict(sorted(by_reason.items())),
+        "by_working_context": dict(sorted(by_wctx.items())),
+        "raw_read_allowed_count": by_kind.get("raw_claim_read", 0),
+        "raw_read_blocked_count": by_kind.get("raw_claim_read_blocked", 0),
+        "unspecified_reason_ratio": ratio(unspecified_reason, total),
+        "missing_wctx_ratio": ratio(missing_wctx, total),
+    }
+
+
 def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
     event_list = list(events)
     by_channel = Counter(str(event.get("channel") or "unknown") for event in event_list)
@@ -93,18 +124,48 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
         for event in event_list
         if str(event.get("access_kind") or "").startswith("raw_") or int(event.get("raw_path_count") or 0) > 0
     ]
+    raw_blocked_events = [event for event in raw_events if str(event.get("access_kind") or "") == "raw_claim_read_blocked"]
+    raw_allowed_events = [event for event in raw_events if str(event.get("access_kind") or "") == "raw_claim_read"]
+    policy_events = [event for event in event_list if policy_event(event)]
+    recent_events = event_list[-RECENT_POLICY_WINDOW:]
+    recent_policy_events = policy_events[-RECENT_POLICY_WINDOW:]
+    recent_policy = event_window_summary(recent_policy_events)
+    recent_all = event_window_summary(recent_events)
     top_tool, top_tool_count = by_tool.most_common(1)[0] if by_tool else ("", 0)
     top_record, top_record_count = record_counter.most_common(1)[0] if record_counter else ("", 0)
     anomalies: list[dict] = []
-    if raw_events:
+    if raw_allowed_events:
         anomalies.append(
             {
                 "kind": "raw-record-read",
                 "severity": "warning",
-                "count": len(raw_events),
-                "message": "Raw record reads bypass compact MCP/CLI projections; prefer record_detail, claim_graph, or linked_records.",
-                "recommended_tools": ["record_detail", "claim_graph", "linked_records"],
-                "next_action": "Replace raw file reads with compact MCP/CLI record projections before expanding full records.",
+                "count": len(raw_allowed_events),
+                "blocked_count": len(raw_blocked_events),
+                "message": "Allowed raw record reads are escape-hatch events; normal lookup should use compact MCP/CLI projections.",
+                "recommended_tools": ["record_detail", "claim_graph", "linked_records", "lookup", "map_brief"],
+                "next_action": "Use raw claim JSON only with an explicit debug/migration/forensics/plugin-dev reason; otherwise replace it with compact projections.",
+            }
+        )
+    if recent_policy["event_count"] and recent_policy["unspecified_reason_ratio"] > 0.25:
+        anomalies.append(
+            {
+                "kind": "missing-lookup-reason",
+                "severity": "warning",
+                "ratio": recent_policy["unspecified_reason_ratio"],
+                "message": "Recent policy-era lookup telemetry still has many events without a lookup reason.",
+                "recommended_tools": ["lookup", "telemetry_report"],
+                "next_action": "Route normal searches through lookup --reason or MCP lookup(reason=...) before expanding records.",
+            }
+        )
+    if recent_policy["event_count"] and recent_policy["missing_wctx_ratio"] > 0.25:
+        anomalies.append(
+            {
+                "kind": "missing-wctx",
+                "severity": "warning",
+                "ratio": recent_policy["missing_wctx_ratio"],
+                "message": "Recent policy-era lookup telemetry still has many events without WCTX focus.",
+                "recommended_tools": ["lookup", "working_contexts", "working_context_drift"],
+                "next_action": "Let lookup create/reuse WCTX or create/fork a WCTX before task-specific lookup.",
             }
         )
     if event_list and top_tool_count / max(1, len(event_list)) >= 0.5 and len(event_list) >= 10:
@@ -126,9 +187,9 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
                 "severity": "info",
                 "cli_count": by_channel.get("cli", 0),
                 "mcp_count": by_channel.get("mcp", 0),
-                "message": "CLI lookup dominates MCP lookup; prefer MCP for read-only context retrieval when available.",
+                "message": "CLI lookup dominates MCP lookup; prefer MCP bounded lookup tools for compact context retrieval when available.",
                 "recommended_tools": ["telemetry_report", "record_detail", "code_search"],
-                "next_action": "Use MCP read-only tools for compact context retrieval when available; keep CLI for mutations and diagnostics.",
+                "next_action": "Use MCP bounded lookup tools for compact context retrieval when available; keep CLI for mutations and diagnostics.",
             }
         )
     if top_record_count >= 5:
@@ -147,7 +208,13 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
         "telemetry_is_proof": False,
         "event_count": len(event_list),
         "raw_event_count": len(raw_events),
+        "raw_read_allowed_count": len(raw_allowed_events),
+        "raw_read_blocked_count": len(raw_blocked_events),
         "raw_path_count": sum(int(event.get("raw_path_count") or 0) for event in raw_events),
+        "policy_event_count": len(policy_events),
+        "recent_window_size": RECENT_POLICY_WINDOW,
+        "recent": recent_all,
+        "recent_policy": recent_policy,
         "by_channel": dict(sorted(by_channel.items())),
         "by_tool": dict(sorted(by_tool.items())),
         "by_access_kind": dict(sorted(by_kind.items())),
@@ -171,10 +238,20 @@ def access_report_text_lines(payload: dict) -> list[str]:
         "# TEP Telemetry Report",
         "",
         "Telemetry is navigation data only. It is not proof.",
-        f"events: `{payload.get('event_count', 0)}` raw_events: `{payload.get('raw_event_count', 0)}` raw_paths: `{payload.get('raw_path_count', 0)}`",
+        f"events: `{payload.get('event_count', 0)}` policy_events: `{payload.get('policy_event_count', 0)}` raw_events: `{payload.get('raw_event_count', 0)}` raw_allowed: `{payload.get('raw_read_allowed_count', 0)}` raw_blocked: `{payload.get('raw_read_blocked_count', 0)}` raw_paths: `{payload.get('raw_path_count', 0)}`",
         "",
-        "## By Tool",
+        "## Recent Policy Window",
     ]
+    recent_policy = payload.get("recent_policy", {}) if isinstance(payload.get("recent_policy"), dict) else {}
+    lines.append(
+        f"- events=`{recent_policy.get('event_count', 0)}` unspecified_reason_ratio=`{recent_policy.get('unspecified_reason_ratio', 0)}` missing_wctx_ratio=`{recent_policy.get('missing_wctx_ratio', 0)}` raw_allowed=`{recent_policy.get('raw_read_allowed_count', 0)}` raw_blocked=`{recent_policy.get('raw_read_blocked_count', 0)}`"
+    )
+    lines.extend(
+        [
+            "",
+            "## By Tool",
+        ]
+    )
     for tool, count in payload.get("by_tool", {}).items():
         lines.append(f"- `{tool}`: `{count}`")
     if not payload.get("by_tool"):

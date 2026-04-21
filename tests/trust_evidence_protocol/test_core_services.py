@@ -2234,12 +2234,23 @@ def test_access_report_surfaces_navigation_anomalies_without_proof() -> None:
             "raw_path_count": 1,
             "record_refs": ["CLM-20260420-aaaaaaaa"],
         },
+        {
+            "channel": "hook",
+            "tool": "bash",
+            "access_kind": "raw_claim_read_blocked",
+            "raw_path_count": 1,
+            "record_refs": ["CLM-20260420-cccccccc"],
+            "reason": "debugging",
+            "working_context_ref": "WCTX-20260420-aaaaaaaa",
+        },
         *[
             {
                 "channel": "cli",
                 "tool": "code-search",
                 "access_kind": "code_index_search",
                 "record_refs": ["CIX-20260420-bbbbbbbb"],
+                "reason": "unspecified",
+                "working_context_ref": "none",
             }
             for _ in range(9)
         ],
@@ -2248,22 +2259,35 @@ def test_access_report_surfaces_navigation_anomalies_without_proof() -> None:
             "tool": "record-detail",
             "access_kind": "record_detail",
             "record_refs": ["CLM-20260420-aaaaaaaa"],
+            "reason": "answering",
+            "working_context_ref": "WCTX-20260420-aaaaaaaa",
         },
     ]
 
     payload = compat_access_report_payload(events, limit=5)
 
     assert payload["telemetry_is_proof"] is False
+    assert payload["policy_event_count"] == 12
+    assert payload["raw_read_allowed_count"] == 1
+    assert payload["raw_read_blocked_count"] == 1
+    assert payload["recent_policy"]["event_count"] == 12
+    assert payload["recent_policy"]["raw_read_allowed_count"] == 1
+    assert payload["recent_policy"]["raw_read_blocked_count"] == 1
+    assert payload["recent_policy"]["unspecified_reason_ratio"] > 0
+    assert payload["recent_policy"]["missing_wctx_ratio"] > 0
     anomaly_kinds = {item["kind"] for item in payload["anomalies"]}
-    assert {"raw-record-read", "tool-concentration", "low-mcp-ratio", "hot-record"}.issubset(anomaly_kinds)
+    assert {"raw-record-read", "missing-lookup-reason", "missing-wctx", "tool-concentration", "low-mcp-ratio", "hot-record"}.issubset(anomaly_kinds)
     raw_anomaly = next(item for item in payload["anomalies"] if item["kind"] == "raw-record-read")
-    assert raw_anomaly["recommended_tools"] == ["record_detail", "claim_graph", "linked_records"]
-    assert "Replace raw file reads" in raw_anomaly["next_action"]
+    assert raw_anomaly["recommended_tools"] == ["record_detail", "claim_graph", "linked_records", "lookup", "map_brief"]
+    assert raw_anomaly["blocked_count"] == 1
+    assert "explicit debug/migration/forensics/plugin-dev reason" in raw_anomaly["next_action"]
     text = "\n".join(compat_access_report_text_lines(payload))
     assert "## Anomalies" in text
-    assert "Raw record reads bypass compact MCP/CLI projections" in text
+    assert "## Recent Policy Window" in text
+    assert "raw_allowed: `1` raw_blocked: `1`" in text
+    assert "Allowed raw record reads are escape-hatch events" in text
     assert "suggested tools: `record_detail`, `claim_graph`, `linked_records`" in text
-    assert "next action: Replace raw file reads" in text
+    assert "next action: Use raw claim JSON only with an explicit debug/migration/forensics/plugin-dev reason" in text
 
 
 def test_report_core_renders_reports_and_relative_paths(tmp_path: Path) -> None:
