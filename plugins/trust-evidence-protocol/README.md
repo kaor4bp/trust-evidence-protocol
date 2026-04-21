@@ -272,6 +272,7 @@ Prompt capture mechanics:
 - The hook rehydrates after a successful capture so prompt provenance does not leave the next agent turn mechanically stale.
 - `review-context` writes `review/inputs.md` and warns when any `INP-*` has no valid classification link.
 - `preflight-task --mode final` blocks final responses while any `INP-*` lacks both valid `derived_record_refs` and incoming `input_refs`.
+- `preflight-task --mode planning|edit|action|final` blocks when a hydrated current `TASK-*` has not been explicitly confirmed with `confirm-task --task TASK-*`.
 
 ## Agent Operating Path
 
@@ -967,6 +968,11 @@ Guideline disclosure for code edits:
   - attaches derived canonical records to an existing automatically captured `INP-*`
   - requires `--input INP-*` and at least one `--derived-record REF`
   - use it after creating `SRC-*`, `CLM-*`, `GLD-*`, `PRM-*`, `RST-*`, or other records from a prompt
+
+- `confirm-task`
+  - confirms that the hydrated current `TASK-*` is the intended work focus
+  - must be run after hydration, before planning/edit/action/final preflight can pass when a current task exists
+  - if the user request appears to target another task, switch/start the correct task instead of confirming the wrong one
 
 - `record-claim`
   - creates a canonical `CLM-*` record

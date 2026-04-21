@@ -405,6 +405,39 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
 
     strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
     active_restrictions = state.get("active_restrictions", [])
+    current_task = state.get("current_task")
+
+    if mode in {"planning", "edit", "action", "final"}:
+        confirmed_task = state.get("confirmed_task")
+        current_task_id = (
+            str(current_task.get("id", "")).strip()
+            if isinstance(current_task, dict)
+            else ""
+        )
+        confirmed_task_id = (
+            str(confirmed_task.get("id", "")).strip()
+            if isinstance(confirmed_task, dict)
+            else ""
+        )
+        confirmed_fingerprint = (
+            str(confirmed_task.get("fingerprint", "")).strip()
+            if isinstance(confirmed_task, dict)
+            else ""
+        )
+        if current_task_id and (
+            confirmed_task_id != current_task_id
+            or confirmed_fingerprint != current_fingerprint
+        ):
+            print(
+                "Current TASK-* is not confirmed for this hydrated context. "
+                "Ask the user whether this is the intended task, then run:"
+            )
+            print(
+                f"python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py "
+                f"--context {root} confirm-task --task {current_task_id}"
+            )
+            print(render_current_task(current_task))
+            return 1
 
     if mode == "final":
         records, errors = collect_validation_errors(root)
@@ -441,7 +474,6 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
         print(f"Mutating action kind {action_kind!r} requires implementation-choice strictness")
         return 1
     if action_kind and is_mutating_action_kind(action_kind) and strictness == "evidence-authorized":
-        current_task = state.get("current_task")
         if not isinstance(current_task, dict) or not current_task.get("id"):
             print("Mutating action in evidence-authorized mode requires an active TASK-*")
             return 1
@@ -470,6 +502,35 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
     return 0
 
 
+def cmd_confirm_task(root: Path, task_ref: str, note: str | None) -> int:
+    state = load_hydration_state(root)
+    current_fingerprint = compute_context_fingerprint(root)
+    stored_fingerprint = str(state.get("fingerprint", ""))
+    status = str(state.get("status", "unhydrated")).strip()
+    if status not in VALID_HYDRATION_STATUSES or stored_fingerprint != current_fingerprint:
+        print("Hydrate the context before confirming the current TASK-*.")
+        return 1
+    current_task = state.get("current_task")
+    if not isinstance(current_task, dict) or not current_task.get("id"):
+        print("No current TASK-* is active in hydration state.")
+        return 1
+    current_task_id = str(current_task.get("id", "")).strip()
+    if task_ref != current_task_id:
+        print(f"Cannot confirm {task_ref}: current hydrated task is {current_task_id}")
+        return 1
+    state = dict(state)
+    state["confirmed_task"] = {
+        "id": current_task_id,
+        "fingerprint": current_fingerprint,
+        "confirmed_at": now_timestamp(),
+        "note": (note or "").strip(),
+    }
+    write_hydration_state(root, state)
+    print(f"Confirmed current task {current_task_id}")
+    print(render_current_task(current_task))
+    return 0
+
+
 def cmd_invalidate_hydration(root: Path, reason: str) -> int:
     invalidate_hydration_state(root, reason=reason)
     print(f"{hydration_state_path(root)}: marked stale ({reason})")
@@ -481,7 +542,7 @@ def parse_args() -> argparse.Namespace:
     if command in FULL_CLI_COMMANDS:
         print(
             "runtime_gate.py only handles hook gates: "
-            "hydrate-context, show-hydration, preflight-task, invalidate-hydration.\n"
+            "hydrate-context, show-hydration, preflight-task, confirm-task, invalidate-hydration.\n"
             f"For `{command}`, use scripts/context_cli.py --context <context> {command}",
             file=sys.stderr,
         )
@@ -509,6 +570,13 @@ def parse_args() -> argparse.Namespace:
     preflight.add_argument("--mode", required=True, choices=["reasoning", "planning", "edit", "action", "final"])
     preflight.add_argument("--kind")
 
+    confirm_task = subparsers.add_parser(
+        "confirm-task",
+        help="Confirm that the hydrated current TASK-* is the intended work focus.",
+    )
+    confirm_task.add_argument("--task", dest="task_ref", required=True)
+    confirm_task.add_argument("--note")
+
     invalidate = subparsers.add_parser(
         "invalidate-hydration",
         help="Mark hydration state stale after an external mutation.",
@@ -535,6 +603,13 @@ def main() -> None:
         raise SystemExit(cmd_show_hydration(root))
     if args.command == "preflight-task":
         raise SystemExit(cmd_preflight_task(root, mode=args.mode, kind=args.kind))
+    if args.command == "confirm-task":
+        try:
+            with context_write_lock(root):
+                raise SystemExit(cmd_confirm_task(root, task_ref=args.task_ref, note=args.note))
+        except TimeoutError as exc:
+            print(exc)
+            raise SystemExit(1)
     if args.command == "invalidate-hydration":
         try:
             with context_write_lock(root):

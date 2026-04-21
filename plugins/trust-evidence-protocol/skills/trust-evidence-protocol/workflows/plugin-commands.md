@@ -58,6 +58,7 @@ Use CLI commands for all record creation, updates, strictness changes, task chan
 ```bash
 python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context hydrate-context
 python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context show-hydration
+python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context confirm-task --task TASK-* --note "user confirmed focus"
 python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context preflight-task --mode reasoning
 python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context preflight-task --mode planning
 python3 plugins/trust-evidence-protocol/scripts/runtime_gate.py --context .codex_context preflight-task --mode edit

@@ -399,6 +399,16 @@ def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:
     assert state["current_task"]["id"] == task_id
     assert state["current_task"]["status"] == "active"
 
+    blocked = run_runtime(context, "preflight-task", "--mode", "planning", check=False)
+    assert blocked.returncode == 1
+    assert "Current TASK-* is not confirmed" in blocked.stdout
+    assert task_id in blocked.stdout
+
+    confirmed = run_runtime(context, "confirm-task", "--task", task_id, "--note", "user confirmed focus")
+    assert f"Confirmed current task {task_id}" in confirmed.stdout
+    planning = run_runtime(context, "preflight-task", "--mode", "planning")
+    assert "Preflight passed for planning" in planning.stdout
+
     payload = hook_json(HOOK_DIR / "session_start_hydrate.py", hook_payload(context, ""))
     assert payload["systemMessage"] == "🛡️ Context hydrated with current task."
     session_context = payload["hookSpecificOutput"]["additionalContext"]
@@ -1286,6 +1296,7 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         "--note",
         "active task for evidence-authorized preflight",
     )
+    task_id = record_ids(context, "task")[0]
     request_id, approval_source_id = strictness_approval(context, "evidence-authorized")
     run_cli(
         context,
@@ -1297,6 +1308,7 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         approval_source_id,
     )
     run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "hook test focus confirmed")
 
     allow_result = run_script(
         HOOK_DIR / "pre_tool_use_guard.py",

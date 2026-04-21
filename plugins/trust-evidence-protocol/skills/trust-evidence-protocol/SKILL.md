@@ -210,6 +210,10 @@ Operational layers:
 
 Operational layers guide attention and continuity.
 They do not prove truth unless their underlying `CLM-*` records prove it.
+At the start of work, verify that the hydrated current `TASK-*` is really the
+task requested by the user. If it matches, confirm it with
+`confirm-task --task TASK-*`; if it does not match, switch/start/pause tasks
+instead of continuing under the wrong focus.
 Never say that a fact, rule, permission, or restriction was "saved as `INP-*`".
 Say the input was captured as `INP-*`, then classify it into `SRC-*`, `CLM-*`,
 `GLD-*`, `PRM-*`, `RST-*`, or another canonical record and link it through
@@ -487,20 +491,21 @@ For project-claim work:
 
 1. Hydrate the resolved TEP context before relying on persistent records.
 2. Notice current project, current task, active permissions, active restrictions, active guidelines, active proposals, plans, debt, and conflicts.
-3. If substantial work has no current task, start a task or state why no task is needed.
-4. If intended work no longer matches the current `TASK-*`, pause/switch/start the correct task instead of silently drifting.
-5. If beginning or switching to a substantial repeated `task_type`, review past precedents when available.
-6. Search existing TEP context records before deriving from scratch.
-7. Treat hook-captured `INP-*` records as prompt provenance, then classify incoming user messages, files, diffs, docs, outputs, logs, and memory records into appropriate `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, `PRP-*`, or other records when they matter.
+3. If a current `TASK-*` exists, explicitly confirm with the user that it is the intended focus, then run `confirm-task --task TASK-*`.
+4. If substantial work has no current task, start a task or state why no task is needed.
+5. If intended work no longer matches the current `TASK-*`, pause/switch/start the correct task instead of silently drifting.
+6. If beginning or switching to a substantial repeated `task_type`, review past precedents when available.
+7. Search existing TEP context records before deriving from scratch.
+8. Treat hook-captured `INP-*` records as prompt provenance, then classify incoming user messages, files, diffs, docs, outputs, logs, and memory records into appropriate `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, `PRP-*`, or other records when they matter.
    If `review/inputs.md` reports unclassified inputs, classify or explicitly link them before a final answer.
-8. Reconcile new observations against existing supported/corroborated `CLM-*` records.
-9. Publish a `Reasoning Checkpoint` before long or plan-changing analysis.
-10. Build and validate an `Evidence Chain` before non-trivial action.
-11. Validate decision chains with the intended mode when the next step depends on a hypothesis, permission, edit, model, flow, proposal, final answer, curiosity probe, or debugging decision.
-12. Act only on the subset allowed by strictness, permissions, restrictions, decision validation, and required guidelines.
-13. Persist reconstructable sources, claims, guidelines, restrictions, permissions, proposals, actions, models, flows, plans, debt, projects, tasks, and open questions when they will matter later.
-14. Rehydrate when plugin hooks mark context stale.
-15. Complete, pause, or stop the current task when done, deferred, or abandoned.
+9. Reconcile new observations against existing supported/corroborated `CLM-*` records.
+10. Publish a `Reasoning Checkpoint` before long or plan-changing analysis.
+11. Build and validate an `Evidence Chain` before non-trivial action.
+12. Validate decision chains with the intended mode when the next step depends on a hypothesis, permission, edit, model, flow, proposal, final answer, curiosity probe, or debugging decision.
+13. Act only on the subset allowed by strictness, permissions, restrictions, decision validation, and required guidelines.
+14. Persist reconstructable sources, claims, guidelines, restrictions, permissions, proposals, actions, models, flows, plans, debt, projects, tasks, and open questions when they will matter later.
+15. Rehydrate when plugin hooks mark context stale.
+16. Complete, pause, or stop the current task when done, deferred, or abandoned.
 
 For small local actions, short form is allowed, but decisive ids and support edges must remain explicit.
 
