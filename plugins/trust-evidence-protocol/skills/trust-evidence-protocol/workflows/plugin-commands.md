@@ -330,6 +330,8 @@ Lowering strictness back to `proof-only` can be done directly.
 ```bash
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-input --scope "..." --input-kind user_prompt --origin-kind user --origin-ref "chat-turn" --text "..." --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context classify-input --input INP-* --derived-record SRC-* --note "classified prompt"
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context input-triage report --task TASK-*
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context input-triage link-operational --task TASK-* --input INP-* --note "operational prompt"
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-source --scope "..." --source-kind runtime --critique-status accepted --origin-kind command --origin-ref "..." --quote "..." --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-claim --scope "..." --statement "..." --plane runtime --status tentative --source SRC-* --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-claim --scope "..." --statement "Alice studies algebra." --plane runtime --status supported --source SRC-* --logic-symbol "person:alice|entity" --logic-symbol "subject:algebra|concept" --logic-atom "Studies|person:alice,subject:algebra|affirmed" --note "..."

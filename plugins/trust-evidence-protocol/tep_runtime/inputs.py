@@ -86,3 +86,14 @@ def unclassified_input_items(records: dict[str, dict]) -> list[dict]:
             }
         )
     return items
+
+
+def input_items_for_task(records: dict[str, dict], task_ref: str | None = None) -> list[dict]:
+    items = unclassified_input_items(records)
+    if not task_ref:
+        return items
+    return [
+        item
+        for item in items
+        if task_ref in [str(ref).strip() for ref in item.get("task_refs", [])]
+    ]

@@ -252,9 +252,30 @@ def render_current_workspace(workspace: dict) -> str:
     )
 
 
+def task_confirmation_token(state: dict) -> str:
+    workspace = state.get("current_workspace")
+    project = state.get("current_project")
+    task = state.get("current_task")
+    workspace_id = str(workspace.get("id", "")).strip() if isinstance(workspace, dict) else ""
+    project_id = str(project.get("id", "")).strip() if isinstance(project, dict) else ""
+    if not isinstance(task, dict):
+        return f"{workspace_id}|{project_id}|||"
+    return "|".join(
+        [
+            workspace_id,
+            project_id,
+            str(task.get("id", "")).strip(),
+            str(task.get("status", "")).strip(),
+            str(task.get("task_type", "")).strip(),
+            str(task.get("scope", "")).strip(),
+        ]
+    )
+
+
 def cmd_hydrate_context(root: Path, *, allow_unanchored: bool = False) -> int:
     records, errors = collect_validation_errors(root)
     settings = load_effective_settings(root)
+    previous_state = load_hydration_state(root)
     active_workspaces = active_workspace_summaries_for_guard(records)
     if active_workspaces and (
         not str(settings.get("anchor_path") or "").strip()
@@ -295,6 +316,15 @@ def cmd_hydrate_context(root: Path, *, allow_unanchored: bool = False) -> int:
         "conflict_count": len(conflict_lines),
         "error_count": len(errors),
     }
+    previous_confirmed_task = previous_state.get("confirmed_task")
+    if (
+        isinstance(previous_confirmed_task, dict)
+        and str(previous_confirmed_task.get("id", "")).strip()
+        == str((current_task or {}).get("id", "")).strip()
+        and str(previous_confirmed_task.get("focus_token", "")).strip()
+        == task_confirmation_token(state)
+    ):
+        state["confirmed_task"] = previous_confirmed_task
     write_hydration_state(root, state)
 
     if errors:
@@ -419,14 +449,14 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
             if isinstance(confirmed_task, dict)
             else ""
         )
-        confirmed_fingerprint = (
-            str(confirmed_task.get("fingerprint", "")).strip()
+        confirmed_token = (
+            str(confirmed_task.get("focus_token", "")).strip()
             if isinstance(confirmed_task, dict)
             else ""
         )
         if current_task_id and (
             confirmed_task_id != current_task_id
-            or confirmed_fingerprint != current_fingerprint
+            or confirmed_token != task_confirmation_token(state)
         ):
             print(
                 "Current TASK-* is not confirmed for this hydrated context. "
@@ -521,7 +551,7 @@ def cmd_confirm_task(root: Path, task_ref: str, note: str | None) -> int:
     state = dict(state)
     state["confirmed_task"] = {
         "id": current_task_id,
-        "fingerprint": current_fingerprint,
+        "focus_token": task_confirmation_token(state),
         "confirmed_at": now_timestamp(),
         "note": (note or "").strip(),
     }

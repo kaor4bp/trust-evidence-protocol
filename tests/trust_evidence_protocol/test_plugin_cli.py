@@ -53,7 +53,7 @@ def only_record_id(context: Path, record_type: str) -> str:
 
 
 def recorded_id(result: subprocess.CompletedProcess[str], record_type: str) -> str:
-    match = re.search(rf"Recorded {record_type} ([A-Z]+-\d{{8}}-[0-9a-f]{{8}})", result.stdout)
+    match = re.search(rf"(?:Recorded|Started) {record_type} ([A-Z]+-\d{{8}}-[0-9a-f]{{8}})", result.stdout)
     assert match, result.stdout
     return match.group(1)
 
@@ -334,6 +334,60 @@ def test_record_input_creates_prompt_provenance_and_runtime_configures_capture(t
         "prompt source captured",
     )
     assert f"Classified input {input_id}" in classified.stdout
+    review = run_cli(context, "review-context")
+    assert "unclassified input" not in review.stdout
+    input_review = (context / "review" / "inputs.md").read_text(encoding="utf-8")
+    assert input_id not in input_review
+
+
+def test_input_triage_links_operational_prompts_without_promoting_to_facts(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "demo.input-triage",
+            "--title",
+            "Input triage task",
+            "--note",
+            "triage focus",
+        ),
+        "task",
+    )
+    input_id = recorded_id(
+        run_cli(
+            context,
+            "record-input",
+            "--scope",
+            "demo.input-triage",
+            "--input-kind",
+            "user_prompt",
+            "--origin-kind",
+            "user",
+            "--origin-ref",
+            "chat-operational",
+            "--text",
+            "continue autonomous work",
+            "--task",
+            task_id,
+            "--note",
+            "operational prompt",
+        ),
+        "input",
+    )
+
+    report = run_cli(context, "input-triage", "report", "--task", task_id).stdout
+    assert input_id in report
+    assert "not proof" in report
+
+    linked = run_cli(context, "input-triage", "link-operational", "--task", task_id, "--input", input_id)
+    assert "Linked 1 operational input(s)" in linked.stdout
+    wctx_id = recorded_id(linked, "working_context")
+    wctx = load_record(context, "working_context", wctx_id)
+    assert wctx["input_refs"] == [input_id]
+    assert wctx["task_refs"] == [task_id]
+
     review = run_cli(context, "review-context")
     assert "unclassified input" not in review.stdout
     input_review = (context / "review" / "inputs.md").read_text(encoding="utf-8")

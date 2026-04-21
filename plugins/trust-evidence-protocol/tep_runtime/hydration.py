@@ -65,4 +65,6 @@ def invalidate_hydration_state(root: Path, reason: str) -> None:
         payload["hydrated_at"] = current.get("hydrated_at")
     if current.get("fingerprint"):
         payload["last_hydrated_fingerprint"] = current.get("fingerprint")
+    if isinstance(current.get("confirmed_task"), dict):
+        payload["confirmed_task"] = current.get("confirmed_task")
     write_hydration_state(root, payload)

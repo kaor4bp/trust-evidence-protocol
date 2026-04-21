@@ -185,6 +185,7 @@ from context_lib import (
     invalidate_hydration_state,
     is_strictness_escalation,
     filter_attention_payload,
+    input_items_for_task,
     join_quote_items,
     linked_records_payload,
     load_attention_payload,
@@ -2752,6 +2753,94 @@ def unclassified_input_review_lines(records: dict[str, dict]) -> list[str]:
     if len(lines) == 4:
         lines.append("- No unclassified inputs detected.")
     return lines
+
+
+def input_triage_payload(records: dict[str, dict], task_ref: str | None, limit: int) -> dict:
+    items = input_items_for_task(records, task_ref)
+    return {
+        "input_triage_is_proof": False,
+        "task_ref": task_ref or "",
+        "count": len(items),
+        "items": items[: max(0, limit)],
+        "omitted": max(0, len(items) - max(0, limit)),
+    }
+
+
+def input_triage_text_lines(payload: dict) -> list[str]:
+    lines = [
+        "# Input Triage",
+        "",
+        "INP-* is prompt provenance only. Triage links operational prompts to WCTX/TASK; it is not proof and does not create facts.",
+        f"task_ref: `{payload.get('task_ref') or 'all'}`",
+        f"unclassified_count: `{payload.get('count', 0)}`",
+        "",
+    ]
+    for item in payload.get("items", []):
+        task_refs = ",".join(item.get("task_refs", [])) or "none"
+        lines.append(f"- `{item['id']}` task_refs=`{task_refs}`: {item['summary']}")
+    if payload.get("omitted"):
+        lines.append(f"- ... {payload['omitted']} more")
+    return lines
+
+
+def cmd_input_triage_report(root: Path, task_ref: str | None, limit: int, output_format: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload = input_triage_payload(records, task_ref, limit)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(input_triage_text_lines(payload)))
+    return 0
+
+
+def cmd_input_triage_link_operational(root: Path, task_ref: str, input_refs: list[str], note: str | None) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    task = records.get(task_ref)
+    if not task or task.get("record_type") != "task":
+        print(f"{task_ref} must reference a task record")
+        return 1
+    refs = [ref.strip() for ref in input_refs if ref.strip()]
+    if not refs:
+        refs = [item["id"] for item in input_items_for_task(records, task_ref)]
+    if not refs:
+        print(f"No unclassified inputs found for task {task_ref}")
+        return 0
+    missing = [ref for ref in refs if ref not in records or records[ref].get("record_type") != "input"]
+    if missing:
+        print("missing input record(s): " + ", ".join(missing))
+        return 1
+
+    timestamp = now_timestamp()
+    payload = build_working_context_payload(
+        record_id=next_record_id(records, "WCTX-"),
+        timestamp=timestamp,
+        scope=str(task.get("scope") or "input-triage"),
+        title=f"Operational input triage for {task_ref}",
+        context_kind="handoff",
+        pinned_refs=[],
+        focus_paths=[],
+        topic_terms=["input-triage", "operational-provenance"],
+        topic_seed_refs=[task_ref],
+        assumptions=[],
+        concerns=[],
+        project_refs=project_refs_for_write(root, []),
+        task_refs=[task_ref],
+        tags=["input-triage", "operational"],
+        note=append_note(
+            f"Operational prompts acknowledged for {task_ref}. This WCTX is not proof.",
+            note or "",
+        ),
+    )
+    payload["input_refs"] = refs
+    result = persist_working_context_with_task_links(root, records, payload, quiet=False)
+    if result:
+        return result
+    print(f"Linked {len(refs)} operational input(s) to {payload['id']} for task {task_ref}")
+    return 0
 
 
 def cmd_review_context(root: Path) -> int:
@@ -7953,6 +8042,23 @@ def parse_args() -> argparse.Namespace:
     classify_input.add_argument("--derived-record", dest="derived_record_refs", action="append", default=[])
     classify_input.add_argument("--note")
 
+    input_triage = subparsers.add_parser(
+        "input-triage",
+        help="Report or structurally link unclassified INP-* provenance records.",
+    )
+    input_triage_subparsers = input_triage.add_subparsers(dest="input_triage_command", required=True)
+    input_triage_report = input_triage_subparsers.add_parser("report", help="Show unclassified INP-* records.")
+    input_triage_report.add_argument("--task", dest="task_ref")
+    input_triage_report.add_argument("--limit", type=int, default=50)
+    input_triage_report.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    input_triage_link = input_triage_subparsers.add_parser(
+        "link-operational",
+        help="Link operational INP-* prompts to a WCTX-* instead of promoting them to facts.",
+    )
+    input_triage_link.add_argument("--task", dest="task_ref", required=True)
+    input_triage_link.add_argument("--input", dest="input_refs", action="append", default=[])
+    input_triage_link.add_argument("--note")
+
     record_source = subparsers.add_parser(
         "record-source",
         help="Create a canonical source record and refresh generated views.",
@@ -9092,6 +9198,26 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 note=args.note,
             )
         )
+    if args.command == "input-triage":
+        if args.input_triage_command == "report":
+            raise SystemExit(
+                cmd_input_triage_report(
+                    root,
+                    task_ref=args.task_ref,
+                    limit=args.limit,
+                    output_format=args.output_format,
+                )
+            )
+        if args.input_triage_command == "link-operational":
+            raise SystemExit(
+                cmd_input_triage_link_operational(
+                    root,
+                    task_ref=args.task_ref,
+                    input_refs=args.input_refs,
+                    note=args.note,
+                )
+            )
+        raise SystemExit(2)
     if args.command == "record-source":
         raise SystemExit(
             cmd_record_source(

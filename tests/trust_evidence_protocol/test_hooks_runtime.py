@@ -409,6 +409,28 @@ def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:
     planning = run_runtime(context, "preflight-task", "--mode", "planning")
     assert "Preflight passed for planning" in planning.stdout
 
+    run_cli(
+        context,
+        "record-source",
+        "--scope",
+        "demo.task",
+        "--source-kind",
+        "runtime",
+        "--critique-status",
+        "accepted",
+        "--origin-kind",
+        "command",
+        "--origin-ref",
+        "pytest",
+        "--quote",
+        "Task confirmation survives unrelated records.",
+        "--note",
+        "unrelated source after task confirmation",
+    )
+    run_runtime(context, "hydrate-context")
+    still_confirmed = run_runtime(context, "preflight-task", "--mode", "planning")
+    assert "Preflight passed for planning" in still_confirmed.stdout
+
     payload = hook_json(HOOK_DIR / "session_start_hydrate.py", hook_payload(context, ""))
     assert payload["systemMessage"] == "🛡️ Context hydrated with current task."
     session_context = payload["hookSpecificOutput"]["additionalContext"]
