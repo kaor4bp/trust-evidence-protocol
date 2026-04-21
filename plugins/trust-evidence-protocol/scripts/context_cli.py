@@ -174,6 +174,8 @@ from context_lib import (
     current_task_ref,
     curiosity_probe_text_lines,
     current_workspace_ref,
+    decision_validation_payload,
+    decision_validation_text_lines,
     dependency_refs_for_record,
     evidence_chain_report_lines,
     effective_logic_solver,
@@ -1888,6 +1890,24 @@ def cmd_validate_evidence_chain(root: Path, chain_file: Path) -> int:
     return 1 if validation.errors else 0
 
 
+def cmd_validate_decision(root: Path, mode: str, chain_file: Path, output_format: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    try:
+        payload = json.loads(chain_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"{chain_file}: {exc}")
+        return 1
+    hypothesis_entries = active_hypothesis_entry_by_claim(root, records)
+    decision = decision_validation_payload(records, hypothesis_entries, payload, mode)
+    if output_format == "json":
+        print(json.dumps(decision, indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(decision_validation_text_lines(decision, TEP_ICON)))
+    return 0 if decision["decision_valid"] else 1
+
+
 def cmd_augment_chain(root: Path, chain_file: Path, output_format: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
@@ -2356,7 +2376,7 @@ def cmd_help(topic: str) -> int:
             "lookup --query ... --reason orientation|planning|answering|permission|editing|debugging|retrospective|curiosity|migration --kind facts|code|theory|research|policy|auto [--format json]",
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
-            "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json",
+            "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|model|flow|proposal|final --chain evidence-chain.json",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
             "start-task --type investigation --scope ... --title ... --note ...",
             "pause-task | resume-task --task TASK-* | switch-task --task TASK-*",
@@ -7334,6 +7354,13 @@ def parse_args() -> argparse.Namespace:
         help="Validate an agent-supplied evidence chain with role/ref/quote nodes.",
     )
     validate_evidence_chain.add_argument("--file", dest="chain_file", required=True)
+    validate_decision = subparsers.add_parser(
+        "validate-decision",
+        help="Validate whether an evidence chain is acceptable for a planning/permission/edit/model/flow/proposal/final decision.",
+    )
+    validate_decision.add_argument("--mode", required=True, choices=["planning", "permission", "edit", "model", "flow", "proposal", "final", "curiosity", "debugging"])
+    validate_decision.add_argument("--chain", dest="chain_file", required=True)
+    validate_decision.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     augment_chain = subparsers.add_parser(
         "augment-chain",
         help="Read-only enrichment of an evidence chain with record metadata, quotes, sources, and validation.",
@@ -8591,6 +8618,15 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         )
     if args.command in {"validate-planning-chain", "validate-evidence-chain"}:
         raise SystemExit(cmd_validate_evidence_chain(root, Path(args.chain_file).expanduser().resolve()))
+    if args.command == "validate-decision":
+        raise SystemExit(
+            cmd_validate_decision(
+                root,
+                mode=args.mode,
+                chain_file=Path(args.chain_file).expanduser().resolve(),
+                output_format=args.output_format,
+            )
+        )
     if args.command == "augment-chain":
         raise SystemExit(
             cmd_augment_chain(

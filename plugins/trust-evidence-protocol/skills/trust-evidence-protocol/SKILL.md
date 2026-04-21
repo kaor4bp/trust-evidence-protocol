@@ -434,6 +434,17 @@ exploration_context -> fact is forbidden
 broken chain means no action
 ```
 
+Hypotheses in public chains are not free-form guesses. If a chain uses
+`role=hypothesis`, the node must reference a `CLM-* status=tentative` that is
+also active in the hypothesis index. Record the tentative claim, run
+`hypothesis add --claim CLM-*`, and then let the chain cite `id + quote`.
+Use `validate-decision --mode ... --chain evidence-chain.json` before turning
+the chain into a planning, permission, edit, model, flow, proposal, final,
+curiosity, or debugging decision. Planning/proposal/curiosity/debugging may
+carry indexed hypotheses as uncertainty. Permission/edit/model/flow/final
+decisions need decisive proof and must not rely on hypothesis or
+exploration-context nodes.
+
 When you already know the record refs but not the exact quotes, run
 `augment-chain --file evidence-chain.json` to let the plugin fill canonical
 quotes, public record metadata, source quotes, and validation output. Treat its
@@ -476,10 +487,11 @@ For project-claim work:
 8. Reconcile new observations against existing supported/corroborated `CLM-*` records.
 9. Publish a `Reasoning Checkpoint` before long or plan-changing analysis.
 10. Build and validate an `Evidence Chain` before non-trivial action.
-11. Act only on the subset allowed by strictness, permissions, restrictions, and required guidelines.
-12. Persist reconstructable sources, claims, guidelines, restrictions, permissions, proposals, actions, models, flows, plans, debt, projects, tasks, and open questions when they will matter later.
-13. Rehydrate when plugin hooks mark context stale.
-14. Complete, pause, or stop the current task when done, deferred, or abandoned.
+11. Validate decision chains with the intended mode when the next step depends on a hypothesis, permission, edit, model, flow, proposal, final answer, curiosity probe, or debugging decision.
+12. Act only on the subset allowed by strictness, permissions, restrictions, decision validation, and required guidelines.
+13. Persist reconstructable sources, claims, guidelines, restrictions, permissions, proposals, actions, models, flows, plans, debt, projects, tasks, and open questions when they will matter later.
+14. Rehydrate when plugin hooks mark context stale.
+15. Complete, pause, or stop the current task when done, deferred, or abandoned.
 
 For small local actions, short form is allowed, but decisive ids and support edges must remain explicit.
 

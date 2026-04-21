@@ -4881,6 +4881,127 @@ def test_exploration_hypothesis_is_blocked_as_proof_but_allowed_as_context(tmp_p
     assert "evidence chain is mechanically valid" in allowed.stdout
 
 
+def test_validate_decision_requires_indexed_hypotheses_and_blocks_proof_modes(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    run_cli(
+        context,
+        "record-source",
+        "--scope",
+        "demo.decision",
+        "--source-kind",
+        "runtime",
+        "--critique-status",
+        "accepted",
+        "--origin-kind",
+        "command",
+        "--origin-ref",
+        "pytest decision",
+        "--quote",
+        "Retry recovered after a transient failure.",
+        "--note",
+        "decision source",
+    )
+    source_id = only_record_id(context, "source")
+    fact_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.decision",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Retry recovered after a transient failure.",
+            "--source",
+            source_id,
+            "--note",
+            "decision fact",
+        ),
+        "claim",
+    )
+    hypothesis_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.decision",
+            "--plane",
+            "runtime",
+            "--status",
+            "tentative",
+            "--statement",
+            "The transient failure may be caused by stale retry state.",
+            "--source",
+            source_id,
+            "--note",
+            "decision hypothesis",
+        ),
+        "claim",
+    )
+
+    missing_ref_chain = tmp_path / "missing-hypothesis-ref.json"
+    missing_ref_chain.write_text(
+        json.dumps(
+            {
+                "task": "bad unrecorded hypothesis",
+                "nodes": [
+                    {"role": "fact", "ref": fact_id, "quote": "Retry recovered"},
+                    {"role": "hypothesis", "quote": "Probably stale retry state."},
+                ],
+                "edges": [{"from": fact_id, "to": fact_id, "relation": "frames"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    missing_ref = run_cli(context, "validate-evidence-chain", "--file", str(missing_ref_chain), check=False)
+    assert missing_ref.returncode == 1
+    assert "hypothesis missing ref" in missing_ref.stdout
+    assert "hypothesis add" in missing_ref.stdout
+
+    chain = tmp_path / "decision-chain.json"
+    chain.write_text(
+        json.dumps(
+            {
+                "task": "planning with uncertainty",
+                "nodes": [
+                    {"role": "fact", "ref": fact_id, "quote": "Retry recovered"},
+                    {
+                        "role": "hypothesis",
+                        "ref": hypothesis_id,
+                        "quote": "stale retry state",
+                    },
+                ],
+                "edges": [{"from": fact_id, "to": hypothesis_id, "relation": "frames-hypothesis"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    missing_index = run_cli(context, "validate-evidence-chain", "--file", str(chain), check=False)
+    assert missing_index.returncode == 1
+    assert f"hypothesis `{hypothesis_id}` requires an active hypothesis index entry" in missing_index.stdout
+
+    run_cli(context, "hypothesis", "add", "--claim", hypothesis_id, "--mode", "durable", "--note", "decision test hypothesis")
+    planning = json.loads(
+        run_cli(context, "validate-decision", "--mode", "planning", "--chain", str(chain), "--format", "json").stdout
+    )
+    assert planning["decision_valid"] is True
+    assert planning["hypothesis_refs"] == [hypothesis_id]
+    assert "planning" in planning["valid_for"]
+    assert "edit" in planning["invalid_for"]
+    assert planning["hypothesis_modes"][hypothesis_id] == "durable"
+
+    edit = run_cli(context, "validate-decision", "--mode", "edit", "--chain", str(chain), check=False)
+    assert edit.returncode == 1
+    assert "cannot use hypothesis nodes as decisive proof" in edit.stdout
+
+    augmented = json.loads(run_cli(context, "augment-chain", "--file", str(chain), "--format", "json").stdout)
+    hypothesis_node = next(node for node in augmented["chain"]["nodes"] if node["ref"] == hypothesis_id)
+    assert hypothesis_node["hypothesis_entry"]["mode"] == "durable"
+
+
 def test_review_reindex_and_scan_report_conflicts_without_aborting(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 

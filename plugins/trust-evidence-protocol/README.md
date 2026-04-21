@@ -807,6 +807,7 @@ Commands:
   - validates an agent-supplied evidence chain instead of inventing one
   - expects nodes shaped as `role + ref + quote`, e.g. `fact CLM-*: "..." -> observation CLM-*: "..."`
   - treats `fact` as a role for `CLM-* status=supported|corroborated`, not as a separate record type
+  - requires `hypothesis` nodes to reference a real `CLM-* status=tentative` that is also active in the hypothesis index
   - prints a `User-Facing Chain` that includes the entity id for every node
   - checks that refs exist, roles match record types/statuses, and quotes appear in the referenced record or its source quotes
   - supports `requested_permission` nodes for user-facing permission requests before a `PRM-*` exists
@@ -814,6 +815,13 @@ Commands:
   - supports `restriction`, `guideline`, `proposal`, and `project` nodes as context/control/guidance/critique, not proof
   - blocks permission/restriction/guideline/proposal-as-truth edges, project/task/exploration-as-proof edges, and chains without at least one fact node
   - `validate-planning-chain` remains as a compatibility alias
+
+- `validate-decision --mode planning|permission|edit|model|flow|proposal|final|curiosity|debugging --chain evidence-chain.json`
+  - validates whether a mechanically valid evidence chain is acceptable for the requested decision type
+  - allows indexed tentative hypotheses for uncertainty-bearing modes such as planning, proposal, curiosity, and debugging
+  - blocks `hypothesis` and `exploration_context` nodes as decisive proof for permission, edit, model, flow, and final decisions
+  - requires `requested_permission` nodes for permission-mode chains
+  - returns `valid_for`, `invalid_for`, hypothesis refs, blockers, warnings, and recommended follow-up commands
 
 Reasoning checkpoint disclosure:
 
@@ -1193,6 +1201,7 @@ Hypothesis lifecycle:
 
 - `record-claim --status tentative` creates the tentative claim itself
 - `hypothesis add` places that claim in the active hypothesis index
+- a `hypothesis` node in an `Evidence Chain` must cite both: the tentative `CLM-*` and its active hypothesis index entry
 - `hypothesis add --mode exploration --based-on-hypothesis CLM-*` is allowed for local exploration, but those entries are not valid as proof in `validate-evidence-chain`
 - stronger evidence should promote or reject the underlying `CLM-*`
 - once the claim is no longer tentative, `hypothesis sync` removes the stale index entry
@@ -1306,6 +1315,7 @@ Chat-native protocol panels:
 
 - Plugins do not inject arbitrary custom chat UI, so agents render protocol state as stable markdown panels.
 - Before substantial planning, permission requests, persistence, or edits, render an `Evidence Chain` panel with `id + quote` nodes.
+- Before turning that chain into a decision, validate it with `validate-decision` for the intended mode; planning may use indexed hypotheses, but proof decisions may not.
 - Before long analysis or tool-heavy investigation, render a compact `Reasoning Checkpoint` panel.
 - Before substantial code edits, render a `Guidelines` panel with applicable `GLD-* + quote` entries.
 - After substantial code edits, render `Guidelines used:` with the used `GLD-* + quote` entries.

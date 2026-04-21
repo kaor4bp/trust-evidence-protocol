@@ -115,6 +115,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context build-reasoning-case --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context augment-chain --file evidence-chain.json --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-evidence-chain --file evidence-chain.json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-decision --mode planning --chain evidence-chain.json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context working-context check-drift --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context workspace-admission check --repo /abs/repo --format json
 ```
@@ -156,6 +157,8 @@ Use `logic-search` / `logic-check` only as predicate prefilters over `CLM.logic`
 Use `build-reasoning-case` before non-trivial actions or recommendations that span several facts, models, or flows.
 Use `augment-chain` when you already have record refs but need the plugin to fill quotes, source refs, and validation output mechanically.
 Use `validate-evidence-chain` before asking permission, recording a mutating `ACT-*`, or presenting a user-facing proof chain.
+Use `validate-decision` after evidence-chain validation when deciding whether that chain is sufficient for planning, permission, edit, model, flow, proposal, final, curiosity, or debugging mode.
+If a chain uses `role=hypothesis`, first record it as `CLM-* status=tentative` and add it with `hypothesis add`; proof modes still must not rely on hypothesis nodes.
 Use `working-context check-drift` when the user changes topic, task type, or repository; switch/fork/create `WCTX-*` before persisting task-local conclusions under the wrong focus.
 Use `workspace-admission check` before attaching or analyzing an unknown checkout; if it requires a decision, ask whether to create a new workspace, add a project to the current workspace, or inspect read-only without persistence.
 
@@ -353,6 +356,7 @@ a feedback `SRC-*` and an open `DEBT-*`; it is not proof by itself.
 ```bash
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context hypothesis list
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context hypothesis add --claim CLM-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-decision --mode planning --chain evidence-chain.json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context hypothesis close --claim CLM-* --status confirmed --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context hypothesis remove --claim CLM-* --note "..."
 ```

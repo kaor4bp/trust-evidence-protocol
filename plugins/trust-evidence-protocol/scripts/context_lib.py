@@ -333,6 +333,8 @@ from tep_runtime.reasoning import (
     EvidenceChainValidation,
     augment_evidence_chain_payload,
     augmented_evidence_chain_text_lines,
+    decision_validation_payload,
+    decision_validation_text_lines,
     evidence_chain_report_lines,
     validate_chain_node,
     validate_evidence_chain_payload,

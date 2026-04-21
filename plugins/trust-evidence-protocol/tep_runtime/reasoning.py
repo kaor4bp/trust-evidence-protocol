@@ -27,6 +27,19 @@ VALID_CHAIN_ROLES = {
     "flow",
     "open_question",
 }
+DECISION_MODES = {
+    "planning",
+    "permission",
+    "edit",
+    "model",
+    "flow",
+    "proposal",
+    "final",
+    "curiosity",
+    "debugging",
+}
+PROOF_DECISION_MODES = {"permission", "edit", "model", "flow", "final"}
+UNCERTAIN_DECISION_MODES = {"planning", "proposal", "curiosity", "debugging"}
 
 CONTROL_CHAIN_ROLES = {"permission", "requested_permission", "restriction", "guideline", "proposal"}
 CONTEXT_CHAIN_ROLES = {"exploration_context", "project", "working_context"}
@@ -128,7 +141,12 @@ def validate_chain_node(
     if role not in VALID_CHAIN_ROLES:
         errors.append(f"node[{index}] has invalid role `{role}`")
     if not ref:
-        errors.append(f"node[{index}] missing ref")
+        if role == "hypothesis":
+            errors.append(
+                f"node[{index}] hypothesis missing ref; record it as CLM(status=tentative) and add it with `hypothesis add`"
+            )
+        else:
+            errors.append(f"node[{index}] missing ref")
         return None, errors, warnings
     if ref.startswith(NON_PROOF_REF_PREFIXES) or ref.startswith(NON_PROOF_REF_SCHEMES):
         errors.append(f"node[{index}] `{ref}` is generated/backend/navigation output and cannot be used as proof")
@@ -170,6 +188,11 @@ def validate_chain_node(
         elif claim_is_fallback(record):
             errors.append(f"node[{index}] hypothesis `{ref}` is lifecycle fallback/archived and cannot be decisive proof")
         entry = hypothesis_entries.get(ref, {})
+        if not entry:
+            errors.append(
+                f"node[{index}] hypothesis `{ref}` requires an active hypothesis index entry; "
+                f"run `hypothesis add --claim {ref}`"
+            )
         if entry.get("mode") == "exploration" or entry.get("based_on_hypotheses"):
             errors.append(
                 f"node[{index}] `{ref}` is an exploration or hypothesis-derived hypothesis; "
@@ -260,6 +283,130 @@ def validate_evidence_chain_payload(
     )
 
 
+def decision_validation_payload(
+    records: dict[str, dict],
+    hypothesis_entries: dict[str, dict],
+    payload: dict,
+    mode: str,
+) -> dict[str, Any]:
+    validation = validate_evidence_chain_payload(records, hypothesis_entries, payload)
+    mode = mode if mode in DECISION_MODES else "planning"
+    hypothesis_refs = [
+        ref
+        for ref, role in sorted(validation.roles_by_ref.items())
+        if role == "hypothesis"
+    ]
+    exploration_refs = [
+        ref
+        for ref, role in sorted(validation.roles_by_ref.items())
+        if role == "exploration_context"
+    ]
+    hypothesis_modes = {
+        ref: str(hypothesis_entries.get(ref, {}).get("mode") or "missing")
+        for ref in hypothesis_refs
+    }
+    blockers = list(validation.errors)
+    warnings = list(validation.warnings)
+    if hypothesis_refs:
+        warnings.append(
+            "decision chain contains tentative hypotheses; they express uncertainty and are not proof"
+        )
+    if exploration_refs:
+        warnings.append(
+            "decision chain contains exploration_context nodes; they may motivate probes but are not proof"
+        )
+    if mode in PROOF_DECISION_MODES and hypothesis_refs:
+        blockers.append(
+            f"mode `{mode}` cannot use hypothesis nodes as decisive proof: {', '.join(hypothesis_refs)}"
+        )
+    if mode in PROOF_DECISION_MODES and exploration_refs:
+        blockers.append(
+            f"mode `{mode}` cannot use exploration_context nodes as decisive proof: {', '.join(exploration_refs)}"
+        )
+    if mode == "permission" and "requested_permission" not in set(validation.roles_by_ref.values()):
+        blockers.append("mode `permission` requires a requested_permission node")
+
+    if blockers:
+        valid_for = [item for item in sorted(UNCERTAIN_DECISION_MODES) if item != mode]
+        if validation.errors:
+            valid_for = []
+    elif hypothesis_refs:
+        valid_for = sorted(UNCERTAIN_DECISION_MODES)
+    elif exploration_refs:
+        valid_for = ["curiosity", "debugging", "planning"]
+    else:
+        valid_for = sorted(DECISION_MODES)
+    invalid_for = [item for item in sorted(DECISION_MODES) if item not in valid_for]
+    recommended_commands = []
+    for ref in hypothesis_refs:
+        if ref not in hypothesis_entries:
+            recommended_commands.append(
+                f"hypothesis add --claim {ref} --mode durable "
+                f"--note 'used by validate-decision mode={mode}'"
+            )
+    return {
+        "decision_validation_is_proof": False,
+        "mode": mode,
+        "decision_valid": not blockers and mode in valid_for,
+        "valid_for": valid_for,
+        "invalid_for": invalid_for,
+        "hypothesis_refs": hypothesis_refs,
+        "hypothesis_modes": hypothesis_modes,
+        "exploration_context_refs": exploration_refs,
+        "validation": {
+            "ok": validation.ok,
+            "error_count": len(validation.errors),
+            "warning_count": len(validation.warnings),
+            "errors": validation.errors,
+            "warnings": validation.warnings,
+        },
+        "blockers": blockers,
+        "warnings": warnings,
+        "recommended_commands": recommended_commands,
+    }
+
+
+def decision_validation_text_lines(payload: dict, icon: str) -> list[str]:
+    lines = [
+        f"# {icon} Decision Chain Check",
+        "",
+        f"mode: `{payload.get('mode')}` decision_valid=`{payload.get('decision_valid')}` proof=`{payload.get('decision_validation_is_proof')}`",
+        f"valid_for: `{', '.join(payload.get('valid_for', [])) or 'none'}`",
+        f"invalid_for: `{', '.join(payload.get('invalid_for', [])) or 'none'}`",
+        "",
+    ]
+    if payload.get("hypothesis_refs"):
+        lines.append("## Hypotheses")
+        for ref in payload.get("hypothesis_refs", []):
+            mode = payload.get("hypothesis_modes", {}).get(ref, "")
+            lines.append(f"- `{ref}` mode=`{mode}`")
+        lines.append("")
+    if payload.get("exploration_context_refs"):
+        lines.append("## Exploration Context")
+        for ref in payload.get("exploration_context_refs", []):
+            lines.append(f"- `{ref}`")
+        lines.append("")
+    if payload.get("warnings"):
+        lines.append("## Warnings")
+        for warning in payload.get("warnings", []):
+            lines.append(f"- {warning}")
+        lines.append("")
+    if payload.get("blockers"):
+        lines.append("## Blockers")
+        for blocker in payload.get("blockers", []):
+            lines.append(f"- {blocker}")
+        lines.append("")
+    if payload.get("recommended_commands"):
+        lines.append("## Recommended Commands")
+        for command in payload.get("recommended_commands", []):
+            lines.append(f"- `{command}`")
+        lines.append("")
+    if payload.get("decision_valid"):
+        lines.append("## Result")
+        lines.append("- OK: decision chain is valid for the requested mode")
+    return lines
+
+
 def augment_evidence_chain_payload(
     records: dict[str, dict],
     hypothesis_entries: dict[str, dict],
@@ -288,6 +435,13 @@ def augment_evidence_chain_payload(
                 source_quotes = _source_quote_items(records, record)
                 if source_quotes:
                     augmented_node["source_quotes"] = source_quotes
+                if ref in hypothesis_entries:
+                    entry = {
+                        key: value
+                        for key, value in hypothesis_entries[ref].items()
+                        if not str(key).startswith("_")
+                    }
+                    augmented_node["hypothesis_entry"] = entry
             augmented_nodes.append(augmented_node)
     augmented_payload["nodes"] = augmented_nodes
     validation = validate_evidence_chain_payload(records, hypothesis_entries, augmented_payload)
