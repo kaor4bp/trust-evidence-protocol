@@ -34,15 +34,16 @@ def _hydration_is_fresh(root: Path, state: dict) -> bool:
 
 def _intent_route(intent: str, task: str) -> tuple[str, list[str]]:
     task_arg = f' --task "{task}"' if task else ' --task "..."'
+    query_arg = f' --query "{task}"' if task else ' --query "..."'
     routes = {
-        "answer": ("answering", [f"brief-context{task_arg}", "record-detail / linked-records before citing proof"]),
-        "plan": ("planning", [f"brief-context{task_arg}", "publish Reasoning Checkpoint", "validate-planning-chain if chain is explicit"]),
-        "edit": ("editing", [f"guidelines-for{task_arg}", "build/validate evidence chain", "preflight-task --mode edit"]),
-        "test": ("testing", [f"brief-context{task_arg}", "record-evidence for meaningful test output", "hydrate-context after mutation"]),
-        "persist": ("persisting", ["classify input/source first", "record-* through context_cli", "hydrate-context"]),
-        "permission": ("permission", ["build-reasoning-case", "cite CLM/GLD/PRM ids + quotes", "request explicit approval if needed"]),
-        "debug": ("debugging", ["show-hydration", "review-context", "scan-conflicts / reindex-context if needed"]),
-        "after-mutation": ("after mutation", ["hydrate-context", "record-evidence/action if meaningful", "show-hydration"]),
+        "answer": ("answering", [f"lookup{query_arg} --reason answering --kind auto --format json", f"brief-context{task_arg}", "record-detail / linked-records before citing proof"]),
+        "plan": ("planning", [f"lookup{query_arg} --reason planning --kind auto --format json", f"brief-context{task_arg}", "publish Reasoning Checkpoint", "validate evidence chain if decisive"]),
+        "edit": ("editing", [f"lookup{query_arg} --reason editing --kind auto --format json", f"guidelines-for{task_arg}", "build/validate evidence chain", "preflight-task --mode edit"]),
+        "test": ("testing", [f"lookup{query_arg} --reason debugging --kind auto --format json", f"brief-context{task_arg}", "record-evidence for meaningful test output", "hydrate-context after mutation"]),
+        "persist": ("persisting", [f"lookup{query_arg} --reason migration --kind auto --format json", "classify input/source first", "record-evidence or record-* through context_cli", "hydrate-context"]),
+        "permission": ("permission", [f"lookup{query_arg} --reason permission --kind policy --format json", "build-reasoning-case", "cite CLM/GLD/PRM ids + quotes", "request explicit approval if needed"]),
+        "debug": ("debugging", ["show-hydration", f"lookup{query_arg} --reason debugging --kind auto --format json", "review-context", "scan-conflicts / reindex-context if needed"]),
+        "after-mutation": ("after mutation", ["hydrate-context", f"lookup{query_arg} --reason debugging --kind auto --format json", "record-evidence/action if meaningful", "show-hydration"]),
     }
     return routes.get(intent, ("general", [f"brief-context{task_arg}", "choose answer|plan|edit|test|persist|permission|debug route"]))
 
@@ -153,6 +154,14 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         "forced_first": forced,
         "route_steps": route_steps,
         "route_graph": _route_graph(intent),
+        "api_contract": {
+            "contract_version": 1,
+            "normal_entrypoint": "lookup",
+            "route_graph_required": True,
+            "drill_down_tools": ["brief-context", "search-records", "claim-graph", "record-detail", "linked-records"],
+            "proof_rule": "Navigation output is not proof; cite canonical records with quotes before decisions.",
+            "write_rule": "Prefer record-evidence for Source -> Claim writes; use specialized record-* commands only when extra fields are needed.",
+        },
         "note": "Navigation only. This route is not proof; cite records with quotes before decisions.",
     }
 

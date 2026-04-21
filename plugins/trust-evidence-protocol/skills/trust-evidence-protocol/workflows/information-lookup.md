@@ -42,6 +42,7 @@ new investigation should update context when the result matters later
 
 - Start from the resolved TEP context root, preferring `~/.tep_context` when available; only fall back to fresh investigation for gaps, contradictions, staleness, or missing support.
 - Use `lookup --reason ...` as the front door when choosing a route. The reason is mandatory and should describe why the agent is looking: `orientation`, `planning`, `answering`, `permission`, `editing`, `debugging`, `retrospective`, `curiosity`, or `migration`.
+- Follow `lookup.next_allowed_commands` and `lookup.output_contract` before opening broader record searches. `search-records`, `claim-graph`, `record-detail`, and `linked-records` are drill-down tools after lookup in normal work.
 - Let lookup create a lightweight `WCTX-*` when no active working context exists and the workspace is known. Treat that WCTX as operational focus only, not proof or authorization.
 - Use `topic-search` to narrow broad lookup, but follow up with `record-detail`, `linked-records`, or direct code/source inspection before citing.
 - Use `logic-search` / `logic-check` for typed predicate claims, but follow up with canonical `CLM-*` and `SRC-*` before citing.
@@ -69,6 +70,7 @@ new investigation should update context when the result matters later
 - Use `FLOW-*` for end-to-end behavior across models, including preconditions, oracle, accepted deviations, and open questions.
 - Investigation-local models/flows are allowed, but they should later be promoted, superseded, or marked stale when domain knowledge changes.
 - A model or flow summary is never proof by itself; it must cite underlying `CLM-*` records.
+- `MODEL-*` and `FLOW-*` should rank high in lookup because they are compact integrated pictures, but their write path must remain stricter than ordinary observations: do not build them from tentative/runtime-only claims.
 
 ## Public Output
 

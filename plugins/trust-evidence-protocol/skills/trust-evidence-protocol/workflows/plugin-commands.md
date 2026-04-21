@@ -16,10 +16,11 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `brief_context`: equivalent to compact `brief-context --task "..."`; pass `detail=full` only when the expanded brief is needed
 - `next_step`: equivalent to `next-step --intent ...`; use it as the first route branch when unsure what to do next, follow its compact action graph before re-reading the protocol, and request `format=json` when a tool needs structured `route_graph` data
 - `lookup`: equivalent to `lookup --query "..." --reason ...`; reason is mandatory, lookup may auto-create a lightweight `WCTX-*`, and output is navigation only
-- `search_records`: equivalent to `search-records --query "..."`
-- `claim_graph`: equivalent to `claim-graph --query "..."`; returns current matching `CLM-*` anchors plus compact linked records/edges without reading raw claim JSON
-- `record_detail`: equivalent to `record-detail --record ID`
-- `linked_records`: equivalent to `linked-records --record ID`
+- `lookup` returns `next_allowed_commands`, `route_graph`, `evidence_profile`, and `output_contract`; follow these fields before broadening the search
+- `search_records`: equivalent to `search-records --query "..."`; drill-down after `lookup` in normal work
+- `claim_graph`: equivalent to `claim-graph --query "..."`; drill-down after `lookup`, returns current matching `CLM-*` anchors plus compact linked records/edges without reading raw claim JSON
+- `record_detail`: equivalent to `record-detail --record ID`; use before citing proof
+- `linked_records`: equivalent to `linked-records --record ID`; use for graph expansion after a selected candidate
 - `guidelines_for`: equivalent to `guidelines-for --task "..."`
 - `code_search`: equivalent to `code-search`; optional semantic `query` is proxied through TEP-managed backends such as CocoIndex; `scope=workspace` is an explicit broader glance
 - `code_feedback`: equivalent to read-only `code-feedback`; use CLI apply mode for reviewed CIX-to-record links
@@ -75,6 +76,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context scan-conflicts
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context brief-context --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context brief-context --task "..." --detail full
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context lookup --query "..." --reason orientation --kind auto --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context next-step --intent plan --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context next-step --intent plan --task "..." --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context search-records --query "..."

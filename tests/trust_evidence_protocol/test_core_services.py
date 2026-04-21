@@ -1264,6 +1264,8 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
 
     assert payload["hydration_fresh"] is True
     assert payload["route_graph"]["graph_version"] == 1
+    assert payload["api_contract"]["normal_entrypoint"] == "lookup"
+    assert payload["route_steps"][0].startswith("lookup ")
     assert {"if": "proof gap", "then": "build/validate evidence chain"} in payload["route_graph"]["branches"]
     assert "missing source-backed proof for truth claim" in payload["route_graph"]["stop_conditions"]
     compact_lines = next_step_text_lines(payload, "TEP", detail="compact")

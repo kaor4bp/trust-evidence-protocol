@@ -2567,7 +2567,32 @@ def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str,
     }[selected_kind]
     inferred_mode = {"code": "code", "theory": "theory", "research": "research"}.get(selected_kind, "general")
     selected_mode = mode if mode in ATTENTION_MODES and mode != "general" else inferred_mode
+    evidence_profile = {
+        "lookup_is_proof": False,
+        "raw_claim_reads": "blocked-in-normal-mode",
+        "normal_entrypoint": "lookup",
+        "drill_down_tools": ["search-records", "claim-graph", "record-detail", "linked-records"],
+        "preferred_read_order": [
+            "MODEL/FLOW summaries for integrated picture",
+            "active corroborated/supported CLM through claim-graph",
+            "record-detail/linked-records for proof quotes",
+            "tentative hypotheses for exploration only",
+            "resolved/historical fallback only after active records fail",
+        ],
+        "model_flow_priority": "MODEL-* and FLOW-* rank high because they are compact derivative pictures over source-backed claims.",
+        "model_flow_write_boundary": "MODEL/FLOW must be based on user-confirmed theory claims, not tentative/runtime-only observations.",
+    }
+    output_contract = {
+        "contract_version": 1,
+        "agent_role": "choose and justify a route; API validates proof boundaries and allowed writes",
+        "if_answering": "open record-detail or linked-records before citing a record as proof",
+        "if_new_support_found": "use record-evidence so SRC-* and optional CLM-* are created mechanically",
+        "if_chain_needed": "draft ids/quotes, run augment-chain, then validate-evidence-chain or validate-decision",
+        "if_theory_should_rank_high": "promote supported/user-confirmed theory into MODEL/FLOW through validated write paths",
+        "if_uncertain": "record a tentative CLM, OPEN-*, or PRP-* instead of silently relying on a guess",
+    }
     return {
+        "api_contract_version": 1,
         "lookup_is_proof": False,
         "query": query,
         "reason": reason,
@@ -2585,11 +2610,25 @@ def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str,
         },
         "primary_tool": primary_tool,
         "route": route_commands[selected_kind],
+        "next_allowed_commands": route_commands[selected_kind],
         "fallback_route": [
             f"search-records --query {query_arg} --format json",
             f"curiosity-map --mode {selected_mode} --scope {scope} --volume compact",
             "telemetry-report --format json",
         ],
+        "route_graph": {
+            "graph_version": 1,
+            "entrypoint": "lookup",
+            "branches": [
+                {"if": "candidate record found", "then": "record-detail|linked-records"},
+                {"if": "new source support found", "then": "record-evidence"},
+                {"if": "chain needed", "then": "augment-chain|validate-evidence-chain"},
+                {"if": "integrated theory needed", "then": "record-model|record-flow after user-confirmed theory support"},
+                {"if": "route underdetermined", "then": "record-open-question|record-proposal"},
+            ],
+        },
+        "evidence_profile": evidence_profile,
+        "output_contract": output_contract,
         "rules": [
             "Use lookup first when unsure where to search.",
             "Treat lookup and generated maps as navigation only, not proof.",
@@ -2618,6 +2657,11 @@ def lookup_text_lines(payload: dict) -> list[str]:
     lines.extend(["", "## Rules"])
     for rule in payload.get("rules", []):
         lines.append(f"- {rule}")
+    contract = payload.get("output_contract") or {}
+    if contract:
+        lines.extend(["", "## Output Contract"])
+        lines.append(f"- agent_role: {contract.get('agent_role')}")
+        lines.append(f"- if_chain_needed: {contract.get('if_chain_needed')}")
     return lines
 
 

@@ -708,6 +708,8 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert lookup_payload["kind"] == "code"
     assert lookup_payload["mode"] == "code"
     assert lookup_payload["primary_tool"] == "code-search"
+    assert lookup_payload["api_contract_version"] == 1
+    assert lookup_payload["output_contract"]["if_chain_needed"].startswith("draft ids/quotes")
 
     next_step = by_id[21]["result"]
     assert next_step["isError"] is False

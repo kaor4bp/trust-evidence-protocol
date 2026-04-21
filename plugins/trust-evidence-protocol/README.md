@@ -22,6 +22,7 @@ Responsibilities:
 - capture `INP-*` user-prompt provenance through the UserPromptSubmit hook when enabled by `input_capture`
 - collect append-only lookup telemetry in `activity/access.jsonl`, including MCP/CLI lookup events and hook-detected raw claim-file reads
 - provide one `lookup` front door that routes agents to fact, code, theory, research, or policy lookup instead of making them guess between overlapping tools
+- return an API contract from lookup routes (`next_allowed_commands`, `route_graph`, `evidence_profile`, and `output_contract`) so agents choose from a mechanical path instead of reconstructing protocol prose
 - provide `record-evidence` as the default mechanical Source -> Claim write path so agents can preserve quotes, command output, file lines, artifacts, and user confirmations without hand-authoring two records
 - push agents to preserve reusable discoveries, rules, actions, plans, debt, questions, models, flows, and proposals as records
 
@@ -528,17 +529,19 @@ Commands:
   - one front door for normal lookup routing
   - `--reason` is mandatory and is written into telemetry
   - ensures a `WCTX-*` operational context exists when a workspace is known; auto-created WCTX is not proof and not authorization
-  - returns the primary tool and ordered route commands for the requested work mode
+  - returns the primary tool, ordered route commands, `next_allowed_commands`, `route_graph`, `evidence_profile`, and `output_contract`
   - `facts` routes to `claim-graph`, `search-records`, `record-detail`, and `linked-records`
   - `code` routes to `code-search`, `code-feedback`, `code-info`, and a `curiosity-map --mode code`
   - `theory` routes to `claim-graph`, model/flow/proposal search, `curiosity-map --mode theory`, and `probe-pack`
   - `research` routes to `brief-context`, broader record search, `curiosity-map --mode research`, and `probe-pack`
   - `policy` routes to `guidelines-for` and scoped guideline/permission/restriction/proposal lookup
   - lookup output is navigation only; cite `record-detail` / `linked-records` records before making proof claims
+  - `search-records`, `claim-graph`, `record-detail`, and `linked-records` are drill-down tools after `lookup` in normal work; use them directly only for targeted follow-up, migration, forensics, or plugin development
 
 - `next-step --intent answer|plan|edit|test|persist|permission|debug --task "..."`
   - prints the compact route branch the agent should follow next
   - includes a compact action graph (`condition=>route`) so the agent follows a route instead of re-reading the whole protocol
+  - route steps begin with `lookup` when information is needed, then continue to narrower drill-down and validation commands
   - accepts `--format json` for the structured payload, including `route_graph.branches` and current workspace/project/task metadata
   - uses hydration freshness, conflicts, strictness, current workspace/project/task, restrictions, and guidelines
   - is navigation only; it is not proof and does not replace record quotes

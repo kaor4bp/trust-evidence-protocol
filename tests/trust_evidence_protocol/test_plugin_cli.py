@@ -1982,6 +1982,12 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert lookup_facts["focus"]["auto_created_working_context"] is True
     assert lookup_facts["auto_created_working_context"]["not_proof"] is True
     assert lookup_facts["primary_tool"] == "claim-graph"
+    assert lookup_facts["api_contract_version"] == 1
+    assert lookup_facts["evidence_profile"]["normal_entrypoint"] == "lookup"
+    assert "record-detail" in lookup_facts["evidence_profile"]["drill_down_tools"]
+    assert lookup_facts["output_contract"]["if_new_support_found"].startswith("use record-evidence")
+    assert lookup_facts["route_graph"]["entrypoint"] == "lookup"
+    assert lookup_facts["next_allowed_commands"] == lookup_facts["route"]
     assert any(command.startswith("claim-graph") for command in lookup_facts["route"])
     lookup_code = json.loads(
         run_cli(
@@ -5027,6 +5033,8 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     )
     assert next_step_payload["intent"] == "edit"
     assert next_step_payload["route_graph"]["graph_version"] == 1
+    assert next_step_payload["api_contract"]["normal_entrypoint"] == "lookup"
+    assert next_step_payload["route_steps"][0].startswith("lookup ")
     assert {"if": "proof gap", "then": "build/validate evidence chain"} in next_step_payload["route_graph"]["branches"]
 
     reasoning = run_cli(

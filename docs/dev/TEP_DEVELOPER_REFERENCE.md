@@ -339,6 +339,20 @@ Hydration must assemble compact operational context:
 
 Hydration must motivate the agent to search and link records, not just print a mechanical banner.
 
+### API-First Agent Contract
+
+TEP should not rely on agents memorizing a long manual.
+The skill gives the mental model, while `next-step`, `lookup`,
+`record-evidence`, `augment-chain`, and `validate-*` provide the mechanical
+route and proof boundary. See `docs/dev/TEP_API_FIRST_CONTRACT.md`.
+
+Normal work should start with `next-step` when route is unclear and `lookup`
+when information is needed. `search-records`, `claim-graph`, `record-detail`,
+and `linked-records` are drill-down tools after `lookup`, not the preferred
+first move. Runtime output should include allowed next commands and an output
+contract so the agent chooses from the API route instead of reconstructing policy
+from prose.
+
 ### Context Lookup
 
 Lookup tools must favor precision and explicit projections:

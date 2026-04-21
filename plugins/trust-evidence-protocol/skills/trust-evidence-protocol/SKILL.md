@@ -21,6 +21,15 @@ If no TEP context root is available, follow the same reasoning rules manually an
 
 ## Core Rule
 
+API-first mental model:
+
+1. If you are unsure what to do, call `next_step` / `next-step` and follow its route graph.
+2. If you need information, call `lookup` first with a concrete `reason`; treat `search-records`, `claim-graph`, `record-detail`, and `linked-records` as drill-down tools.
+3. Treat lookup, maps, indexes, backend hits, and route graphs as navigation only.
+4. For proof, present canonical ids plus quotes and validate the chain when the decision matters.
+5. For reusable support, prefer `record-evidence`; let the API create/link `SRC-*`, optional `CLM-*`, and `INP-*` provenance.
+6. For durable integrated understanding, update `MODEL-*` / `FLOW-*` only through validated write paths from supported/user-confirmed theory claims.
+
 Before using information for a conclusion, action, edit, permission request, or persistent record:
 
 1. classify the input as a `Source`
@@ -36,7 +45,7 @@ Do not use hidden chain-of-thought, unsupported memory, raw text, generated view
 When MCP tools are available, prefer them for lookup:
 
 - use `next_step` first when you are unsure which TEP branch to follow; request `format=json` when a tool needs structured `route_graph`; treat both forms as navigation only
-- use `lookup` as the first search router when you are unsure whether the task needs facts, code, theory/model context, broad research context, or policy/guideline context; always provide a concrete `reason` (`orientation`, `planning`, `answering`, `permission`, `editing`, `debugging`, `retrospective`, `curiosity`, or `migration`)
+- use `lookup` as the first search router for normal fact/code/theory/research/policy lookup; always provide a concrete `reason` (`orientation`, `planning`, `answering`, `permission`, `editing`, `debugging`, `retrospective`, `curiosity`, or `migration`) and follow its `next_allowed_commands` / `output_contract`
 - use compact `brief_context` before planning, answering, editing, or asking permission; request `detail=full` only when the compact brief is insufficient
 - use `search_records` before inspecting raw files from scratch
 - use `claim_graph` when keyword lookup should return a compact graph of current `CLM-*` anchors and linked sources/support before opening individual records

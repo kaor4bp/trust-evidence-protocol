@@ -115,6 +115,34 @@ def test_live_agent_checks_compact_lookup_help_route():
     assert "telemetry-report" in markers, payload
 
 
+def test_live_agent_checks_lookup_api_contract_runtime():
+    payload = run_plugin_runtime_case(
+        """
+        Verify the installed TEP Runtime plugin exposes the lookup API-first contract mechanically:
+        1. Run `lookup --query "live lookup contract" --reason orientation --kind auto
+           --format json` against `/workspace/.tep_context`.
+        2. Report observed literal markers from command output:
+           `api_contract_version`, `next_allowed_commands`, `evidence_profile`,
+           `output_contract`, and `route_graph`.
+        Do not infer these markers from memory; base the verdict on command output.
+        """
+    )
+
+    checks = payload["plugin_checks"]
+    commands = " ".join(payload["commands_run"])
+    markers = " ".join(payload["observed_markers"])
+    assert payload["verdict"] == "plugin-active", payload
+    assert checks["plugin_root_exists"] is True, payload
+    assert checks["context_cli_works"] is True, payload
+    assert checks["hydration_or_review_works"] is True, payload
+    assert "lookup" in commands, payload
+    assert "api_contract_version" in markers, payload
+    assert "next_allowed_commands" in markers, payload
+    assert "evidence_profile" in markers, payload
+    assert "output_contract" in markers, payload
+    assert "route_graph" in markers, payload
+
+
 def test_live_agent_checks_record_evidence_runtime_route():
     payload = run_plugin_runtime_case(
         """
