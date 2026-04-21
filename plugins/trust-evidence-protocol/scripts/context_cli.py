@@ -293,6 +293,7 @@ from context_lib import (
     task_identity_text,
     task_related_counts,
     task_summary_line,
+    unclassified_input_items,
 )
 from logic_z3 import analyze_logic_payload_with_z3
 from tep_runtime.cli_common import (
@@ -2377,6 +2378,7 @@ def cmd_help(topic: str) -> int:
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|model|flow|proposal|final --chain evidence-chain.json",
+            "record-input ... | classify-input --input INP-* --derived-record REF",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
             "start-task --type investigation --scope ... --title ... --note ...",
             "pause-task | resume-task --task TASK-* | switch-task --task TASK-*",
@@ -2735,46 +2737,6 @@ def cmd_build_reasoning_case(
     return 0
 
 
-INPUT_CLASSIFICATION_TERMS = {
-    "claim",
-    "fact",
-    "guideline",
-    "hypothesis",
-    "permission",
-    "restriction",
-    "rule",
-    "should",
-    "must",
-    "candidate",
-    "клейм",
-    "факт",
-    "гипотез",
-    "правил",
-    "надо",
-    "нужно",
-}
-
-
-def input_needs_classification(data: dict, records: dict[str, dict]) -> bool:
-    if data.get("record_type") != "input":
-        return False
-    derived_refs = [
-        str(ref).strip()
-        for ref in data.get("derived_record_refs", [])
-        if str(ref).strip() in records
-    ]
-    if derived_refs:
-        return False
-    haystack = " ".join(
-        [
-            str(data.get("text", "")),
-            str(data.get("note", "")),
-            " ".join(str(tag) for tag in data.get("tags", []) if str(tag).strip()),
-        ]
-    ).lower()
-    return any(term in haystack for term in INPUT_CLASSIFICATION_TERMS)
-
-
 def unclassified_input_review_lines(records: dict[str, dict]) -> list[str]:
     lines = [
         "# Generated Input Classification Review",
@@ -2783,15 +2745,12 @@ def unclassified_input_review_lines(records: dict[str, dict]) -> list[str]:
         "restrictions, or proof until classified into canonical records.",
         "",
     ]
-    for record_id, data in sorted(records.items()):
-        if not input_needs_classification(data, records):
-            continue
-        summary = concise(str(data.get("text") or data.get("note") or ""), 180)
+    for item in unclassified_input_items(records):
         lines.append(
-            f"- `{record_id}` appears classification-worthy but has no valid `derived_record_refs`: {summary}"
+            f"- `{item['id']}` has no valid `derived_record_refs` and no incoming `input_refs`: {item['summary']}"
         )
     if len(lines) == 4:
-        lines.append("- No unclassified input candidates detected.")
+        lines.append("- No unclassified inputs detected.")
     return lines
 
 
@@ -2806,7 +2765,7 @@ def cmd_review_context(root: Path) -> int:
         return 1
     issue_count = sum(1 for line in input_lines if line.startswith("- `INP-"))
     if issue_count:
-        print(f"{root / 'review' / 'inputs.md'}: {issue_count} unclassified input candidate(s)")
+        print(f"{root / 'review' / 'inputs.md'}: {issue_count} unclassified input(s)")
         print("INP-* is prompt provenance only; classify into SRC/CLM/GLD/etc before calling it fact or rule.")
     if conflict_lines:
         print(f"{root / 'review' / 'conflicts.md'}: {len(conflict_lines)} conflict issue(s)")
@@ -6490,6 +6449,44 @@ def cmd_record_input(
     return persist_candidate(root, records, payload, "input")
 
 
+def cmd_classify_input(root: Path, input_ref: str, derived_record_refs: list[str], note: str | None) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    input_record = records.get(input_ref)
+    if not input_record or input_record.get("record_type") != "input":
+        print(f"{input_ref} must reference an input record")
+        return 1
+    refs = [ref.strip() for ref in derived_record_refs if ref.strip()]
+    if not refs:
+        print("classify-input requires at least one --derived-record")
+        return 1
+    missing = [ref for ref in refs if ref not in records]
+    if missing:
+        print("missing derived record(s): " + ", ".join(missing))
+        return 1
+    existing_refs = [
+        str(ref).strip()
+        for ref in input_record.get("derived_record_refs", [])
+        if str(ref).strip()
+    ]
+    payload = public_record_payload(input_record)
+    payload["derived_record_refs"] = sorted(set(existing_refs + refs))
+    if note:
+        payload["note"] = append_note(str(payload.get("note", "")), f"classification: {note}")
+
+    merged_records, errors = validate_mutated_records(root, records, {input_ref: payload})
+    if errors:
+        print_errors(errors)
+        return 1
+    return persist_mutated_records(
+        root,
+        merged_records,
+        [input_ref],
+        f"Classified input {input_ref} with derived record(s): {', '.join(refs)}",
+    )
+
+
 def cmd_record_claim(
     root: Path,
     scope: str,
@@ -7948,6 +7945,14 @@ def parse_args() -> argparse.Namespace:
     record_input.add_argument("--tag", dest="tags", action="append", default=[])
     record_input.add_argument("--note", required=True)
 
+    classify_input = subparsers.add_parser(
+        "classify-input",
+        help="Attach derived canonical records to an existing INP-* provenance record.",
+    )
+    classify_input.add_argument("--input", dest="input_ref", required=True)
+    classify_input.add_argument("--derived-record", dest="derived_record_refs", action="append", default=[])
+    classify_input.add_argument("--note")
+
     record_source = subparsers.add_parser(
         "record-source",
         help="Create a canonical source record and refresh generated views.",
@@ -9075,6 +9080,15 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 project_refs=args.project_refs,
                 task_refs=args.task_refs,
                 tags=args.tags,
+                note=args.note,
+            )
+        )
+    if args.command == "classify-input":
+        raise SystemExit(
+            cmd_classify_input(
+                root,
+                input_ref=args.input_ref,
+                derived_record_refs=args.derived_record_refs,
                 note=args.note,
             )
         )

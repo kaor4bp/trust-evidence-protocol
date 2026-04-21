@@ -297,10 +297,47 @@ def test_record_input_creates_prompt_provenance_and_runtime_configures_capture(t
     assert record["tags"] == ["guideline-candidate"]
     review = run_cli(context, "review-context")
     assert review.returncode == 0
-    assert "unclassified input candidate" in review.stdout
+    assert "unclassified input" in review.stdout
     input_review = (context / "review" / "inputs.md").read_text(encoding="utf-8")
     assert input_id in input_review
     assert "prompt provenance only" in input_review
+
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.input",
+            "--source-kind",
+            "memory",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "input",
+            "--origin-ref",
+            input_id,
+            "--quote",
+            prompt,
+            "--note",
+            "classified prompt as source",
+        ),
+        "source",
+    )
+    classified = run_cli(
+        context,
+        "classify-input",
+        "--input",
+        input_id,
+        "--derived-record",
+        source_id,
+        "--note",
+        "prompt source captured",
+    )
+    assert f"Classified input {input_id}" in classified.stdout
+    review = run_cli(context, "review-context")
+    assert "unclassified input" not in review.stdout
+    input_review = (context / "review" / "inputs.md").read_text(encoding="utf-8")
+    assert input_id not in input_review
 
 
 def test_record_feedback_creates_source_and_debt(tmp_path: Path) -> None:

@@ -20,6 +20,7 @@ from context_lib import (
     load_hydration_state,
     now_timestamp,
     resolve_context_root,
+    unclassified_input_items,
     write_backlog,
     write_conflicts_report,
     write_flows_report,
@@ -405,6 +406,24 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
     strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
     active_restrictions = state.get("active_restrictions", [])
 
+    if mode == "final":
+        records, errors = collect_validation_errors(root)
+        if errors:
+            print_errors(errors)
+            return 1
+        unresolved_inputs = unclassified_input_items(records)
+        if unresolved_inputs:
+            print(
+                "Final response blocked: unresolved INP-* provenance requires at least one "
+                "derived_record_refs or incoming input_refs link."
+            )
+            print("Classify inputs with: context_cli.py classify-input --input INP-* --derived-record REF")
+            for item in unresolved_inputs[:12]:
+                print(f"- {item['id']}: {item['summary']}")
+            if len(unresolved_inputs) > 12:
+                print(f"... {len(unresolved_inputs) - 12} more unresolved INP-*")
+            return 1
+
     if status == "hydrated-with-conflicts" and mode == "planning":
         print("Planning is blocked while hydrated conflicts remain unresolved. Review review/conflicts.md first.")
         return 1
@@ -487,7 +506,7 @@ def parse_args() -> argparse.Namespace:
         "preflight-task",
         help="Check whether the current context is hydrated and compatible with the task mode.",
     )
-    preflight.add_argument("--mode", required=True, choices=["reasoning", "planning", "edit", "action"])
+    preflight.add_argument("--mode", required=True, choices=["reasoning", "planning", "edit", "action", "final"])
     preflight.add_argument("--kind")
 
     invalidate = subparsers.add_parser(

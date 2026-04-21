@@ -227,7 +227,7 @@ from tep_runtime.hypotheses import (
     validate_hypotheses_index,
     write_hypotheses_index,
 )
-from tep_runtime.inputs import build_input_payload
+from tep_runtime.inputs import build_input_payload, unclassified_input_items
 from tep_runtime.knowledge import mark_knowledge_records_stale_payloads, stale_knowledge_target_ids
 from tep_runtime.io import context_write_lock, parse_json_file, write_json_file, write_text_file
 from tep_runtime.local_anchor import ANCHOR_FILENAME, anchor_context_root, anchor_task_ref, find_anchor, find_anchor_path, load_anchor

@@ -180,7 +180,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 Use `hooks.verbosity=quiet` to reduce routine hook chatter while preserving stale/conflict/blocking messages.
 Use `context_budget` as policy for compact/normal/debug output; do not treat compact output as permission to omit decisive ids.
 Use `input_capture` as policy for prompt provenance; `INP-*` records are not proof until classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
-Do not call an `INP-*` a remembered fact/rule. Use `review/inputs.md` to find classification-worthy inputs, then create/link the derived canonical records.
+Do not call an `INP-*` a remembered fact/rule. Use `review/inputs.md` to find unclassified inputs, then create/link the derived canonical records before final response.
 Use `analysis` as policy for optional helpers such as Z3 and NMF; it is not proof and not permission to silently install dependencies.
 Use `backends` as policy for optional external adapters such as RDF/SHACL, Serena, CocoIndex, and Datalog-style derivation; missing dependencies must degrade to status diagnostics instead of crashing normal TEP commands.
 Keep CocoIndex behind TEP `code-search`; default to project scope and use workspace scope only as a deliberate outward glance.
@@ -328,6 +328,7 @@ Lowering strictness back to `proof-only` can be done directly.
 
 ```bash
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-input --scope "..." --input-kind user_prompt --origin-kind user --origin-ref "chat-turn" --text "..." --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context classify-input --input INP-* --derived-record SRC-* --note "classified prompt"
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-source --scope "..." --source-kind runtime --critique-status accepted --origin-kind command --origin-ref "..." --quote "..." --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-claim --scope "..." --statement "..." --plane runtime --status tentative --source SRC-* --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-claim --scope "..." --statement "Alice studies algebra." --plane runtime --status supported --source SRC-* --logic-symbol "person:alice|entity" --logic-symbol "subject:algebra|concept" --logic-atom "Studies|person:alice,subject:algebra|affirmed" --note "..."

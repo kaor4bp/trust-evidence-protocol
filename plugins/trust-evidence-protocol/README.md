@@ -270,7 +270,8 @@ Prompt capture mechanics:
 - `metadata-only` stores a placeholder and prompt/session metadata without raw text.
 - `off` disables prompt capture.
 - The hook rehydrates after a successful capture so prompt provenance does not leave the next agent turn mechanically stale.
-- `review-context` writes `review/inputs.md` and warns when a fact/rule/guideline-like `INP-*` has no valid `derived_record_refs`.
+- `review-context` writes `review/inputs.md` and warns when any `INP-*` has no valid classification link.
+- `preflight-task --mode final` blocks final responses while any `INP-*` lacks both valid `derived_record_refs` and incoming `input_refs`.
 
 ## Agent Operating Path
 
@@ -962,6 +963,11 @@ Guideline disclosure for code edits:
   - attaches the current project/current task automatically unless explicit refs are supplied
   - refreshes generated views and marks hydration stale unless a hook rehydrates immediately after capture
 
+- `classify-input`
+  - attaches derived canonical records to an existing automatically captured `INP-*`
+  - requires `--input INP-*` and at least one `--derived-record REF`
+  - use it after creating `SRC-*`, `CLM-*`, `GLD-*`, `PRM-*`, `RST-*`, or other records from a prompt
+
 - `record-claim`
   - creates a canonical `CLM-*` record
   - requires explicit `plane`, `statement`, at least one `source_ref`, and `note`
@@ -1127,7 +1133,8 @@ Current prioritization behavior:
 - input records are not proof and cannot support truth directly
 - do not say "fact saved as `INP-*`"; say "input captured as `INP-*`" and then create/link the derived `SRC-*`, `CLM-*`, `GLD-*`, `PRM-*`, or `RST-*`
 - use `derived_record_refs` to record canonical records produced from the input
-- `review/inputs.md` lists classification-worthy inputs that still lack valid `derived_record_refs`
+- `review/inputs.md` lists every input that still lacks both valid `derived_record_refs` and incoming `input_refs`
+- final preflight blocks until unresolved inputs are classified or explicitly linked
 - use `input_refs` on other records when the input itself must remain traceable
 - fresh orphan `INP-*` records are retained until `settings.cleanup.orphan_input_stale_after_days`
 - stale orphan `INP-*` records should be archived before deletion is considered

@@ -293,6 +293,62 @@ def test_shell_wrappers_default_to_resolved_global_context(tmp_path: Path) -> No
     assert preflight.returncode == 0, preflight.stdout + preflight.stderr
 
 
+def test_final_preflight_blocks_unclassified_inputs(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    input_id = recorded_id(
+        run_cli(
+            context,
+            "record-input",
+            "--scope",
+            "demo.final",
+            "--input-kind",
+            "user_prompt",
+            "--origin-kind",
+            "user",
+            "--origin-ref",
+            "chat-final",
+            "--text",
+            "Remember that final answers need classified input provenance.",
+            "--note",
+            "final preflight fixture",
+        ),
+        "input",
+    )
+    run_runtime(context, "hydrate-context")
+
+    blocked = run_runtime(context, "preflight-task", "--mode", "final", check=False)
+    assert blocked.returncode == 1
+    assert "Final response blocked" in blocked.stdout
+    assert input_id in blocked.stdout
+
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.final",
+            "--source-kind",
+            "memory",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "input",
+            "--origin-ref",
+            input_id,
+            "--quote",
+            "final answers need classified input provenance",
+            "--note",
+            "classified final input",
+        ),
+        "source",
+    )
+    run_cli(context, "classify-input", "--input", input_id, "--derived-record", source_id, "--note", "closed")
+    run_runtime(context, "hydrate-context")
+
+    allowed = run_runtime(context, "preflight-task", "--mode", "final")
+    assert "Preflight passed for final" in allowed.stdout
+
+
 def test_shell_wrappers_keep_explicit_legacy_context_override(tmp_path: Path) -> None:
     home = tmp_path / "home"
     bootstrap_named_context(home / ".tep_context")
