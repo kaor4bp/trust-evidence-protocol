@@ -9,10 +9,12 @@ from hook_common import (
     hook_mode,
     hooks_enabled,
     append_raw_claim_read_event,
+    command_reads_raw_claims,
     command_scope_violation,
     infer_action_kind,
     load_payload,
     locate_context,
+    raw_claim_read_allowed,
     run_runtime_gate,
     TEP_ICON,
 )
@@ -47,9 +49,18 @@ def main() -> int:
         return 0
 
     command = str(payload.get("tool_input", {}).get("command", "")).strip()
+    if command_reads_raw_claims(command):
+        allowed_mode = raw_claim_read_allowed(command)
+        if not allowed_mode:
+            append_raw_claim_read_event(context_root, command, cwd=cwd, blocked=True)
+            emit_denial(
+                "Raw TEP claim JSON reads are blocked in normal mode; use record-detail, claim-graph, linked-records, lookup, or map-brief. "
+                "For debug/migration/forensics/plugin-dev, prefix the command with TEP_RAW_RECORD_MODE=<mode>."
+            )
+            return 0
+        append_raw_claim_read_event(context_root, command, cwd=cwd)
     action_kind = infer_action_kind(command, context_root)
     if not action_kind:
-        append_raw_claim_read_event(context_root, command, cwd=cwd)
         return 0
 
     scope_violation = command_scope_violation(context_root, command, cwd=cwd)

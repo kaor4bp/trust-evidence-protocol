@@ -9,7 +9,7 @@ description: Evidence-first reasoning protocol for work that mixes code claims, 
 This skill defines reasoning discipline.
 The plugin provides storage layout, commands, hydration, validation, indexing, generated views, and hook guardrails where Codex can enforce them.
 In Codex UI the plugin runtime may appear as `TEP Runtime`; this skill remains the reasoning protocol.
-When available, the plugin also exposes read-only MCP tools for faster context lookup.
+When available, the plugin also exposes bounded MCP tools for faster context lookup.
 Codex hooks are not a complete boundary for every tool, so the agent must still apply this skill explicitly.
 
 Treat the resolved TEP context root as durable agent memory.
@@ -33,10 +33,10 @@ Before using information for a conclusion, action, edit, permission request, or 
 
 Do not use hidden chain-of-thought, unsupported memory, raw text, generated views, task context, or agent proposals as decisive proof.
 
-When MCP tools are available, prefer them for read-only lookup:
+When MCP tools are available, prefer them for lookup:
 
 - use `next_step` first when you are unsure which TEP branch to follow; request `format=json` when a tool needs structured `route_graph`; treat both forms as navigation only
-- use `lookup` as the first search router when you are unsure whether the task needs facts, code, theory/model context, broad research context, or policy/guideline context
+- use `lookup` as the first search router when you are unsure whether the task needs facts, code, theory/model context, broad research context, or policy/guideline context; always provide a concrete `reason` (`orientation`, `planning`, `answering`, `permission`, `editing`, `debugging`, `retrospective`, `curiosity`, or `migration`)
 - use compact `brief_context` before planning, answering, editing, or asking permission; request `detail=full` only when the compact brief is insufficient
 - use `search_records` before inspecting raw files from scratch
 - use `claim_graph` when keyword lookup should return a compact graph of current `CLM-*` anchors and linked sources/support before opening individual records
@@ -48,7 +48,8 @@ When MCP tools are available, prefer them for read-only lookup:
 - keep semantic code search project-scoped by default; use workspace scope only as an explicit broader glance across related projects/services
 - when a backend hit is useful, inspect its `cix_candidates`, `index_suggestion`, and optional `link_suggestions`; persist the relationship with `link-code` only after verifying relevance
 - use `code_feedback` when you need a dedicated review/apply loop for backend hits; apply mode must only record reviewed navigation links, never proof
-- avoid reading raw `records/claim/*.json` directly during normal reasoning; use raw files only as an escape hatch for debugging, migration, or missing MCP/CLI coverage
+- do not read raw `records/claim/*.json` directly during normal reasoning; use `record_detail`, `claim_graph`, `linked_records`, `lookup`, or `map_brief` instead
+- raw claim JSON reads are an explicit escape hatch only; when debugging, migration, forensics, or plugin development requires them, use an allowlisted mode such as `TEP_RAW_RECORD_MODE=plugin-dev` and record why
 
 If MCP is unavailable, use the equivalent `context_cli.py` commands from `workflows/plugin-commands.md`.
 Do not use `runtime_gate.py` for full context operations; it is only the hook-safe gate for hydration and preflight.
@@ -77,7 +78,7 @@ Persistence write boundary:
 - Do not use topic overlap as a contradiction, claim support, source support, action justification, or evidence-chain proof.
 - `<context>/attention_index/` is generated attention/curiosity map data, not proof.
 - Use attention maps and curiosity probes to choose what to inspect next, especially cold-but-relevant clusters and unestablished links.
-- `<context>/activity/access.jsonl` is append-only lookup telemetry from MCP/CLI/hooks. It records navigation access, including raw claim-file reads, and is not proof.
+- `<context>/activity/access.jsonl` is append-only lookup telemetry from MCP/CLI/hooks. It records navigation access, lookup reasons, WCTX focus, raw claim-file reads/blocks, and is not proof.
 - Use MCP `telemetry_report` or CLI `telemetry-report` to inspect access statistics before deciding whether agents are bypassing compact lookup tools or over-reading raw records; follow anomaly `recommended_tools` and `next_action` before manually expanding raw records.
 - Use `attention-diagram` / MCP `attention_diagram` when a Mermaid cluster/link map is a cheaper way to orient than reading multiple textual reports.
 - Prefer `attention-diagram detail=compact` first; request `detail=full` only when record-summary labels are needed.
@@ -121,7 +122,7 @@ Persistence write boundary:
 - Use `export-rdf` only as a backend projection for validation/debugging; the export is not canonical memory and not proof.
 - Z3 `unsat` results identify claims participating in an inconsistent formal snapshot; they do not prove each listed claim is false.
 - Before resolving a Z3 candidate, inspect the reported `CLM-*` refs, logic refs, derived atoms, scopes, lifecycle state, and underlying `SRC-*` quotes.
-- MCP lookup tools are read-only accelerators over the same records and indexes; MCP output is not a new source of truth.
+- MCP lookup tools are bounded accelerators over the same records and indexes; MCP output is not a new source of truth. `lookup` may auto-create lightweight `WCTX-*` operational focus, but it must not create proof, permissions, restrictions, guidelines, or project facts.
 - CIX `smell` annotations are local critique/search signals on the smallest applicable code target, not facts, restrictions, or hard guidelines.
 - Promote repeated supported smells through `PRP-*` proposals or `GLD-*` guidelines only after support/generalization is explicit.
 

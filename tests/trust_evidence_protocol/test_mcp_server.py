@@ -421,7 +421,13 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "lookup",
-                    "arguments": {"context": str(context), "query": "MCP gateway code lookup", "kind": "auto", "format": "json"},
+                    "arguments": {
+                        "context": str(context),
+                        "query": "MCP gateway code lookup",
+                        "reason": "orientation",
+                        "kind": "auto",
+                        "format": "json",
+                    },
                 },
             },
             {

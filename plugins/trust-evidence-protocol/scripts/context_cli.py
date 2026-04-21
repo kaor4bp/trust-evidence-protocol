@@ -1664,7 +1664,7 @@ def cmd_working_context_check_drift(root: Path, task_text: str, output_format: s
     return 0
 
 
-def persist_working_context_with_task_links(root: Path, records: dict[str, dict], payload: dict) -> int:
+def persist_working_context_with_task_links(root: Path, records: dict[str, dict], payload: dict, *, quiet: bool = False) -> int:
     if not payload.get("workspace_refs"):
         refs = workspace_refs_for_write(root, [])
         if refs:
@@ -1699,7 +1699,8 @@ def persist_working_context_with_task_links(root: Path, records: dict[str, dict]
     write_validation_report(root, [])
     refresh_generated_outputs(root, merged)
     invalidate_hydration_state(root, f"recorded working_context {payload['id']}")
-    print(f"Recorded working_context {payload['id']} at {record_path(root, 'working_context', payload['id'])}")
+    if not quiet:
+        print(f"Recorded working_context {payload['id']} at {record_path(root, 'working_context', payload['id'])}")
     return 0
 
 
@@ -2352,7 +2353,7 @@ def cmd_help(topic: str) -> int:
         "commands": [
             "review-context | reindex-context | scan-conflicts | type-graph --check",
             "next-step --intent answer|plan|edit|test|persist|permission|debug --task ... [--format json]",
-            "lookup --query ... --kind facts|code|theory|research|policy|auto [--format json]",
+            "lookup --query ... --reason orientation|planning|answering|permission|editing|debugging|retrospective|curiosity|migration --kind facts|code|theory|research|policy|auto [--format json]",
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json",
@@ -2405,6 +2406,25 @@ def cmd_help(topic: str) -> int:
 
 
 LOOKUP_KINDS = {"auto", "facts", "code", "theory", "research", "policy"}
+LOOKUP_REASONS = {
+    "orientation",
+    "planning",
+    "answering",
+    "permission",
+    "editing",
+    "debugging",
+    "retrospective",
+    "curiosity",
+    "migration",
+}
+LOOKUP_REASON_CONTEXT_KIND = {
+    "planning": "planning",
+    "editing": "edit",
+    "permission": "permission",
+    "retrospective": "handoff",
+    "curiosity": "investigation",
+    "debugging": "investigation",
+}
 
 
 def infer_lookup_kind(query: str, requested_kind: str) -> str:
@@ -2423,7 +2443,59 @@ def infer_lookup_kind(query: str, requested_kind: str) -> str:
     return "facts"
 
 
-def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str) -> dict:
+def active_working_context_for_lookup(records: dict[str, dict], project_ref: str, task_ref: str) -> dict | None:
+    task = records.get(task_ref) if task_ref else None
+    if task and task.get("record_type") == "task":
+        for ref in task.get("working_context_refs", []):
+            context = records.get(str(ref))
+            if context and context.get("record_type") == "working_context" and str(context.get("status", "")).strip() == "active":
+                return context
+    candidates = [
+        data
+        for data in records.values()
+        if data.get("record_type") == "working_context"
+        and str(data.get("status", "")).strip() == "active"
+        and record_belongs_to_project(data, project_ref or None)
+        and record_belongs_to_task(data, task_ref or None)
+    ]
+    return sorted(candidates, key=lambda item: str(item.get("updated_at", "")), reverse=True)[0] if candidates else None
+
+
+def ensure_lookup_working_context(root: Path, records: dict[str, dict], query: str, reason: str) -> tuple[str, dict | None, str | None]:
+    workspace_ref = current_workspace_ref(root)
+    project_ref = current_project_ref(root)
+    task_ref = current_task_ref(root)
+    existing = active_working_context_for_lookup(records, project_ref, task_ref)
+    if existing:
+        return str(existing.get("id", "")), None, None
+    if not workspace_ref:
+        return "", None, "lookup requires an active workspace before creating WCTX; run workspace-admission for this repository"
+
+    timestamp = now_timestamp()
+    payload = build_working_context_payload(
+        record_id=next_record_id(records, "WCTX-"),
+        timestamp=timestamp,
+        scope=f"lookup.{reason}",
+        title=f"Lookup {reason}: {concise(query, 80)}",
+        context_kind=LOOKUP_REASON_CONTEXT_KIND.get(reason, "general"),
+        pinned_refs=[],
+        focus_paths=[],
+        topic_terms=sorted(task_terms(query))[:8],
+        topic_seed_refs=[],
+        assumptions=[],
+        concerns=[],
+        project_refs=project_refs_for_write(root, []),
+        task_refs=task_refs_for_write(root, []),
+        tags=["auto-wctx", f"lookup-reason:{reason}"],
+        note="Auto-created by lookup to keep agent operational context explicit. Not proof and not authorization.",
+    )
+    exit_code = persist_working_context_with_task_links(root, records, payload, quiet=True)
+    if exit_code:
+        return "", None, "failed to auto-create WCTX for lookup"
+    return str(payload["id"]), payload, None
+
+
+def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str, reason: str, wctx_ref: str, auto_wctx: dict | None) -> dict:
     selected_kind = infer_lookup_kind(query, kind)
     query_arg = shlex.quote(query)
     root_arg = shlex.quote(root_path)
@@ -2470,11 +2542,19 @@ def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str)
     return {
         "lookup_is_proof": False,
         "query": query,
+        "reason": reason,
         "requested_kind": kind,
         "kind": selected_kind,
         "scope": scope,
         "mode": selected_mode,
         "root": root_path,
+        "focus": {
+            "workspace_ref": "",
+            "project_ref": "",
+            "task_ref": "",
+            "working_context_ref": wctx_ref,
+            "auto_created_working_context": bool(auto_wctx),
+        },
         "primary_tool": primary_tool,
         "route": route_commands[selected_kind],
         "fallback_route": [
@@ -2496,7 +2576,8 @@ def lookup_text_lines(payload: dict) -> list[str]:
         "# TEP Lookup Route",
         "",
         "Mode: one front door for facts, code, theory, research, and policy lookup. Not proof.",
-        f"query: `{payload.get('query', '')}` kind: `{payload.get('kind')}` primary_tool: `{payload.get('primary_tool')}` scope: `{payload.get('scope')}` mode: `{payload.get('mode')}`",
+        f"query: `{payload.get('query', '')}` reason: `{payload.get('reason')}` kind: `{payload.get('kind')}` primary_tool: `{payload.get('primary_tool')}` scope: `{payload.get('scope')}` mode: `{payload.get('mode')}`",
+        f"focus: workspace=`{payload.get('focus', {}).get('workspace_ref', '')}` project=`{payload.get('focus', {}).get('project_ref', '')}` task=`{payload.get('focus', {}).get('task_ref', '')}` wctx=`{payload.get('focus', {}).get('working_context_ref', '')}`",
         "",
         "## Route",
     ]
@@ -2511,9 +2592,19 @@ def lookup_text_lines(payload: dict) -> list[str]:
     return lines
 
 
-def cmd_lookup(root: Path, query: str, kind: str, root_path: str | None, scope: str, mode: str, output_format: str) -> int:
+def cmd_lookup(root: Path, query: str, kind: str, root_path: str | None, scope: str, mode: str, reason: str, output_format: str) -> int:
     if not query.strip():
         print("lookup query must not be empty")
+        return 1
+    if reason not in LOOKUP_REASONS:
+        print(f"lookup --reason is required and must be one of: {', '.join(sorted(LOOKUP_REASONS))}")
+        return 1
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    wctx_ref, auto_wctx, error = ensure_lookup_working_context(root, records, query, reason)
+    if error:
+        print(error)
         return 1
     payload = lookup_payload(
         query=query,
@@ -2521,7 +2612,21 @@ def cmd_lookup(root: Path, query: str, kind: str, root_path: str | None, scope: 
         root_path=str(root_path or Path.cwd()),
         scope=scope,
         mode=mode,
+        reason=reason,
+        wctx_ref=wctx_ref,
+        auto_wctx=auto_wctx,
     )
+    payload["focus"]["workspace_ref"] = current_workspace_ref(root)
+    payload["focus"]["project_ref"] = current_project_ref(root)
+    payload["focus"]["task_ref"] = current_task_ref(root)
+    if auto_wctx:
+        payload["auto_created_working_context"] = {
+            "id": auto_wctx.get("id", ""),
+            "scope": auto_wctx.get("scope", ""),
+            "title": auto_wctx.get("title", ""),
+            "context_kind": auto_wctx.get("context_kind", ""),
+            "not_proof": True,
+        }
     append_lookup_access_event(
         root,
         channel="cli",
@@ -2529,7 +2634,9 @@ def cmd_lookup(root: Path, query: str, kind: str, root_path: str | None, scope: 
         access_kind="record_search",
         record_refs=[],
         query=query,
-        note=f"lookup route kind={payload['kind']} primary_tool={payload['primary_tool']}",
+        reason=reason,
+        working_context_ref=wctx_ref,
+        note=f"lookup route kind={payload['kind']} primary_tool={payload['primary_tool']} reason={reason} wctx={wctx_ref}",
     )
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -4425,6 +4532,8 @@ def append_lookup_access_event(
     access_kind: str,
     record_refs: list[str] | None = None,
     query: str = "",
+    reason: str = "",
+    working_context_ref: str = "",
     raw_path_count: int = 0,
     note: str = "",
 ) -> None:
@@ -4437,6 +4546,8 @@ def append_lookup_access_event(
             "access_kind": access_kind,
             "record_refs": sorted({ref for ref in (record_refs or []) if ref}),
             "query": query,
+            "reason": reason,
+            "working_context_ref": working_context_ref,
             "raw_path_count": raw_path_count,
             "workspace_ref": current_workspace_ref(root),
             "project_ref": current_project_ref(root),
@@ -6774,6 +6885,7 @@ def parse_args() -> argparse.Namespace:
     )
     lookup.add_argument("--query", required=True)
     lookup.add_argument("--kind", choices=sorted(LOOKUP_KINDS), default="auto")
+    lookup.add_argument("--reason", choices=sorted(LOOKUP_REASONS), required=True)
     lookup.add_argument("--root", type=Path, help="Repository root for code lookup routes. Defaults to cwd.")
     lookup.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     lookup.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
@@ -8064,6 +8176,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 root_path=args.root,
                 scope=args.scope,
                 mode=args.mode,
+                reason=args.reason,
                 output_format=args.output_format,
             )
         )

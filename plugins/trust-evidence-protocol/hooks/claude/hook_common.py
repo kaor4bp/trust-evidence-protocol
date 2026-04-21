@@ -490,7 +490,15 @@ def run_context_cli(*args: str, input_text: str | None = None, cwd: str | Path |
     )
 
 
-def append_raw_claim_read_event(context_root: Path, command: str, *, cwd: str | Path | None = None) -> None:
+RAW_RECORD_READ_MODE_PATTERN = re.compile(r"\bTEP_RAW_RECORD_MODE=(?P<mode>debug|migration|forensics|plugin-dev)\b")
+
+
+def raw_claim_read_allowed(command: str) -> str:
+    match = RAW_RECORD_READ_MODE_PATTERN.search(command)
+    return match.group("mode") if match else ""
+
+
+def append_raw_claim_read_event(context_root: Path, command: str, *, cwd: str | Path | None = None, blocked: bool = False) -> None:
     if not command_reads_raw_claims(command):
         return
     refs = claim_refs_from_text(command)
@@ -501,7 +509,7 @@ def append_raw_claim_read_event(context_root: Path, command: str, *, cwd: str | 
             {
                 "channel": "hook",
                 "tool": "bash",
-                "access_kind": "raw_claim_read",
+                "access_kind": "raw_claim_read_blocked" if blocked else "raw_claim_read",
                 "record_refs": refs,
                 "raw_path_count": raw_path_count,
                 "cwd": str(cwd or ""),

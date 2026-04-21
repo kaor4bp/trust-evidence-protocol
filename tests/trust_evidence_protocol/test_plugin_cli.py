@@ -1626,17 +1626,57 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert code_attention["mode"] == "code"
     assert input_id not in code_attention["records"]
     assert tapped_claim_id not in code_attention["records"]
-    lookup_facts = json.loads(run_cli(context, "lookup", "--query", "Facility Program relationship", "--kind", "facts", "--format", "json").stdout)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "attention-demo",
+            "--title",
+            "Attention demo workspace",
+            "--note",
+            "workspace for lookup auto-WCTX test",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    lookup_facts = json.loads(
+        run_cli(context, "lookup", "--query", "Facility Program relationship", "--reason", "curiosity", "--kind", "facts", "--format", "json").stdout
+    )
     assert lookup_facts["lookup_is_proof"] is False
+    assert lookup_facts["reason"] == "curiosity"
+    assert lookup_facts["focus"]["working_context_ref"].startswith("WCTX-")
+    assert lookup_facts["focus"]["auto_created_working_context"] is True
+    assert lookup_facts["auto_created_working_context"]["not_proof"] is True
     assert lookup_facts["primary_tool"] == "claim-graph"
     assert any(command.startswith("claim-graph") for command in lookup_facts["route"])
     lookup_code = json.loads(
-        run_cli(context, "lookup", "--query", "code function import lookup", "--kind", "auto", "--root", str(tmp_path), "--format", "json").stdout
+        run_cli(
+            context,
+            "lookup",
+            "--query",
+            "code function import lookup",
+            "--reason",
+            "orientation",
+            "--kind",
+            "auto",
+            "--root",
+            str(tmp_path),
+            "--format",
+            "json",
+        ).stdout
     )
     assert lookup_code["kind"] == "code"
+    assert lookup_code["reason"] == "orientation"
+    assert lookup_code["focus"]["working_context_ref"] == lookup_facts["focus"]["working_context_ref"]
     assert lookup_code["mode"] == "code"
     assert lookup_code["primary_tool"] == "code-search"
     assert any("code-search" in command for command in lookup_code["route"])
+    lookup_telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
+    assert lookup_telemetry["by_reason"]["curiosity"] >= 1
+    assert lookup_telemetry["by_reason"]["orientation"] >= 1
+    assert lookup_telemetry["by_working_context"][lookup_facts["focus"]["working_context_ref"]] >= 2
+    run_cli(context, "set-current-workspace", "--clear")
     probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
     assert probes_payload["attention_index_is_proof"] is False
     assert all(ref.startswith("CLM-") for probe in probes_payload["probes"] for ref in probe["record_refs"])

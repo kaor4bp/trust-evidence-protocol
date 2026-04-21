@@ -41,6 +41,8 @@ new investigation should update context when the result matters later
 ## Search Behavior
 
 - Start from the resolved TEP context root, preferring `~/.tep_context` when available; only fall back to fresh investigation for gaps, contradictions, staleness, or missing support.
+- Use `lookup --reason ...` as the front door when choosing a route. The reason is mandatory and should describe why the agent is looking: `orientation`, `planning`, `answering`, `permission`, `editing`, `debugging`, `retrospective`, `curiosity`, or `migration`.
+- Let lookup create a lightweight `WCTX-*` when no active working context exists and the workspace is known. Treat that WCTX as operational focus only, not proof or authorization.
 - Use `topic-search` to narrow broad lookup, but follow up with `record-detail`, `linked-records`, or direct code/source inspection before citing.
 - Use `logic-search` / `logic-check` for typed predicate claims, but follow up with canonical `CLM-*` and `SRC-*` before citing.
 - Prefer confirming, falsifying, narrowing, or superseding existing claims over rediscovering the same fact.
@@ -50,6 +52,7 @@ new investigation should update context when the result matters later
 - Treat code, tests, docs, user statements, logs, screenshots, and command outputs as sources that need classification before use.
 - Keep source quotes short enough that a later agent can reconstruct why the claim exists.
 - If a search reveals a reusable result, persist it as `SRC-*` plus `CLM-*` instead of leaving it only in the chat.
+- Do not read raw `records/claim/*.json` in normal lookup. Use compact projections first; raw reads require an explicit debug/migration/forensics/plugin-dev escape hatch.
 
 ## Conflict Handling
 

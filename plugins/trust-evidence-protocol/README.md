@@ -2,7 +2,7 @@
 
 This plugin appears in Codex UI as `TEP Runtime`.
 It is the storage, runtime, and guardrail layer for the `trust-evidence-protocol` skill.
-The skill defines reasoning discipline; the plugin provides commands, validation, hydration, generated views, hook guardrails, and read-only MCP lookup where Codex can enforce them.
+The skill defines reasoning discipline; the plugin provides commands, validation, hydration, generated views, hook guardrails, and bounded MCP lookup where Codex can enforce them.
 
 Responsibilities:
 
@@ -36,7 +36,7 @@ Current implementation:
 - `scripts/bootstrap_codex_context.py` creates the strict storage layout
 - `scripts/validate_codex_context.py` validates record files and reference integrity
 - `scripts/context_cli.py` exposes explicit operational commands
-- `mcp/tep_server.py` exposes read-only context lookup tools over MCP stdio
+- `mcp/tep_server.py` exposes bounded context lookup tools over MCP stdio
 - `.mcp.json` declares the local MCP server for clients that support plugin MCP discovery
 - `skills/trust-evidence-protocol/SKILL.md` contains only core semantics and workflow routing
 - `skills/trust-evidence-protocol/workflows/` contains task-specific operating procedures
@@ -140,12 +140,14 @@ Additional transient index:
 
 `runtime/` is generated runtime bookkeeping, not a source of truth.
 
-Agents should not read raw `records/claim/*.json` as the normal discovery path.
+Agents must not read raw `records/claim/*.json` as the normal discovery path.
 Use MCP `claim_graph` or CLI `claim-graph --query "..."` to get matching
 current `CLM-*` anchors and compact linked source/support edges, then expand
 only the specific proof-critical records with `record_detail` or
-`linked_records`. Raw claim files remain available as an escape hatch for
-debugging, migration, or missing tool coverage.
+`linked_records`. Codex/Claude hooks block normal Bash reads of raw claim JSON.
+Use an explicit escape-hatch prefix such as `TEP_RAW_RECORD_MODE=plugin-dev`,
+`debug`, `migration`, or `forensics` only for plugin development, debugging,
+migration, or audit work.
 Use MCP `telemetry_report` or CLI `telemetry-report` to monitor whether agents
 are using compact lookup or falling back to raw claim-file reads. The report
 also emits mechanical anomaly hints for raw reads, tool concentration, low MCP
@@ -336,7 +338,7 @@ Write boundary:
 
 The plugin includes a minimal stdio MCP server declared in `.mcp.json`.
 
-MCP is intentionally read-only in this plugin version. It is a faster context lookup surface, not a second mutation API.
+MCP is intentionally bounded in this plugin version. It is a faster context lookup surface, not a general mutation API; `lookup` is the exception and may auto-create a lightweight `WCTX-*` operational context when focus is missing and a workspace is known.
 
 Exposed tools:
 
@@ -377,7 +379,7 @@ Exposed tools:
 
 Rules:
 
-- Prefer MCP read-only tools when available for lookup-heavy work.
+- Prefer MCP lookup tools when available for lookup-heavy work.
 - Pass `cwd` when the caller knows the active workdir so MCP can resolve the nearest `.tep` anchor instead of the MCP server's own cwd.
 - For attention tools, use default `scope=current` during normal work; use `scope=all` only for cross-workspace/project triage.
 - For visual-thinking mode, use `mode=research` during broad investigation, `mode=theory` when assembling claims/models/flows, and `mode=code` when looking for implementation/test/code-index context.
@@ -504,8 +506,10 @@ Commands:
   - excludes records tied to another `TASK-*` through `task_refs`
   - is read-only and fails if the context is structurally invalid
 
-- `lookup --query "..." --kind facts|code|theory|research|policy|auto [--format text|json]`
+- `lookup --query "..." --reason orientation|planning|answering|permission|editing|debugging|retrospective|curiosity|migration --kind facts|code|theory|research|policy|auto [--format text|json]`
   - one front door for normal lookup routing
+  - `--reason` is mandatory and is written into telemetry
+  - ensures a `WCTX-*` operational context exists when a workspace is known; auto-created WCTX is not proof and not authorization
   - returns the primary tool and ordered route commands for the requested work mode
   - `facts` routes to `claim-graph`, `search-records`, `record-detail`, and `linked-records`
   - `code` routes to `code-search`, `code-feedback`, `code-info`, and a `curiosity-map --mode code`
@@ -625,6 +629,7 @@ Commands:
 
 - `working-context create|fork|show|close`
   - manages `WCTX-*` operational context snapshots
+  - lookup may auto-create a lightweight WCTX so agent focus is explicit without asking the user
   - `create` stores pinned refs, focus paths, topic seeds, local assumptions, and concerns
   - `fork` creates a copy-on-write replacement instead of mutating the old context
   - `create` and `fork` link back from supplied `TASK-*` records through `task.working_context_refs`

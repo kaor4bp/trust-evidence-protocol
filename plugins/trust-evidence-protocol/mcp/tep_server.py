@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Minimal read-only MCP stdio server for Trust Evidence Protocol.
+"""Minimal MCP stdio server for Trust Evidence Protocol lookup.
 
 The server intentionally delegates all policy and context logic to context_cli.py.
-It only exposes bounded read-only tools so MCP does not become a second mutation
-surface for the TEP context root.
+It exposes bounded lookup tools. Most tools are read-only; `lookup` may create a
+lightweight WCTX-* operational focus record so context use stays explicit.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.2.13"
+SERVER_VERSION = "0.2.14"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -110,6 +110,21 @@ TOOLS: list[JsonObject] = [
             {
                 "context": context_property(),
                 "query": {"type": "string", "description": "Lookup query or task summary."},
+                "reason": {
+                    "type": "string",
+                    "enum": [
+                        "orientation",
+                        "planning",
+                        "answering",
+                        "permission",
+                        "editing",
+                        "debugging",
+                        "retrospective",
+                        "curiosity",
+                        "migration",
+                    ],
+                    "description": "Mandatory reason for telemetry, WCTX selection, and route shaping.",
+                },
                 "kind": {
                     "type": "string",
                     "enum": ["auto", "facts", "code", "theory", "research", "policy"],
@@ -121,7 +136,7 @@ TOOLS: list[JsonObject] = [
                 "mode": {"type": "string", "enum": ["general", "research", "theory", "code"], "default": "general"},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
-            ["query"],
+            ["query", "reason"],
         ),
     },
     {
@@ -871,6 +886,8 @@ def tool_lookup(args: JsonObject) -> tuple[bool, str]:
         "lookup",
         "--query",
         str(args.get("query", "")),
+        "--reason",
+        str(args.get("reason") or ""),
         "--kind",
         str(args.get("kind") or "auto"),
         "--scope",

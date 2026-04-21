@@ -80,10 +80,14 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
     by_channel = Counter(str(event.get("channel") or "unknown") for event in event_list)
     by_tool = Counter(str(event.get("tool") or "unknown") for event in event_list)
     by_kind = Counter(str(event.get("access_kind") or "unknown") for event in event_list)
+    by_reason = Counter(str(event.get("reason") or "unspecified") for event in event_list)
+    by_wctx = Counter(str(event.get("working_context_ref") or "none") for event in event_list)
     record_counter: Counter[str] = Counter()
+    record_by_reason: Counter[tuple[str, str]] = Counter()
     for event in event_list:
         for record_ref in access_event_record_refs(event):
             record_counter[record_ref] += 1
+            record_by_reason[(str(event.get("reason") or "unspecified"), record_ref)] += 1
     raw_events = [
         event
         for event in event_list
@@ -147,9 +151,15 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
         "by_channel": dict(sorted(by_channel.items())),
         "by_tool": dict(sorted(by_tool.items())),
         "by_access_kind": dict(sorted(by_kind.items())),
+        "by_reason": dict(sorted(by_reason.items())),
+        "by_working_context": dict(sorted(by_wctx.items())),
         "top_records": [
             {"record_ref": record_ref, "access_count": count}
             for record_ref, count in record_counter.most_common(max(1, limit))
+        ],
+        "top_records_by_reason": [
+            {"reason": reason, "record_ref": record_ref, "access_count": count}
+            for (reason, record_ref), count in record_by_reason.most_common(max(1, limit))
         ],
         "recent_raw_events": raw_events[-max(1, limit) :],
         "anomalies": anomalies,
@@ -174,6 +184,18 @@ def access_report_text_lines(payload: dict) -> list[str]:
     for kind, count in payload.get("by_access_kind", {}).items():
         lines.append(f"- `{kind}`: `{count}`")
     if not payload.get("by_access_kind"):
+        lines.append("- none")
+    lines.append("")
+    lines.append("## By Reason")
+    for reason, count in payload.get("by_reason", {}).items():
+        lines.append(f"- `{reason}`: `{count}`")
+    if not payload.get("by_reason"):
+        lines.append("- none")
+    lines.append("")
+    lines.append("## By Working Context")
+    for context_ref, count in payload.get("by_working_context", {}).items():
+        lines.append(f"- `{context_ref}`: `{count}`")
+    if not payload.get("by_working_context"):
         lines.append("- none")
     lines.append("")
     lines.append("## Top Records")
