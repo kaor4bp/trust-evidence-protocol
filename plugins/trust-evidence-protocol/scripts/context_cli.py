@@ -178,6 +178,9 @@ from context_lib import (
     attention_diagram_text_lines,
     augment_evidence_chain_payload,
     augmented_evidence_chain_text_lines,
+    DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
+    chain_permit_text_lines,
+    create_chain_permit,
     current_project_ref,
     current_task_ref,
     curiosity_probe_text_lines,
@@ -2181,7 +2184,15 @@ def cmd_validate_evidence_chain(root: Path, chain_file: Path) -> int:
     return 1 if validation.errors else 0
 
 
-def cmd_validate_decision(root: Path, mode: str, chain_file: Path, output_format: str) -> int:
+def cmd_validate_decision(
+    root: Path,
+    mode: str,
+    chain_file: Path,
+    output_format: str,
+    emit_permit: bool,
+    action_kind: str | None,
+    ttl_seconds: int,
+) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -2192,10 +2203,29 @@ def cmd_validate_decision(root: Path, mode: str, chain_file: Path, output_format
         return 1
     hypothesis_entries = active_hypothesis_entry_by_claim(root, records)
     decision = decision_validation_payload(records, hypothesis_entries, payload, mode)
+    if emit_permit:
+        permit, error = create_chain_permit(
+            root,
+            payload,
+            decision,
+            mode=mode,
+            action_kind=action_kind,
+            ttl_seconds=ttl_seconds,
+        )
+        if error:
+            decision = dict(decision)
+            decision.setdefault("blockers", []).append(error)
+            decision["decision_valid"] = False
+        elif permit:
+            decision = dict(decision)
+            decision["permit"] = permit
     if output_format == "json":
         print(json.dumps(decision, indent=2, ensure_ascii=False))
     else:
-        print("\n".join(decision_validation_text_lines(decision, TEP_ICON)))
+        lines = decision_validation_text_lines(decision, TEP_ICON)
+        if decision.get("permit"):
+            lines.extend(["", *chain_permit_text_lines(decision["permit"])])
+        print("\n".join(lines))
     return 0 if decision["decision_valid"] else 1
 
 
@@ -8381,6 +8411,9 @@ def parse_args() -> argparse.Namespace:
     validate_decision.add_argument("--mode", required=True, choices=["planning", "permission", "edit", "model", "flow", "proposal", "final", "curiosity", "debugging"])
     validate_decision.add_argument("--chain", dest="chain_file", required=True)
     validate_decision.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    validate_decision.add_argument("--kind", dest="action_kind")
+    validate_decision.add_argument("--emit-permit", action="store_true")
+    validate_decision.add_argument("--ttl-seconds", type=int, default=DEFAULT_CHAIN_PERMIT_TTL_SECONDS)
     augment_chain = subparsers.add_parser(
         "augment-chain",
         help="Read-only enrichment of an evidence chain with record metadata, quotes, sources, and validation.",
@@ -9811,6 +9844,9 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 mode=args.mode,
                 chain_file=Path(args.chain_file).expanduser().resolve(),
                 output_format=args.output_format,
+                emit_permit=args.emit_permit,
+                action_kind=args.action_kind,
+                ttl_seconds=args.ttl_seconds,
             )
         )
     if args.command == "augment-chain":

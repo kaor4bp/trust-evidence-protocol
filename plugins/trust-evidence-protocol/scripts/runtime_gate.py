@@ -25,6 +25,7 @@ from context_lib import (
     task_outcome_from_message,
     task_decomposition_text_lines,
     validate_task_decomposition_payload,
+    validate_chain_permit,
     unclassified_input_items,
     write_backlog,
     write_conflicts_report,
@@ -593,7 +594,24 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
                 + ", ".join(str(item.get("id", "")) for item in hard_restrictions)
             )
             return 1
-        print("Evidence-authorized preflight passed; record-action still requires --evidence-chain.")
+        permit = validate_chain_permit(
+            root,
+            mode="edit",
+            action_kind=action_kind,
+            context_fingerprint=current_fingerprint,
+        )
+        if not permit.get("ok"):
+            print(
+                "Mutating action in evidence-authorized mode requires a fresh valid chain permit "
+                f"for mode=edit kind={action_kind!r}: {permit.get('reason')}"
+            )
+            print(
+                "Run: context_cli.py validate-decision --mode edit "
+                f"--kind {action_kind} --chain <evidence-chain.json> --emit-permit"
+            )
+            return 1
+        permit_id = permit.get("permit", {}).get("id", "")
+        print(f"Evidence-authorized preflight passed with chain permit {permit_id}.")
 
     if status == "hydrated-with-conflicts":
         print(f"Preflight passed with conflicts present for {mode}; proceed only with conflict-aware reasoning.")

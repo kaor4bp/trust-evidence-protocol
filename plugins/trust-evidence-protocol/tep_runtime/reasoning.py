@@ -268,10 +268,24 @@ def validate_evidence_chain_payload(
             errors.append(f"edge[{index}] uses context `{source}` as proof support for `{target}`")
         if roles_by_ref.get(source) == "task" and roles_by_ref.get(target) in TRUTH_CHAIN_ROLES:
             errors.append(f"edge[{index}] uses task `{source}` as truth support for `{target}`")
+        if roles_by_ref.get(source) == "hypothesis" and roles_by_ref.get(target) in TRUTH_CHAIN_ROLES:
+            errors.append(f"edge[{index}] uses hypothesis `{source}` as truth support for `{target}`")
 
     has_fact = any(role == "fact" for role in roles_by_ref.values())
     if not has_fact:
         errors.append("evidence chain must include at least one fact node")
+    truth_anchors: dict[str, set[str]] = {}
+    for edge in edges if isinstance(edges, list) else []:
+        if not isinstance(edge, dict):
+            continue
+        source = str(edge.get("from", "")).strip()
+        target = str(edge.get("to", "")).strip()
+        source_role = roles_by_ref.get(source)
+        if source_role in {"fact", "observation"}:
+            truth_anchors.setdefault(target, set()).add(source)
+    for ref, role in sorted(roles_by_ref.items()):
+        if role == "hypothesis" and not truth_anchors.get(ref):
+            errors.append(f"hypothesis `{ref}` must be directly anchored by at least one fact or observation edge")
 
     return EvidenceChainValidation(
         nodes=nodes,

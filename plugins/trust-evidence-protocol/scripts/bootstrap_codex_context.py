@@ -40,6 +40,7 @@ REQUIRED_DIRS = (
     "logic_index",
     "review",
     "runtime",
+    "runtime/chain_permits",
 )
 
 

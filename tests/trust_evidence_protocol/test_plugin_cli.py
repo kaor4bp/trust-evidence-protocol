@@ -5673,6 +5673,63 @@ def test_validate_decision_requires_indexed_hypotheses_and_blocks_proof_modes(tm
     assert edit.returncode == 1
     assert "cannot use hypothesis nodes as decisive proof" in edit.stdout
 
+    second_hypothesis_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.decision",
+            "--plane",
+            "runtime",
+            "--status",
+            "tentative",
+            "--statement",
+            "The stale retry state may imply a broader retry scheduler defect.",
+            "--source",
+            source_id,
+            "--note",
+            "decision second hypothesis",
+        ),
+        "claim",
+    )
+    run_cli(
+        context,
+        "hypothesis",
+        "add",
+        "--claim",
+        second_hypothesis_id,
+        "--mode",
+        "durable",
+        "--note",
+        "second decision test hypothesis",
+    )
+    stacked_chain = tmp_path / "stacked-hypothesis-chain.json"
+    stacked_chain.write_text(
+        json.dumps(
+            {
+                "task": "invalid stacked hypotheses",
+                "nodes": [
+                    {"role": "fact", "ref": fact_id, "quote": "Retry recovered"},
+                    {"role": "hypothesis", "ref": hypothesis_id, "quote": "stale retry state"},
+                    {
+                        "role": "hypothesis",
+                        "ref": second_hypothesis_id,
+                        "quote": "broader retry scheduler defect",
+                    },
+                ],
+                "edges": [
+                    {"from": fact_id, "to": hypothesis_id, "relation": "frames-hypothesis"},
+                    {"from": hypothesis_id, "to": second_hypothesis_id, "relation": "extends-hypothesis"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    stacked = run_cli(context, "validate-decision", "--mode", "planning", "--chain", str(stacked_chain), check=False)
+    assert stacked.returncode == 1
+    assert "uses hypothesis" in stacked.stdout
+    assert "must be directly anchored" in stacked.stdout
+
     augmented = json.loads(run_cli(context, "augment-chain", "--file", str(chain), "--format", "json").stdout)
     hypothesis_node = next(node for node in augmented["chain"]["nodes"] if node["ref"] == hypothesis_id)
     assert hypothesis_node["hypothesis_entry"]["mode"] == "durable"

@@ -64,6 +64,12 @@ from tep_runtime.code_index import (
     validate_code_index_state,
     write_code_index_views,
 )
+from tep_runtime.chain_permits import (
+    DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
+    chain_permit_text_lines,
+    create_chain_permit,
+    validate_chain_permit,
+)
 from tep_runtime.code_backends import (
     cocoindex_index_payload,
     cocoindex_index_text_lines,

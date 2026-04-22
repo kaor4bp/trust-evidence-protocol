@@ -1532,6 +1532,67 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
     run_runtime(context, "hydrate-context")
     run_runtime(context, "confirm-task", "--task", task_id, "--note", "hook test focus confirmed after decomposition")
 
+    permit_block = run_script(
+        HOOK_DIR / "pre_tool_use_guard.py",
+        hook_payload(context, "echo hi > /tmp/example"),
+    )
+    assert "requires a fresh valid chain permit" in permit_block.stdout
+
+    chain = tmp_path / "edit-chain.json"
+    chain.write_text(
+        json.dumps(
+            {
+                "task": "evidence-authorized edit",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Bounded hook mutation is supported."},
+                    {"role": "task", "ref": task_id, "quote": "Evidence hook task"},
+                ],
+                "edges": [{"from": claim_id, "to": task_id, "relation": "justifies-action"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    permit = json.loads(
+        run_cli(
+            context,
+            "validate-decision",
+            "--mode",
+            "edit",
+            "--kind",
+            "write",
+            "--chain",
+            str(chain),
+            "--emit-permit",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert permit["decision_valid"] is True
+    assert permit["permit"]["mode"] == "edit"
+    assert permit["permit"]["action_kind"] == "write"
+    permit_path = context / "runtime" / "chain_permits" / f"{permit['permit']['id']}.json"
+    expired_payload = json.loads(permit_path.read_text(encoding="utf-8"))
+    expired_payload["expires_at"] = "2000-01-01T00:00:00+00:00"
+    permit_path.write_text(json.dumps(expired_payload), encoding="utf-8")
+
+    expired_result = run_script(
+        HOOK_DIR / "pre_tool_use_guard.py",
+        hook_payload(context, "echo hi > /tmp/example"),
+    )
+    assert "expired" in expired_result.stdout
+
+    run_cli(
+        context,
+        "validate-decision",
+        "--mode",
+        "edit",
+        "--kind",
+        "write",
+        "--chain",
+        str(chain),
+        "--emit-permit",
+    )
+
     allow_result = run_script(
         HOOK_DIR / "pre_tool_use_guard.py",
         hook_payload(context, "echo hi > /tmp/example"),
