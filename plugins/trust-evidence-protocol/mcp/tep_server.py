@@ -21,6 +21,12 @@ CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
 SERVER_VERSION = "0.3.0"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
+plugin_root = str(PLUGIN_ROOT)
+if plugin_root not in sys.path:
+    sys.path.insert(0, plugin_root)
+
+from tep_runtime.migrations import build_migration_dry_run_report  # noqa: E402
+
 
 JsonObject = dict[str, Any]
 
@@ -410,6 +416,28 @@ TOOLS: list[JsonObject] = [
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
+        ),
+    },
+    {
+        "name": "migration_dry_run",
+        "description": (
+            "Inspect an explicit legacy context input and return a TEP 0.4 migration report. "
+            "Read-only: does not create backups, records, or target files."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "source": {
+                    "type": "string",
+                    "description": "Explicit legacy context root to inspect, such as an old .codex_context path.",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Target ~/.tep_context root for report planning. Defaults to context, TEP_CONTEXT_ROOT, or ~/.tep_context.",
+                },
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["source"],
         ),
     },
     {
@@ -1147,6 +1175,42 @@ def tool_cleanup_archives(args: JsonObject) -> tuple[bool, str]:
     return run_cli(args, cli_args)
 
 
+def migration_report_text(report: JsonObject) -> str:
+    lines = [
+        "TEP 0.4 Migration Dry Run",
+        f"source: {report['source']}",
+        f"target: {report['target']}",
+        f"preserved_refs: {len(report['preserved_refs'])}",
+        f"revoked_grants: {len(report['revoked_grants'])}",
+        f"planned_actions: {len(report['planned_actions'])}",
+        f"unresolved: {len(report['unresolved'])}",
+        "applied: false",
+    ]
+    if report["unresolved"]:
+        lines.append("unresolved_items:")
+        for item in report["unresolved"][:8]:
+            reason = item.get("reason", "unknown")
+            path = item.get("path", "")
+            lines.append(f"- {reason}: {path}".rstrip())
+    return "\n".join(lines)
+
+
+def tool_migration_dry_run(args: JsonObject) -> tuple[bool, str]:
+    source = str(args.get("source") or "").strip()
+    if not source:
+        return False, "source is required"
+    target = (
+        str(args.get("target") or "").strip()
+        or context_path(args)
+        or os.environ.get("TEP_CONTEXT_ROOT")
+        or str(Path.home() / ".tep_context")
+    )
+    report = build_migration_dry_run_report(source, target).to_payload()
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(report, ensure_ascii=False, indent=2)
+    return True, migration_report_text(report)
+
+
 def tool_augment_chain(args: JsonObject) -> tuple[bool, str]:
     return run_cli(
         args,
@@ -1506,6 +1570,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "code_info": tool_code_info,
     "cleanup_candidates": tool_cleanup_candidates,
     "cleanup_archives": tool_cleanup_archives,
+    "migration_dry_run": tool_migration_dry_run,
     "augment_chain": tool_augment_chain,
     "topic_search": tool_topic_search,
     "topic_info": tool_topic_info,

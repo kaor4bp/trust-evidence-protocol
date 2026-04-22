@@ -81,6 +81,63 @@ def test_mcp_manifest_declares_readonly_server() -> None:
     assert MCP_SERVER.exists()
 
 
+def test_mcp_migration_dry_run_uses_service_without_writing_target(tmp_path: Path) -> None:
+    source = tmp_path / ".codex_context"
+    target = tmp_path / ".tep_context"
+    claim = source / "records" / "claim" / "CLM-20260423-demo.json"
+    claim.parent.mkdir(parents=True, exist_ok=True)
+    claim.write_text(
+        json.dumps({"id": "CLM-20260423-demo", "record_type": "claim"}) + "\n",
+        encoding="utf-8",
+    )
+    ledger = source / "runtime" / "reasoning" / "reasons.jsonl"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text(
+        json.dumps({"id": "GRANT-20260423-demo", "entry_type": "grant"}) + "\n",
+        encoding="utf-8",
+    )
+
+    responses = run_mcp(
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "pytest"}},
+            },
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "migration_dry_run",
+                    "arguments": {
+                        "source": str(source),
+                        "target": str(target),
+                        "format": "json",
+                    },
+                },
+            },
+        ]
+    )
+
+    tools = {tool["name"]: tool for tool in responses[1]["result"]["tools"]}
+    assert "migration_dry_run" in tools
+    assert "Read-only" in tools["migration_dry_run"]["description"]
+
+    call_result = responses[2]["result"]
+    assert call_result["isError"] is False
+    payload = json.loads(call_result["content"][0]["text"])
+    assert payload["contract_version"] == "0.4"
+    assert payload["mode"] == "dry-run"
+    assert payload["preserved_refs"] == ["CLM-20260423-demo"]
+    assert payload["revoked_grants"] == ["GRANT-20260423-demo"]
+    assert payload["applied"] is False
+    assert not target.exists()
+
+
 def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     source_id = recorded_id(
