@@ -103,12 +103,12 @@ Source: `plugins/trust-evidence-protocol/scripts/runtime_gate.py`.
 
 Source: `plugins/trust-evidence-protocol/mcp/tep_server.py`.
 
-Important current fact: the MCP server says it "intentionally delegates all policy and context logic to `context_cli.py`" and calls it through `subprocess.run`. This directly conflicts with the 0.4.0 decision that MCP, hooks, and CLI call shared core services directly.
+Important current fact: the MCP server originally said it "intentionally delegates all policy and context logic to `context_cli.py`" and called it through `subprocess.run`. Milestone 2 has started correcting this: `next_step` and `lookup` now call core services directly, while most drill-down tools still use the temporary CLI wrapper.
 
 | MCP tool | Current behavior | Current mutability | 0.4.0 classification | Recommendation |
 |---|---|---:|---:|---|
-| `next_step` | CLI wrapper around `next-step`. | Read-only | Front-door | Keep as primary front door; return nearest route branches only. |
-| `lookup` | CLI wrapper around `lookup`; may create WCTX depending on CLI behavior. | Possibly mutating | Front-door | Keep as primary fact/code/policy/theory route. Make WCTX creation explicit in response. |
+| `next_step` | Direct call to `tep_runtime.action_graph.build_next_step_payload`. | Read-only | Front-door | Keep as primary front door; return nearest route branches only. |
+| `lookup` | Direct call to `tep_runtime.lookup_service`; may create WCTX and records telemetry explicitly. | Possibly mutating | Front-door | Keep as primary fact/code/policy/theory route. Continue moving route-token enforcement into the service. |
 | `brief_context` | CLI wrapper broad summary. | Read-only | Drill-down | Keep only as route output, not primary normal path. |
 | `search_records`, `claim_graph` | Direct search tools. | Read-only | Drill-down/obsolete as front-door | Keep only after `lookup` route authorizes drill-down. |
 | `record_detail`, `linked_records` | Reads specific graph records. | Read-only | Drill-down | Keep. Add telemetry and raw-read replacement messaging. |

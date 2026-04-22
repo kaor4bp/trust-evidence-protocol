@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Minimal MCP stdio server for Trust Evidence Protocol lookup.
 
-The server intentionally delegates all policy and context logic to context_cli.py.
-It exposes bounded lookup tools. Most tools are read-only; `lookup` may create a
-lightweight WCTX-* operational focus record so context use stays explicit.
+The server exposes bounded lookup tools. Front-door tools call core services
+directly; legacy drill-down wrappers still delegate to the development CLI until
+their service adapters are split out.
 """
 
 from __future__ import annotations
@@ -25,7 +25,12 @@ plugin_root = str(PLUGIN_ROOT)
 if plugin_root not in sys.path:
     sys.path.insert(0, plugin_root)
 
+from tep_runtime.action_graph import build_next_step_payload, next_step_text_lines  # noqa: E402
+from tep_runtime.cli_common import TEP_ICON  # noqa: E402
+from tep_runtime.context_root import resolve_context_root  # noqa: E402
+from tep_runtime.lookup_service import build_lookup_service_payload, lookup_text_lines  # noqa: E402
 from tep_runtime.migrations import build_migration_dry_run_report  # noqa: E402
+from tep_runtime.state_validation import collect_validation_errors  # noqa: E402
 
 
 JsonObject = dict[str, Any]
@@ -823,9 +828,15 @@ def active_workspace_count(context_root: Path) -> int:
 
 def mcp_context_root(args: JsonObject) -> Path | None:
     context = context_path(args) or os.environ.get("TEP_CONTEXT_ROOT")
-    if not context:
-        return None
-    return Path(context).expanduser().resolve()
+    root = resolve_context_root(context, start=call_cwd(args))
+    return root.resolve() if root else None
+
+
+def load_mcp_records(root: Path) -> tuple[dict[str, dict] | None, str | None]:
+    records, errors = collect_validation_errors(root)
+    if errors:
+        return records, "\n".join(f"{error.path}: {error.message}" for error in errors)
+    return records, None
 
 
 def unsafe_unanchored_fallback(args: JsonObject, cwd: Path) -> str | None:
@@ -894,41 +905,61 @@ def tool_brief_context(args: JsonObject) -> tuple[bool, str]:
 
 
 def tool_next_step(args: JsonObject) -> tuple[bool, str]:
-    return run_cli(
-        args,
-        [
-            "next-step",
-            "--intent",
-            str(args.get("intent") or "auto"),
-            "--task",
-            str(args.get("task") or ""),
-            "--detail",
-            str(args.get("detail") or "compact"),
-            "--format",
-            as_format(args.get("format")),
-        ],
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return False, f"cwd is not a directory: {cwd}"
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return False, unsafe_fallback
+    records, error = load_mcp_records(root)
+    if error:
+        return False, error
+    assert records is not None
+    payload = build_next_step_payload(
+        records,
+        root,
+        intent=str(args.get("intent") or "auto"),
+        task=str(args.get("task") or ""),
     )
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+    return True, "\n".join(next_step_text_lines(payload, TEP_ICON, detail=str(args.get("detail") or "compact")))
 
 
 def tool_lookup(args: JsonObject) -> tuple[bool, str]:
-    cli_args = [
-        "lookup",
-        "--query",
-        str(args.get("query", "")),
-        "--reason",
-        str(args.get("reason") or ""),
-        "--kind",
-        str(args.get("kind") or "auto"),
-        "--scope",
-        str(args.get("scope") or "current"),
-        "--mode",
-        str(args.get("mode") or "general"),
-        "--format",
-        as_format(args.get("format")),
-    ]
-    if args.get("root"):
-        cli_args.extend(["--root", str(args["root"])])
-    return run_cli(args, cli_args)
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return False, f"cwd is not a directory: {cwd}"
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return False, unsafe_fallback
+    records, load_error = load_mcp_records(root)
+    if load_error:
+        return False, load_error
+    assert records is not None
+    payload, error = build_lookup_service_payload(
+        root,
+        records,
+        query=str(args.get("query", "")),
+        kind=str(args.get("kind") or "auto"),
+        root_path=str(args.get("root") or cwd),
+        scope=str(args.get("scope") or "current"),
+        mode=str(args.get("mode") or "general"),
+        reason=str(args.get("reason") or ""),
+        channel="mcp",
+    )
+    if error:
+        return False, error
+    assert payload is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, "\n".join(lookup_text_lines(payload))
 
 
 def tool_search_records(args: JsonObject) -> tuple[bool, str]:

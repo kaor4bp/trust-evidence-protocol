@@ -351,6 +351,7 @@ from tep_runtime.cli_common import (
     sanitize_artifact_name,
     validate_mutated_records,
 )
+from tep_runtime import lookup_service
 from tep_runtime.code_index import (
     annotation_snapshot,
     code_entry_freshness,
@@ -3587,57 +3588,28 @@ def lookup_text_lines(payload: dict) -> list[str]:
 
 
 def cmd_lookup(root: Path, query: str, kind: str, root_path: str | None, scope: str, mode: str, reason: str, output_format: str) -> int:
-    if not query.strip():
-        print("lookup query must not be empty")
-        return 1
-    if reason not in LOOKUP_REASONS:
-        print(f"lookup --reason is required and must be one of: {', '.join(sorted(LOOKUP_REASONS))}")
-        return 1
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
-    wctx_ref, auto_wctx, error = ensure_lookup_working_context(root, records, query, reason)
-    if error:
-        print(error)
-        return 1
-    payload = lookup_payload(
-        root=root,
-        records=records,
+    payload, error = lookup_service.build_lookup_service_payload(
+        root,
+        records,
         query=query,
         kind=kind,
-        root_path=str(root_path or Path.cwd()),
+        root_path=root_path,
         scope=scope,
         mode=mode,
         reason=reason,
-        wctx_ref=wctx_ref,
-        auto_wctx=auto_wctx,
-    )
-    payload["focus"]["workspace_ref"] = current_workspace_ref(root)
-    payload["focus"]["project_ref"] = current_project_ref(root)
-    payload["focus"]["task_ref"] = current_task_ref(root)
-    if auto_wctx:
-        payload["auto_created_working_context"] = {
-            "id": auto_wctx.get("id", ""),
-            "scope": auto_wctx.get("scope", ""),
-            "title": auto_wctx.get("title", ""),
-            "context_kind": auto_wctx.get("context_kind", ""),
-            "not_proof": True,
-        }
-    append_lookup_access_event(
-        root,
         channel="cli",
-        tool="lookup",
-        access_kind="record_search",
-        record_refs=[],
-        query=query,
-        reason=reason,
-        working_context_ref=wctx_ref,
-        note=f"lookup route kind={payload['kind']} primary_tool={payload['primary_tool']} reason={reason} wctx={wctx_ref}",
     )
+    if error:
+        print(error)
+        return 1
+    assert payload is not None
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        print("\n".join(lookup_text_lines(payload)))
+        print("\n".join(lookup_service.lookup_text_lines(payload)))
     return 0
 
 

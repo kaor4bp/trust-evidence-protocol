@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import re
 import subprocess
 import sys
@@ -70,6 +71,15 @@ def only_record_id(context: Path, record_type: str) -> str:
     return records[0].stem
 
 
+def load_mcp_server_module():
+    spec = importlib.util.spec_from_file_location("tep_mcp_server_under_test", MCP_SERVER)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_mcp_manifest_declares_readonly_server() -> None:
     plugin_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_manifest["mcpServers"] == "./.mcp.json"
@@ -136,6 +146,55 @@ def test_mcp_migration_dry_run_uses_service_without_writing_target(tmp_path: Pat
     assert payload["revoked_grants"] == ["GRANT-20260423-demo"]
     assert payload["applied"] is False
     assert not target.exists()
+
+
+def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monkeypatch) -> None:
+    context = bootstrap_context(tmp_path)
+    run_cli(
+        context,
+        "record-workspace",
+        "--workspace-key",
+        "mcp-services",
+        "--title",
+        "MCP Service Workspace",
+        "--root-ref",
+        str(tmp_path),
+        "--note",
+        "workspace for direct MCP service test",
+    )
+    workspace_id = only_record_id(context, "workspace")
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    run_cli(context, "init-anchor", "--directory", str(tmp_path), "--workspace", workspace_id)
+
+    tep_server = load_mcp_server_module()
+
+    def fail_run_cli(*_args, **_kwargs):
+        raise AssertionError("front-door MCP tools must not shell out to context_cli.py")
+
+    monkeypatch.setattr(tep_server, "run_cli", fail_run_cli)
+
+    ok, next_step_text = tep_server.tool_next_step(
+        {"context": str(context), "cwd": str(tmp_path), "intent": "plan", "task": "direct service route"}
+    )
+    assert ok is True
+    assert "TEP Next Step" in next_step_text
+    assert "intent: plan" in next_step_text
+
+    ok, lookup_text = tep_server.tool_lookup(
+        {
+            "context": str(context),
+            "cwd": str(tmp_path),
+            "query": "direct service lookup",
+            "reason": "orientation",
+            "kind": "facts",
+            "format": "json",
+        }
+    )
+    assert ok is True
+    payload = json.loads(lookup_text)
+    assert payload["lookup_is_proof"] is False
+    assert payload["focus"]["workspace_ref"] == workspace_id
+    assert payload["focus"]["working_context_ref"].startswith("WCTX-")
 
 
 def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:

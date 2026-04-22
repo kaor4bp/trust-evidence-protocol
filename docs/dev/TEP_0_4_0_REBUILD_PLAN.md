@@ -53,6 +53,14 @@ Exit criteria:
 - Migration reports list preserved ids, new provenance wrappers, revoked grants,
   and unresolved records.
 
+Progress:
+
+- `next_step` MCP now calls `tep_runtime.action_graph` directly instead of
+  shelling out to `context_cli.py`.
+- `lookup` MCP and CLI now share `tep_runtime.lookup_service`; the MCP adapter
+  no longer shells out for the lookup front door.
+- `migration_dry_run` MCP already uses the migration service directly.
+
 ## Milestone 3: Core Validators
 
 Implement validators in this order:
