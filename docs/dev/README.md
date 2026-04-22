@@ -14,6 +14,7 @@ Move stable data contracts to `docs/reference/`. Move exploratory material to
 - [First Integration Stack](FIRST_INTEGRATION_STACK.md)
 - [TEP Developer Reference](TEP_DEVELOPER_REFERENCE.md)
 - [TEP API-First Contract](TEP_API_FIRST_CONTRACT.md)
+- [TEP 0.4.0 Functional Specification](TEP_0_4_0_FUNCTIONAL_SPEC.md)
 - [TEP 0.4.0 Agent Interface Contracts](TEP_0_4_0_AGENT_INTERFACE_CONTRACTS.md)
 - [TEP 0.4.0 Mechanics Requirements](TEP_0_4_0_MECHANICS_REQUIREMENTS.md)
 - [TEP 0.4.0 Mechanics Deep Dives](mechanics/README.md)

@@ -6,6 +6,10 @@ It is intentionally not a command reference. It describes the contracts another
 agent needs to implement a new compatible runtime without reading the current
 codebase.
 
+Normative behavior and closed 0.4.0 system decisions live in
+`docs/dev/TEP_0_4_0_FUNCTIONAL_SPEC.md`. This document focuses on the
+agent-facing interface shape.
+
 ## 1. Design Goal
 
 The agent should not need to memorize TEP internals.
@@ -168,9 +172,9 @@ INP / FILE / ART / RUN -> SRC -> optional CLM
 Rules:
 
 - `SRC-*` without a provenance surface is invalid for new records.
-- File evidence should create `FILE-*` metadata and, when allowed by settings,
+- File evidence must create `FILE-*` metadata and, when allowed by settings,
   an `ART-*` snapshot.
-- Command evidence should create or link `RUN-*`; runtime CLM must transitively
+- Command evidence must create or link `RUN-*`; runtime CLM must transitively
   reach `RUN-*`.
 - If `FILE-*` is covered by `CIX-*`, the runtime may attach CIX navigation links
   to the generated source/chain output, but CIX is not proof.
@@ -354,36 +358,28 @@ Live-agent smoke tests should verify behavior, not model intelligence:
 
 Another agent should be able to rebuild 0.4.0 from these documents in order:
 
-1. `docs/dev/TEP_0_4_0_MECHANICS_REQUIREMENTS.md`
-2. `docs/dev/TEP_0_4_0_AGENT_INTERFACE_CONTRACTS.md`
-3. `docs/dev/mechanics/*.md`
-4. `docs/reference/TEP_DATA_MODEL.md`
-5. plugin README and generated command help
-6. deterministic and live-agent tests
+1. `docs/dev/TEP_0_4_0_FUNCTIONAL_SPEC.md`
+2. `docs/dev/TEP_0_4_0_MECHANICS_REQUIREMENTS.md`
+3. `docs/dev/TEP_0_4_0_AGENT_INTERFACE_CONTRACTS.md`
+4. `docs/dev/mechanics/*.md`
+5. `docs/reference/TEP_DATA_MODEL.md`
+6. plugin README and generated command help
+7. deterministic and live-agent tests
 
 If an implementation detail is required to pass acceptance but appears only in
 the existing code, it is a documentation bug.
 
-## 13. Documentation Gaps To Close Next
+## 13. Documentation Artifacts To Produce Next
 
-The current contract is strong enough to guide the next implementation slice,
-but not yet enough for an independent full rewrite. The missing details are:
+The current contract is strong enough to guide the next implementation slice.
+The functional spec closes the main logical gaps. Remaining documentation work
+should now be concrete schemas and command examples, not new policy debates:
 
-- exact `lookup` ranking formula for MODEL/FLOW, active CLM, runtime CLM,
-  tentative hypotheses, resolved/stale records, and backend navigation hits
-- exact focus-admission payloads for no-workspace, wrong-workspace, and
-  foreign-repository cases
-- exact `record-evidence` outputs for file, URL, command, user input, and
-  artifact support
-- exact chain validation error taxonomy and repair routes
-- exact REASON ledger record shape, parent/fork rules, and weak proof-of-work
-  metadata
-- exact GRANT validity checks for Bash, file writes, MCP writes, and future
-  non-shell tools
-- exact task/subtask/plan/debt lifecycle schema and finish validation
-- exact MODEL/FLOW promotion contract and authority checker
-- exact telemetry event names and minimum counters
-- exact live-agent test scenarios and pass/fail assertions
+- JSON Schema files or typed dataclasses for `lookup`, `next-step`,
+  `record-evidence`, `reason-step`, `GRANT`, and `RUN`
+- CLI/MCP examples for each contract
+- deterministic fixtures for each acceptance criterion
+- live-agent test prompts and pass/fail assertions
 
-Do not solve these by expanding `SKILL.md`. Each gap should become a runtime
-contract, schema, command output, or test fixture.
+Do not solve these by expanding `SKILL.md`. Each artifact should become a
+runtime contract, schema, command output, or test fixture.

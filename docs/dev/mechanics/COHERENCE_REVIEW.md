@@ -48,37 +48,39 @@ Consistent across focus, task, reason/grant, code backend, and curator.
 Workspace must be explicit. Curator and backend broad search require explicit
 scope rather than inheriting global current focus.
 
-## Logical Gaps To Close
+## Logical Gaps Closed By Functional Spec
 
-### 1. Runtime Claim Authority Is Under-Specified
+`docs/dev/TEP_0_4_0_FUNCTIONAL_SPEC.md` is normative for the decisions below.
+This section keeps the original gap framing as a traceability checklist.
 
-We say runtime claims must reach `RUN-*` and should rank below theory/user
-confirmation for MODEL/FLOW. The exact scoring formula is not specified.
+### 1. Runtime Claim Authority
 
-Needed:
+Decision: functional spec defines authority classes and ranking constraints.
 
-- lookup scoring policy for runtime vs theory/user-confirmed claims
-- MODEL/FLOW authority checker that distinguishes runtime corroboration from
+Required implementation:
+
+- implement lookup scoring policy for runtime vs theory/user-confirmed claims
+- implement MODEL/FLOW authority checker that distinguishes runtime corroboration from
   theory confirmation
-- migration behavior for old runtime CLM without RUN
+- warn/migrate old runtime CLM without RUN
 
 ### 2. `SRC-*` Provenance Graph-v2 Migration
 
-We require `SRC-*` to link to INP/FILE/ART/RUN, but old contexts may contain
-source-only records.
+Decision: new `SRC-*` without provenance surface is invalid; legacy records are
+warnings until migrated.
 
-Needed:
+Required implementation:
 
 - legacy compatibility flag or migration marker
 - validator severity levels: error for new records, warning for legacy
 - one-shot migration plan
 
-### 3. Hypothesis Compatibility Is Mostly Structural
+### 3. Hypothesis Compatibility
 
-We require hypotheses to fit known facts, but current validation cannot fully
-prove semantic compatibility.
+Decision: 0.4.0 uses conservative structural compatibility, not full semantic
+proof.
 
-Needed:
+Required implementation:
 
 - predicate/logic projection for supported facts and hypotheses
 - conflict candidate detection before accepting durable hypothesis
@@ -87,22 +89,21 @@ Needed:
 
 ### 4. Planning Gate May Overconstrain Early Exploration
 
-`preflight-task --mode planning` requires current reason, while lookup/read is
-allowed before reason. This is coherent only if agents understand that lookup is
-the way to gather material before planning preflight.
+Decision: planning preflight may block, but the block must route to
+`lookup -> reason-step -> preflight`.
 
-Needed:
+Required implementation:
 
 - `next-step` route should explain "lookup first, then reason-step"
 - hook messages should be short and actionable
 - tests for first-planning blocked -> lookup -> reason-step -> planning pass
 
-### 5. Curator Pool Boundary Needs Shape
+### 5. Curator Pool Boundary
 
-Curator should receive a pool and not browse everything, but pool construction
-rules are not deep enough.
+Decision: curator receives a bounded pool with purpose, max size, and item
+reasons.
 
-Needed:
+Required implementation:
 
 - pool scoring
 - max size / paging
@@ -110,25 +111,23 @@ Needed:
 - user-question workflow
 - duplicate/contradiction report format
 
-### 6. Backend Scope Needs Operational Policy
+### 6. Backend Scope
 
-Project/workspace/global backend index layers are conceptually accepted, but
-cache invalidation, storage path, and selected scope rules need final policy.
+Decision: project scope is default; workspace is explicit; global is rare and
+never implicit.
 
-Needed:
+Required implementation:
 
 - backend status per scope
 - project default, workspace optional, global rare
 - explicit route when workspace search is needed
 - no repo pollution from backend markers unless explicitly allowed
 
-### 7. Historical Context Ranking Is Not Yet Precise
+### 7. Historical Context Ranking
 
-Cleanup is not a 0.4.0 development mechanic. Still, lookup must avoid drowning
-agents in resolved or stale high-trust records while keeping them available for
-regression analysis.
+Decision: cleanup is future work; 0.4.0 implements ranking and regression route.
 
-Needed:
+Required implementation:
 
 - lookup fallback ranking for historical/resolved claims
 - "regression suspicion" route that compares old bug with new symptoms
@@ -137,10 +136,9 @@ Needed:
 
 ### 8. Token-Pressure Wins Need Measurement
 
-The design says mechanical routes reduce token use, but acceptance lacks
-measurement.
+Decision: telemetry counters and smoke-test targets define minimum measurement.
 
-Needed:
+Required implementation:
 
 - telemetry before/after route adoption
 - raw-read count targets

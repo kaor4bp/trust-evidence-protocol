@@ -8,26 +8,30 @@ It is normative for refactoring. Current code may be reorganized, but the data s
 
 Canonical storage:
 
-- `.codex_context/records/`
-- `.codex_context/artifacts/`
-- `.codex_context/archives/`
+- `.tep_context/records/`
+- `.tep_context/artifacts/`
+- `.tep_context/archives/`
 
 Policy storage:
 
-- `.codex_context/settings.json`
+- `.tep_context/settings.json`
 
 Generated navigation storage:
 
-- `.codex_context/index.md`
-- `.codex_context/backlog.md`
-- `.codex_context/review/`
-- `.codex_context/topic_index/`
-- `.codex_context/logic_index/`
-- `.codex_context/code_index/`
-- `.codex_context/runtime/`
-- `.codex_context/hypotheses.jsonl`
+- `.tep_context/index.md`
+- `.tep_context/backlog.md`
+- `.tep_context/review/`
+- `.tep_context/topic_index/`
+- `.tep_context/logic_index/`
+- `.tep_context/code_index/`
+- `.tep_context/runtime/`
+- `.tep_context/hypotheses.jsonl`
 
 Generated storage is rebuildable and must not become canonical proof.
+
+Legacy `.codex_context` roots are migration inputs. They remain readable for
+migration and tests, but new 0.4 documentation and tooling should describe
+`.tep_context` as the primary context root.
 
 ## Record Identity
 
@@ -41,9 +45,11 @@ Rules:
 - suffix is eight lowercase random hex characters
 - legacy sequential ids remain readable but must not be generated for new records
 
-Prefixes:
+Canonical record prefixes:
 
 - `INP-*`: captured input
+- `FILE-*`: source file metadata
+- `ART-*`: TEP-owned artifact metadata or payload manifest
 - `SRC-*`: source
 - `CLM-*`: claim
 - `PRM-*`: permission
@@ -59,7 +65,18 @@ Prefixes:
 - `MODEL-*`: model
 - `FLOW-*`: flow
 - `OPEN-*`: open question
+
+Runtime/control ids:
+
+- `REASON-*`: append-only task-local reasoning ledger entry
+- `GRANT-*`: append-only authorization entry derived from a reason step
+- `RUN-*`: command execution trace
+
+Generated/navigation ids:
+
 - `CIX-*`: generated code-index entry, not canonical truth
+- `TEL-*`: telemetry event id, not canonical truth
+- `CURPOOL-*`: bounded curator work pool id, not canonical truth
 
 ## Core Semantics
 
@@ -106,6 +123,49 @@ Runtime mechanics:
 - UserPromptSubmit hook capture may create `INP-*` records automatically according to `settings.input_capture`.
 - `metadata-only` prompt capture preserves prompt/session provenance while replacing raw prompt text with an explicit placeholder.
 - Hook capture should rehydrate immediately after a successful write so prompt provenance does not make the next agent turn stale by itself.
+
+## File Records
+
+`FILE-*` records preserve metadata about original local or remote files.
+
+They represent:
+
+- local source files
+- user-referenced files
+- remote documents by URL
+- deleted or moved files whose metadata still matters
+
+Required semantics:
+
+- original path or URL
+- workspace/project scope when known
+- observed sha256/mtime/size when local content was available
+- optional linked artifact refs
+- optional code-index refs
+
+`FILE-*` records are provenance metadata. They are not proof without a linked
+`SRC-*` quote.
+
+## Artifact Records
+
+`ART-*` records or manifests represent TEP-owned payloads.
+
+They may point to:
+
+- copied file snapshots
+- generated screenshots/log extracts
+- downloaded URL content
+- archived prompt attachments
+
+Required semantics:
+
+- artifact path under `.tep_context/artifacts/` or archive manifest path
+- media/type metadata when known
+- source file/input/run refs when known
+- retention policy metadata when relevant
+
+`ART-*` records are storage/provenance. They are not proof without a linked
+`SRC-*` quote.
 
 ## Source Records
 
@@ -361,6 +421,23 @@ They are especially important in autonomous mode, where the agent should keep wo
 They should include kind, safety class, status, justification refs, project/task refs, timestamps, and note.
 
 Mutating action policy is governed by `allowed_freedom`, restrictions, permissions, and hook classification.
+
+## Run Records
+
+`RUN-*` records preserve command execution traces.
+
+Required semantics:
+
+- workspace/project/task refs when known
+- optional grant ref
+- cwd
+- command and command hash
+- timestamps
+- exit status
+- selected output quotes
+
+Runtime claims derived from command output must transitively reach a `RUN-*`
+through `SRC-*`.
 
 ## Code Index Entries
 

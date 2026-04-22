@@ -12,6 +12,7 @@ algorithm notes live in `docs/research/`.
 
 Related developer docs:
 
+- `docs/dev/TEP_0_4_0_FUNCTIONAL_SPEC.md`
 - `docs/dev/TEP_API_FIRST_CONTRACT.md`
 - `docs/dev/TEP_0_4_0_AGENT_INTERFACE_CONTRACTS.md`
 - `docs/dev/mechanics/README.md`
