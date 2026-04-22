@@ -6292,3 +6292,15 @@ def test_record_loaders_return_records_with_paths_and_validation_errors(tmp_path
     assert "CIX-20260418-abcdef12" in entries
     assert entries["CIX-20260418-abcdef12"]["_path"] == cix_dir / "CIX-20260418-abcdef12.json"
     assert any("missing id" in error.message for error in cix_errors)
+
+
+def test_record_loader_treats_new_optional_record_dirs_as_backfill_safe(tmp_path: Path) -> None:
+    root = tmp_path / ".tep_context"
+    for directory in RECORD_DIRS:
+        if directory in {"agent_identity", "curator_pool"}:
+            continue
+        (root / "records" / directory).mkdir(parents=True)
+
+    _, errors = load_records(root)
+
+    assert not [error for error in errors if "missing record directory" in error.message]

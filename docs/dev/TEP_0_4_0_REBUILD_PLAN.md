@@ -105,6 +105,11 @@ Progress:
   behavior by default, while shared validation checks `prev_ledger_hash`,
   `entry_hash`, seal, `ledger_hash`, `chain_hash`, and PoW without creating
   `runtime/reasoning/seal.json` for empty contexts.
+- Added GRANT/RUN lifecycle validation as a shared service. Durable `RUN-*` and
+  protected records that cite `grant_ref` must point to a current v2 `GRANT-*`,
+  match grant scope/action/command bindings, and respect `max_runs`.
+- Marked `records/curator_pool` as an optional backfill-safe directory so older
+  contexts do not break MCP front doors before their first `CURP-*` pool exists.
 
 ## Milestone 4: MCP-Only Agent Route
 

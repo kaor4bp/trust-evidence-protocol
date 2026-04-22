@@ -31,7 +31,7 @@ RECORD_DIRS = {
     "open_question": "open_question",
 }
 
-OPTIONAL_RECORD_DIRS = {"agent_identity"}
+OPTIONAL_RECORD_DIRS = {"agent_identity", "curator_pool"}
 
 RECORD_TYPE_TO_PREFIX = {
     "agent_identity": "AGENT-",

@@ -14,7 +14,13 @@ if plugin_root not in sys.path:
 
 from tep_runtime.core_validators import validate_active_focus, validate_core_graph  # noqa: E402
 from tep_runtime.paths import reasoning_seal_path, reasons_ledger_path  # noqa: E402
-from tep_runtime.reason_ledger import append_reason_entry, chain_payload_hash  # noqa: E402
+from tep_runtime.reason_ledger import (  # noqa: E402
+    append_reason_entry,
+    chain_payload_hash,
+    command_hash,
+    normalize_cwd,
+    validate_grant_run_lifecycle,
+)
 from tep_runtime.state_validation import validate_records_state  # noqa: E402
 
 
@@ -97,18 +103,22 @@ def agent(fingerprint: str = "sha256:agent") -> dict:
     )
 
 
-def run() -> dict:
+def run(**payload) -> dict:
+    values = {
+        "contract_version": "0.4",
+        "status": "completed",
+        "tool": "bash",
+        "command": "pytest",
+        "captured_at": TS,
+        "exit_code": 0,
+        "artifact_refs": [],
+        "workspace_refs": [WORKSPACE_REF],
+        **payload,
+    }
     return record(
         "run",
         "RUN-20260423-a0000003",
-        contract_version="0.4",
-        status="completed",
-        tool="bash",
-        command="pytest",
-        captured_at=TS,
-        exit_code=0,
-        artifact_refs=[],
-        workspace_refs=[WORKSPACE_REF],
+        **values,
     )
 
 
@@ -321,3 +331,92 @@ def test_reason_ledger_state_validation_detects_tamper(tmp_path: Path) -> None:
     errors = messages(validate_records_state(tmp_path, {}))
 
     assert any("ledger appears tampered" in error for error in errors)
+
+
+def write_pow_disabled_settings(root: Path) -> None:
+    (root / "settings.json").write_text(
+        json.dumps({"reasoning": {"pow": {"enabled": False}}}),
+        encoding="utf-8",
+    )
+
+
+def grant_for_run(root: Path, *, command: str = "echo hi", max_runs: int = 1) -> dict:
+    write_pow_disabled_settings(root)
+    grant, error = append_reason_entry(
+        root,
+        {
+            "entry_type": "grant",
+            "status": "active",
+            "grant_type": "exact_command",
+            "reason_ref": "REASON-20260423-a0000013",
+            "workspace_ref": WORKSPACE_REF,
+            "project_ref": "PRJ-20260423-a0000011",
+            "task_ref": "TASK-20260423-a0000012",
+            "mode": "edit",
+            "action_kind": "write",
+            "command": command,
+            "command_sha256": command_hash(command),
+            "cwd": normalize_cwd(root),
+            "tool": "bash",
+            "max_runs": max_runs,
+            "valid_from": "2026-04-23T00:00:00+03:00",
+            "expires_at": "2026-04-24T00:00:00+03:00",
+            "context_fingerprint": "pytest",
+        },
+        id_prefix="GRANT",
+    )
+    assert grant is not None, error
+    return grant
+
+
+def grant_records(*run_records: dict) -> dict[str, dict]:
+    project_id = "PRJ-20260423-a0000011"
+    task_id = "TASK-20260423-a0000012"
+    return base_records(
+        project(project_id),
+        task(task_id, project_refs=[project_id]),
+        *run_records,
+    )
+
+
+def test_grant_run_lifecycle_accepts_matching_command_bound_run(tmp_path: Path) -> None:
+    grant = grant_for_run(tmp_path)
+    run_record = run(
+        command="echo hi",
+        cwd=str(tmp_path),
+        captured_at=TS,
+        action_kind="write",
+        grant_ref=grant["id"],
+        project_refs=["PRJ-20260423-a0000011"],
+        task_refs=["TASK-20260423-a0000012"],
+    )
+
+    assert messages(validate_grant_run_lifecycle(tmp_path, grant_records(run_record))) == []
+    assert messages(validate_records_state(tmp_path, grant_records(run_record))) == []
+
+
+def test_grant_run_lifecycle_rejects_command_mismatch_and_double_use(tmp_path: Path) -> None:
+    grant = grant_for_run(tmp_path)
+    bad_run = run(
+        command="echo bye",
+        cwd=str(tmp_path),
+        captured_at=TS,
+        action_kind="write",
+        grant_ref=grant["id"],
+        project_refs=["PRJ-20260423-a0000011"],
+        task_refs=["TASK-20260423-a0000012"],
+    )
+
+    errors = messages(validate_grant_run_lifecycle(tmp_path, grant_records(bad_run)))
+
+    assert f"grant_ref {grant['id']} command hash mismatch" in errors
+
+    second_run = dict(bad_run)
+    second_run["id"] = "RUN-20260423-a0000014"
+    second_run["_path"] = Path(f"/tmp/tep/run/{second_run['id']}.json")
+    second_run["command"] = "echo hi"
+    bad_run["command"] = "echo hi"
+
+    errors = messages(validate_grant_run_lifecycle(tmp_path, grant_records(bad_run, second_run)))
+
+    assert f"grant_ref {grant['id']} consumed 2 times; max_runs=1" in errors

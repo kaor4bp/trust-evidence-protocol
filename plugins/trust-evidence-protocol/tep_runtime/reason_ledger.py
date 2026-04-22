@@ -6,19 +6,22 @@ import hashlib
 import hmac
 import json
 import secrets
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from .errors import ValidationError
 from .hydration import compute_context_fingerprint
 from .hypotheses import active_hypothesis_entry_by_claim
 from .io import write_json_file
 from .paths import reasoning_runtime_dir, reasoning_seal_path, reasons_ledger_path
+from .policy import is_mutating_action_kind
 from .records import load_records
-from .errors import ValidationError
 from .reasoning import decision_validation_payload
 from .scopes import current_project_ref, current_task_ref, current_workspace_ref
 from .settings import chain_permit_ttl_seconds, load_effective_settings
+from .validation import safe_list
 from .telemetry import append_access_event
 
 
@@ -337,6 +340,143 @@ def validate_reason_ledger_state(root: Path) -> list[ValidationError]:
     if not path.exists():
         path = reasoning_seal_path(root)
     return [ValidationError(path, message) for message in validation["errors"]]
+
+
+def _record_path(record: dict) -> Path:
+    value = record.get("_path")
+    return value if isinstance(value, Path) else Path(str(value or "."))
+
+
+def _ledger_grants(entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        str(entry.get("id", "")).strip(): entry
+        for entry in entries
+        if str(entry.get("id", "")).strip().startswith("GRANT-")
+        or str(entry.get("entry_type", "")).strip() in GRANT_ENTRY_TYPES
+    }
+
+
+def _grant_is_current_v2(grant: dict[str, Any]) -> bool:
+    return str(grant.get("entry_type", "")).strip() == "grant" and int(grant.get("version", 1) or 1) >= 2
+
+
+def _record_grant_ref(record: dict) -> str:
+    return str(record.get("grant_ref") or record.get("reason_use_ref") or "").strip()
+
+
+def _record_action_kind(record: dict) -> str:
+    record_type = str(record.get("record_type", "")).strip()
+    if record_type == "run":
+        return str(record.get("action_kind", "")).strip()
+    if record_type == "action":
+        return str(record.get("kind", "")).strip()
+    return str(record.get("action_kind", "")).strip()
+
+
+def _grant_matches_record_scope(grant: dict[str, Any], record: dict) -> str | None:
+    grant_workspace = str(grant.get("workspace_ref", "")).strip()
+    workspace_refs = safe_list(record, "workspace_refs")
+    if grant_workspace and workspace_refs and grant_workspace not in workspace_refs:
+        return "workspace_ref mismatch"
+    grant_project = str(grant.get("project_ref", "")).strip()
+    project_refs = safe_list(record, "project_refs")
+    if grant_project and project_refs and grant_project not in project_refs:
+        return "project_ref mismatch"
+    grant_task = str(grant.get("task_ref", "")).strip()
+    task_refs = safe_list(record, "task_refs")
+    if grant_task and task_refs and grant_task not in task_refs:
+        return "task_ref mismatch"
+    return None
+
+
+def _grant_matches_run_command(grant: dict[str, Any], run: dict) -> str | None:
+    grant_command_hash = str(grant.get("command_sha256", "")).strip()
+    if not grant_command_hash:
+        return None
+    if command_hash(str(run.get("command", "")).strip()) != grant_command_hash:
+        return "command hash mismatch"
+    grant_cwd = normalize_cwd(str(grant.get("cwd", "")).strip())
+    if grant_cwd and normalize_cwd(str(run.get("cwd", "")).strip()) != grant_cwd:
+        return "cwd mismatch"
+    grant_tool = str(grant.get("tool", "")).strip()
+    if grant_tool and grant_tool != "*" and str(run.get("tool", "")).strip() != grant_tool:
+        return "tool mismatch"
+    return None
+
+
+def _grant_matches_run_time(grant: dict[str, Any], run: dict) -> str | None:
+    captured = _parse_timestamp(str(run.get("captured_at", "")).strip())
+    if captured is None:
+        return None
+    valid_from = _parse_timestamp(str(grant.get("valid_from", "")).strip())
+    expires_at = _parse_timestamp(str(grant.get("expires_at", "")).strip())
+    if valid_from and captured < valid_from:
+        return "captured before grant valid_from"
+    if expires_at and captured > expires_at:
+        return "captured after grant expires_at"
+    return None
+
+
+def validate_grant_run_lifecycle(root: Path, records: dict[str, dict]) -> list[ValidationError]:
+    """Validate durable GRANT-* consumption by RUN-* and protected records."""
+
+    validation = validate_reason_ledger(root, create_secret=False)
+    if not validation["ok"]:
+        return []
+    grants = _ledger_grants(validation["entries"])
+    errors: list[ValidationError] = []
+    use_counts: Counter[str] = Counter()
+    use_paths: dict[str, Path] = {}
+    for record in records.values():
+        grant_ref = _record_grant_ref(record)
+        if not grant_ref:
+            continue
+        path = _record_path(record)
+        if not grant_ref.startswith("GRANT-"):
+            errors.append(ValidationError(path, f"grant_ref must reference GRANT-*: {grant_ref}"))
+            continue
+        grant = grants.get(grant_ref)
+        if not grant:
+            errors.append(ValidationError(path, f"grant_ref missing reason ledger grant: {grant_ref}"))
+            continue
+        if not _grant_is_current_v2(grant):
+            errors.append(ValidationError(path, f"grant_ref {grant_ref} references legacy/revoked grant"))
+            continue
+        use_counts[grant_ref] += 1
+        use_paths.setdefault(grant_ref, path)
+
+        record_kind = _record_action_kind(record)
+        grant_kind = str(grant.get("action_kind", "")).strip()
+        if record_kind and grant_kind and grant_kind not in {record_kind, "*"}:
+            errors.append(ValidationError(path, f"grant_ref {grant_ref} action_kind mismatch"))
+        if str(record.get("record_type", "")).strip() == "action" and is_mutating_action_kind(record_kind):
+            if str(grant.get("mode", "")).strip() != "edit":
+                errors.append(ValidationError(path, f"grant_ref {grant_ref} must authorize edit mode"))
+        scope_error = _grant_matches_record_scope(grant, record)
+        if scope_error:
+            errors.append(ValidationError(path, f"grant_ref {grant_ref} {scope_error}"))
+        if str(record.get("record_type", "")).strip() == "run":
+            command_error = _grant_matches_run_command(grant, record)
+            if command_error:
+                errors.append(ValidationError(path, f"grant_ref {grant_ref} {command_error}"))
+            time_error = _grant_matches_run_time(grant, record)
+            if time_error:
+                errors.append(ValidationError(path, f"grant_ref {grant_ref} {time_error}"))
+
+    legacy_used = used_access_refs(validation["entries"])
+    for grant_ref, grant in grants.items():
+        if not _grant_is_current_v2(grant):
+            continue
+        max_runs = int(grant.get("max_runs", grant.get("max_uses", 1)) or 1)
+        use_count = use_counts.get(grant_ref, 0) + (1 if grant_ref in legacy_used else 0)
+        if max_runs > 0 and use_count > max_runs:
+            errors.append(
+                ValidationError(
+                    use_paths.get(grant_ref, reasons_ledger_path(root)),
+                    f"grant_ref {grant_ref} consumed {use_count} times; max_runs={max_runs}",
+                )
+            )
+    return errors
 
 
 def _next_ledger_id(entries: list[dict[str, Any]], prefix: str) -> str:
