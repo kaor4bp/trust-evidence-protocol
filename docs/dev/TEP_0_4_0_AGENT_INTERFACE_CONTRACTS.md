@@ -318,6 +318,9 @@ Rules:
 - The runtime should reject direct ledger file writes.
 - Hash-chain sealing and weak proof-of-work are tamper friction, not a security
   boundary.
+- Version-2 ledger entries must preserve and validate `prev_ledger_hash`,
+  `entry_hash`, `ledger_hash`, `seal`, `pow`, `chain_hash` for steps, and the
+  public `signed_chain` summary.
 
 `GRANT-*` is the only authorization record for protected work:
 

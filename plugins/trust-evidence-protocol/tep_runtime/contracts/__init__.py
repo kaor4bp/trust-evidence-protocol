@@ -13,7 +13,7 @@ from .lookup import LOOKUP_RESPONSE_SCHEMA, LookupResponse
 from .map_session import MAP_VIEW_RESPONSE_SCHEMA, MapViewResponse
 from .migration import MIGRATION_REPORT_SCHEMA, MigrationReport
 from .next_step import NEXT_STEP_RESPONSE_SCHEMA, NextStepResponse
-from .reason import REASON_STEP_REQUEST_SCHEMA, ReasonStepRequest
+from .reason import REASON_LEDGER_ENTRY_SCHEMA, REASON_STEP_REQUEST_SCHEMA, ReasonLedgerEntry, ReasonStepRequest
 from .run import RUN_RECORD_SCHEMA, RunRecord
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "MIGRATION_REPORT_SCHEMA",
     "NEXT_STEP_RESPONSE_SCHEMA",
     "REASON_STEP_REQUEST_SCHEMA",
+    "REASON_LEDGER_ENTRY_SCHEMA",
     "RECORD_EVIDENCE_REQUEST_SCHEMA",
     "RUN_RECORD_SCHEMA",
     "ChainValidationResponse",
@@ -36,6 +37,7 @@ __all__ = [
     "MigrationReport",
     "NextStepResponse",
     "ReasonStepRequest",
+    "ReasonLedgerEntry",
     "RecordEvidenceRequest",
     "RunRecord",
 ]

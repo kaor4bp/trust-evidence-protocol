@@ -22,6 +22,7 @@ from tep_runtime.contracts import (  # noqa: E402
     MAP_VIEW_RESPONSE_SCHEMA,
     MIGRATION_REPORT_SCHEMA,
     NEXT_STEP_RESPONSE_SCHEMA,
+    REASON_LEDGER_ENTRY_SCHEMA,
     REASON_STEP_REQUEST_SCHEMA,
     RECORD_EVIDENCE_REQUEST_SCHEMA,
     RUN_RECORD_SCHEMA,
@@ -31,6 +32,7 @@ from tep_runtime.contracts import (  # noqa: E402
     MapViewResponse,
     MigrationReport,
     NextStepResponse,
+    ReasonLedgerEntry,
     ReasonStepRequest,
     RecordEvidenceRequest,
     RunRecord,
@@ -43,6 +45,7 @@ SCHEMA_EXPORTS = {
     "record_evidence.request.schema.json": RECORD_EVIDENCE_REQUEST_SCHEMA,
     "validate_chain.response.schema.json": CHAIN_VALIDATION_RESPONSE_SCHEMA,
     "reason_step.request.schema.json": REASON_STEP_REQUEST_SCHEMA,
+    "reason_ledger.entry.schema.json": REASON_LEDGER_ENTRY_SCHEMA,
     "grant.record.schema.json": GRANT_RECORD_SCHEMA,
     "run.record.schema.json": RUN_RECORD_SCHEMA,
     "migration.report.schema.json": MIGRATION_REPORT_SCHEMA,
@@ -76,6 +79,38 @@ def test_grant_and_reason_contracts_reject_legacy_action_kind_shape() -> None:
     assert reason_action_enum == list(ACTION_KINDS)
     assert "write" not in grant_action_enum
     assert "edit" not in grant_action_enum
+
+
+def test_reason_ledger_contract_preserves_hash_seal_and_pow_fields() -> None:
+    schema = load_schema("reason_ledger.entry.schema.json")
+    required = set(schema["required"])
+
+    assert {"prev_ledger_hash", "entry_hash", "ledger_hash", "seal", "pow"} <= required
+    assert schema["properties"]["pow"]["properties"]["algorithm"]["const"] == "sha256-leading-zero-bits"
+
+    entry = ReasonLedgerEntry(
+        id="REASON-20260423-demo",
+        entry_type="step",
+        created_at="2026-04-23T00:00:00+03:00",
+        prev_ledger_hash="sha256:0",
+        entry_hash="sha256:entry",
+        ledger_hash="sha256:ledger",
+        seal="hmac-sha256:seal",
+        pow={
+            "algorithm": "sha256-leading-zero-bits",
+            "difficulty_bits": 12,
+            "nonce": "abc:1",
+            "digest": "000abc",
+        },
+        chain_hash="sha256:chain",
+        signed_chain={"node_count": 1, "edge_count": 0},
+        chain_payload={"nodes": [], "edges": []},
+    ).to_payload()
+
+    assert entry["contract_version"] == "0.4"
+    assert entry["record_type"] == "reason"
+    assert entry["version"] == 2
+    assert entry["pow"]["algorithm"] == "sha256-leading-zero-bits"
 
 
 def test_front_door_contract_payloads_expose_routes_without_proof() -> None:

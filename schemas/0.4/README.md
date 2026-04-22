@@ -6,4 +6,5 @@ The matching Python dataclass helpers live in
 
 The schemas intentionally define stable outer payload shape first. Domain
 validators still enforce semantic rules such as provenance reachability,
-REASON progression, and GRANT/RUN authorization.
+REASON progression, chain-ledger hash/seal/PoW verification, and GRANT/RUN
+authorization.

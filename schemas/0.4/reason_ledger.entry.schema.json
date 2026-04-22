@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/reason_ledger.entry.schema.json",
+  "title": "TEP 0.4 reason ledger entry",
+  "description": "Append-only REASON/GRANT ledger entry with hash-chain, HMAC seal, and weak proof-of-work. PoW is tamper friction, not a security boundary.",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "id",
+    "record_type",
+    "version",
+    "entry_type",
+    "created_at",
+    "prev_ledger_hash",
+    "entry_hash",
+    "ledger_hash",
+    "seal",
+    "pow"
+  ],
+  "properties": {
+    "contract_version": {"type": "string", "const": "0.4"},
+    "id": {"type": "string", "pattern": "^(REASON|GRANT)-"},
+    "record_type": {"type": "string", "const": "reason"},
+    "version": {"type": "integer", "minimum": 2},
+    "entry_type": {"type": "string", "enum": ["step", "grant"]},
+    "created_at": {"type": "string"},
+    "prev_ledger_hash": {"type": "string", "pattern": "^sha256:"},
+    "entry_hash": {"type": "string", "pattern": "^sha256:"},
+    "ledger_hash": {"type": "string", "pattern": "^sha256:"},
+    "seal": {"type": "string", "pattern": "^hmac-sha256:"},
+    "pow": {
+      "type": "object",
+      "required": ["algorithm", "difficulty_bits", "nonce", "digest"],
+      "properties": {
+        "algorithm": {"type": "string", "const": "sha256-leading-zero-bits"},
+        "difficulty_bits": {"type": "integer", "minimum": 0},
+        "nonce": {"type": "string"},
+        "digest": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "chain_hash": {"type": "string"},
+    "signed_chain": {"type": "object", "additionalProperties": true},
+    "chain_payload": {"type": "object", "additionalProperties": true}
+  },
+  "additionalProperties": true
+}

@@ -23,7 +23,8 @@ Goals:
 
 - Define dataclass-style internal contracts and exported JSON Schemas.
 - Lock response shapes for `next_step`, `lookup`, evidence capture, chain
-  validation, `REASON`, `GRANT`, `RUN`, migration reports, and map sessions.
+  validation, `REASON`, chain-ledger entries, `GRANT`, `RUN`, migration
+  reports, and map sessions.
 - Introduce `contract_version: "0.4"` while documenting any temporary
   compatibility field such as `api_contract_version`.
 
@@ -63,9 +64,12 @@ Implement validators in this order:
 4. Chain roles: meta, navigation, and control records cannot become
    object-level proof.
 5. REASON progression: same-branch continuation cannot reuse the parent chain.
-6. GRANT/RUN lifecycle: protected action requires a valid grant and mutating
+6. Chain ledger integrity: `prev_ledger_hash`, `entry_hash`, `ledger_hash`,
+   HMAC seal, `chain_hash`, signed chain summary, and PoW validate for every
+   version-2 ledger entry.
+7. GRANT/RUN lifecycle: protected action requires a valid grant and mutating
    bash records or links `RUN-*`.
-7. MODEL/FLOW authority: no tentative, runtime-only, or meta-only decisive
+8. MODEL/FLOW authority: no tentative, runtime-only, or meta-only decisive
    support.
 
 Exit criteria:
