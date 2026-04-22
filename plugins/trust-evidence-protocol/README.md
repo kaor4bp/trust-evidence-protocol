@@ -954,9 +954,17 @@ Guideline disclosure for code edits:
 - `show-task [--all]`
   - prints the current task focus, or all task records with `--all`
 
+- `task-outcome-check --task TASK-* --outcome done|blocked|user-question [--format text|json]`
+  - checks whether a task outcome is mechanically acceptable
+  - `done` fails while linked `OPEN-*`, active/proposed/blocked `PLN-*`, unresolved `DEBT-*`, or planned `ACT-*` obligations remain open
+  - `blocked` requires at least one linked open question, active/proposed/blocked plan, unresolved debt, or planned action
+  - `user-question` requires at least one linked open `OPEN-*`
+  - output includes `blocking_obligations` and `next_allowed_commands`
+
 - `complete-task [--task TASK-*] [--note ...]`
   - marks the selected or current task `completed`
   - clears `current_task_ref` when it points at that task
+  - autonomous tasks run `task-outcome-check --outcome done` before completion
 
 - `stop-task [--task TASK-*] [--note ...]`
   - marks the selected or current task `stopped`
@@ -1188,6 +1196,7 @@ Current prioritization behavior:
 - use `pause-task`, `resume-task`, or `switch-task` instead of silently continuing in the wrong task context
 - use `review-precedents` before repeating a substantial task type to inspect similar past tasks and linked plans/debt/actions/open questions
 - when a `Stop` hook is configured and the current active task is autonomous, the final answer must include one exact marker: `TEP TASK OUTCOME: done`, `TEP TASK OUTCOME: blocked`, or `TEP TASK OUTCOME: user-question`
+- the Stop hook validates that marker with `task-outcome-check`; the marker is not accepted as a bare self-declaration
 
 ## Projects And Restrictions
 

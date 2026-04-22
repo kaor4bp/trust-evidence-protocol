@@ -6,6 +6,24 @@ from .notes import append_note
 from .scopes import record_belongs_to_project
 from .search import concise, score_record
 from .topic_index import task_terms
+from .validation import safe_list
+
+
+TASK_OUTCOME_MARKER = "TEP TASK OUTCOME:"
+TASK_TERMINAL_OUTCOMES = {"done", "blocked", "user-question"}
+TASK_OBLIGATION_TYPES = {"open_question", "plan", "debt", "action"}
+TASK_OBLIGATION_REF_FIELDS = {
+    "open_question": "open_question_refs",
+    "plan": "plan_refs",
+    "debt": "debt_refs",
+    "action": "action_refs",
+}
+TASK_BLOCKING_STATUSES = {
+    "open_question": {"open"},
+    "plan": {"proposed", "active", "blocked"},
+    "debt": {"open", "accepted", "scheduled"},
+    "action": {"planned"},
+}
 
 
 def build_task_payload(
@@ -81,6 +99,152 @@ def task_related_counts(task: dict) -> str:
         if values:
             parts.append(f"{key}={len(values)}")
     return ", ".join(parts) if parts else "no linked records"
+
+
+def task_outcome_from_message(message: str) -> str:
+    for line in message.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith(TASK_OUTCOME_MARKER.lower()):
+            value = stripped[len(TASK_OUTCOME_MARKER) :].strip().lower()
+            return value.split()[0].strip("`.,;:") if value else ""
+    return ""
+
+
+def task_linked_obligations(records: dict[str, dict], task_ref: str) -> list[dict]:
+    task = records.get(task_ref, {})
+    refs_by_type: dict[str, set[str]] = {
+        record_type: set(safe_list(task, field))
+        for record_type, field in TASK_OBLIGATION_REF_FIELDS.items()
+    }
+    linked: list[dict] = []
+    for record_id, record in records.items():
+        record_type = str(record.get("record_type", "")).strip()
+        if record_type not in TASK_OBLIGATION_TYPES:
+            continue
+        via_task_field = record_id in refs_by_type.get(record_type, set())
+        via_record_task_ref = task_ref in safe_list(record, "task_refs")
+        if via_task_field or via_record_task_ref:
+            linked.append(
+                {
+                    "id": record_id,
+                    "record_type": record_type,
+                    "status": str(record.get("status", "")).strip(),
+                    "title": str(record.get("title") or record.get("question") or record.get("scope") or "").strip(),
+                    "blocking": str(record.get("status", "")).strip() in TASK_BLOCKING_STATUSES[record_type],
+                    "linked_by": sorted(
+                        item
+                        for item, present in (
+                            ("task_field", via_task_field),
+                            ("record_task_refs", via_record_task_ref),
+                        )
+                        if present
+                    ),
+                }
+            )
+    return sorted(linked, key=lambda item: (item["record_type"], item["id"]))
+
+
+def task_outcome_check_payload(records: dict[str, dict], task_ref: str, outcome: str) -> dict:
+    task = records.get(task_ref)
+    outcome = outcome.strip().lower()
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not task or task.get("record_type") != "task":
+        return {
+            "task_ref": task_ref,
+            "outcome": outcome,
+            "accepted": False,
+            "errors": [f"missing task record {task_ref}"],
+            "warnings": [],
+            "obligations": [],
+            "next_allowed_commands": ["show-task --all", "start-task ..."],
+        }
+    if outcome not in TASK_TERMINAL_OUTCOMES:
+        errors.append(
+            "outcome must be one of: " + ", ".join(sorted(TASK_TERMINAL_OUTCOMES))
+        )
+
+    obligations = task_linked_obligations(records, task_ref)
+    blocking = [item for item in obligations if item["blocking"]]
+    blocking_open_questions = [item for item in blocking if item["record_type"] == "open_question"]
+    blocking_plans = [item for item in blocking if item["record_type"] == "plan"]
+    blocking_debt = [item for item in blocking if item["record_type"] == "debt"]
+    blocking_actions = [item for item in blocking if item["record_type"] == "action"]
+
+    if outcome == "done" and blocking:
+        errors.append("done requires no linked open obligations")
+    if outcome == "blocked" and not (blocking_open_questions or blocking_plans or blocking_debt or blocking_actions):
+        errors.append("blocked requires a linked open question, blocked/active plan, unresolved debt, or planned action")
+    if outcome == "user-question" and not blocking_open_questions:
+        errors.append("user-question requires a linked OPEN-* record with status=open")
+    if outcome in {"blocked", "user-question"} and not str(task.get("note", "")).strip():
+        warnings.append("task note is empty; include a blocker/question summary when finishing")
+
+    if outcome == "done":
+        next_allowed = ["complete-task --task " + task_ref]
+    elif outcome == "blocked":
+        next_allowed = [
+            "pause-task --task " + task_ref,
+            "record-open-question ...",
+            "record-plan ...",
+            "record-debt ...",
+            "record-action ...",
+        ]
+    elif outcome == "user-question":
+        next_allowed = ["pause-task --task " + task_ref, "record-open-question ..."]
+    else:
+        next_allowed = ["task-outcome-check --task " + task_ref + " --outcome done|blocked|user-question"]
+
+    return {
+        "task_ref": task_ref,
+        "task_status": str(task.get("status", "")).strip(),
+        "task_execution_mode": str(task.get("execution_mode", "manual")).strip() or "manual",
+        "outcome": outcome,
+        "accepted": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "obligations": obligations,
+        "blocking_obligations": blocking,
+        "next_allowed_commands": next_allowed,
+        "outcome_contract": {
+            "done": "All linked obligations must be closed, resolved, completed, abandoned, invalid, or wont-fix.",
+            "blocked": "At least one linked OPEN/PLN/DEBT/ACT record must explain the blocker.",
+            "user-question": "At least one linked open OPEN-* question must state what the user must answer.",
+        },
+    }
+
+
+def task_outcome_check_text_lines(payload: dict) -> list[str]:
+    lines = [
+        "# Task Outcome Check",
+        "",
+        f"task: `{payload.get('task_ref')}` outcome: `{payload.get('outcome')}` accepted: `{payload.get('accepted')}`",
+        f"status: `{payload.get('task_status', '')}` mode: `{payload.get('task_execution_mode', '')}`",
+        "",
+        "## Obligations",
+    ]
+    obligations = payload.get("obligations") or []
+    if obligations:
+        for item in obligations:
+            marker = "blocking" if item.get("blocking") else "closed"
+            title = concise(item.get("title", ""), 120)
+            lines.append(
+                f"- `{item.get('id')}` type=`{item.get('record_type')}` status=`{item.get('status')}` {marker}: {title}"
+            )
+    else:
+        lines.append("- none")
+    if payload.get("errors"):
+        lines.extend(["", "## Errors"])
+        for error in payload.get("errors", []):
+            lines.append(f"- {error}")
+    if payload.get("warnings"):
+        lines.extend(["", "## Warnings"])
+        for warning in payload.get("warnings", []):
+            lines.append(f"- {warning}")
+    lines.extend(["", "## Next Allowed Commands"])
+    for command in payload.get("next_allowed_commands", []):
+        lines.append(f"- `{command}`")
+    return lines
 
 
 def build_task_drift_payload(

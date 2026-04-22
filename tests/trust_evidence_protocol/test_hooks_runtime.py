@@ -538,6 +538,89 @@ def test_autonomous_task_stop_guard_requires_terminal_outcome(tmp_path: Path) ->
     assert recursive.stdout.strip() == ""
 
 
+def test_autonomous_task_outcome_check_requires_linked_obligations(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    start = run_cli(
+        context,
+        "start-task",
+        "--scope",
+        "demo.autonomous.blocked",
+        "--title",
+        "Autonomous blocked work",
+        "--autonomous",
+        "--note",
+        "autonomous task with a user question",
+    )
+    task_id = recorded_id(start, "task")
+    run_runtime(context, "hydrate-context")
+
+    blocked_without_obligation = run_runtime(
+        context,
+        "stop-guard",
+        "--last-assistant-message",
+        "TEP TASK OUTCOME: blocked",
+        check=False,
+    )
+    assert blocked_without_obligation.returncode == 1
+    assert "blocked requires a linked open question" in blocked_without_obligation.stdout
+
+    open_question = run_cli(
+        context,
+        "record-open-question",
+        "--domain",
+        "demo",
+        "--scope",
+        "demo.autonomous.blocked",
+        "--aspect",
+        "user-answer",
+        "--question",
+        "Should the autonomous task continue with option A or option B?",
+        "--task",
+        task_id,
+        "--note",
+        "question required to unblock autonomous task",
+    )
+    open_question_id = recorded_id(open_question, "open_question")
+    run_runtime(context, "hydrate-context")
+
+    done_with_open_question = run_runtime(
+        context,
+        "stop-guard",
+        "--last-assistant-message",
+        "TEP TASK OUTCOME: done",
+        check=False,
+    )
+    assert done_with_open_question.returncode == 1
+    assert open_question_id in done_with_open_question.stdout
+    assert "done requires no linked open obligations" in done_with_open_question.stdout
+
+    user_question = run_runtime(
+        context,
+        "stop-guard",
+        "--last-assistant-message",
+        "TEP TASK OUTCOME: user-question",
+    )
+    assert "Autonomous task stop accepted: user-question" in user_question.stdout
+
+    blocked = run_runtime(
+        context,
+        "stop-guard",
+        "--last-assistant-message",
+        "TEP TASK OUTCOME: blocked",
+    )
+    assert "Autonomous task stop accepted: blocked" in blocked.stdout
+
+    completed = run_cli(context, "complete-task", "--task", task_id, "--note", "claim done anyway", check=False)
+    assert completed.returncode == 1
+    assert "Autonomous task cannot be completed" in completed.stdout
+
+    outcome_json = json.loads(
+        run_cli(context, "task-outcome-check", "--task", task_id, "--outcome", "user-question", "--format", "json").stdout
+    )
+    assert outcome_json["accepted"] is True
+    assert outcome_json["blocking_obligations"][0]["id"] == open_question_id
+
+
 def test_manual_task_stop_guard_allows_silent_stop(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     run_cli(

@@ -527,7 +527,7 @@ For project-claim work:
 14. Persist reconstructable sources, claims, guidelines, restrictions, permissions, proposals, actions, models, flows, plans, debt, projects, tasks, and open questions when they will matter later.
 15. Rehydrate when plugin hooks mark context stale.
 16. Complete, pause, or stop the current task when done, deferred, or abandoned.
-17. If the current active task is autonomous, do not end the turn casually. The final answer must include exactly one terminal marker: `TEP TASK OUTCOME: done`, `TEP TASK OUTCOME: blocked`, or `TEP TASK OUTCOME: user-question`. Use no marker if the task should continue.
+17. If the current active task is autonomous, do not end the turn casually. Run or satisfy `task-outcome-check`, then include exactly one terminal marker only when mechanically valid: `TEP TASK OUTCOME: done`, `TEP TASK OUTCOME: blocked`, or `TEP TASK OUTCOME: user-question`. Use no marker if the task should continue.
 
 For small local actions, short form is allowed, but decisive ids and support edges must remain explicit.
 
@@ -555,3 +555,4 @@ For low-risk straightforward work, stay concise, but preserve decisive ids and q
 Because plugin UI cannot add arbitrary custom chat components, use chat-native markdown panels.
 Do not replace these panels with prose about the protocol.
 If the current `TASK-*` has `execution_mode=autonomous`, treat a final response as a task outcome declaration. Use `TEP TASK OUTCOME: done` only when the task is actually complete, `TEP TASK OUTCOME: blocked` only for a concrete blocker, and `TEP TASK OUTCOME: user-question` only when a user answer is required. Otherwise continue working instead of ending the turn.
+The marker is validated mechanically: `done` cannot leave linked obligations open, `blocked` needs a linked blocker, and `user-question` needs a linked open `OPEN-*`.

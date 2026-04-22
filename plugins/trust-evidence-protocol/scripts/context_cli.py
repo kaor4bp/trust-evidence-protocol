@@ -79,6 +79,7 @@ from context_lib import (
     TASK_STATUSES,
     TASK_EXECUTION_MODES,
     TASK_TYPES,
+    TASK_TERMINAL_OUTCOMES,
     TOPIC_PREFILTER_BACKENDS,
     TOPIC_PREFILTER_OPTIONAL_BACKENDS,
     TOPIC_PREFILTER_REBUILD_MODES,
@@ -295,6 +296,8 @@ from context_lib import (
     write_hypotheses_index,
     task_drift_text_lines,
     task_identity_text,
+    task_outcome_check_payload,
+    task_outcome_check_text_lines,
     task_related_counts,
     task_summary_line,
     unclassified_input_items,
@@ -1473,6 +1476,12 @@ def cmd_finish_task(root: Path, task_ref: str | None, final_status: str, note: s
     if str(task.get("status", "")).strip() != "active":
         print(f"{target_ref} is not active; current status is {task.get('status', '')}")
         return 1
+    if str(task.get("execution_mode", "manual")).strip() == "autonomous" and final_status == "completed":
+        outcome_payload = task_outcome_check_payload(records, target_ref, "done")
+        if not outcome_payload.get("accepted"):
+            print("\n".join(task_outcome_check_text_lines(outcome_payload)))
+            print("Autonomous task cannot be completed until task-outcome-check accepts outcome=done.")
+            return 1
 
     timestamp = now_timestamp()
     payload = finish_task_payload(public_record_payload(task), timestamp, final_status, note)
@@ -1490,6 +1499,22 @@ def cmd_finish_task(root: Path, task_ref: str | None, final_status: str, note: s
     invalidate_hydration_state(root, f"{final_status} task {target_ref}")
     print(f"{final_status.capitalize()} task {target_ref}")
     return 0
+
+
+def cmd_task_outcome_check(root: Path, task_ref: str | None, outcome: str, output_format: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    target_ref = (task_ref or current_task_ref(root)).strip()
+    if not target_ref:
+        print("No current task. Pass --task TASK-* to check a specific task.")
+        return 1
+    payload = task_outcome_check_payload(records, target_ref, outcome)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(task_outcome_check_text_lines(payload)))
+    return 0 if payload.get("accepted") else 1
 
 
 def cmd_resume_task(root: Path, task_ref: str, note: str | None) -> int:
@@ -2387,6 +2412,7 @@ def cmd_help(topic: str) -> int:
             "record-input ... | record-evidence --kind file-line|command-output|user-confirmation --quote ... [--claim ...] | classify-input --input INP-* --derived-record REF",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
             "start-task --type investigation --scope ... --title ... --note ...",
+            "task-outcome-check --task TASK-* --outcome done|blocked|user-question [--format json]",
             "pause-task | resume-task --task TASK-* | switch-task --task TASK-*",
             "review-precedents --task-type investigation --query ...",
             "task-drift-check --intent ... [--type investigation]",
@@ -8164,6 +8190,14 @@ def parse_args() -> argparse.Namespace:
     )
     show_task.add_argument("--all", action="store_true", dest="show_all")
 
+    task_outcome_check = subparsers.add_parser(
+        "task-outcome-check",
+        help="Mechanically check whether a TASK-* can declare done, blocked, or user-question.",
+    )
+    task_outcome_check.add_argument("--task", dest="task_ref")
+    task_outcome_check.add_argument("--outcome", required=True, choices=sorted(TASK_TERMINAL_OUTCOMES))
+    task_outcome_check.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+
     working_context = subparsers.add_parser(
         "working-context",
         help="Manage WCTX-* operational working contexts. Working contexts are not proof.",
@@ -9411,6 +9445,15 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         )
     if args.command == "show-task":
         raise SystemExit(cmd_show_task(root, show_all=args.show_all))
+    if args.command == "task-outcome-check":
+        raise SystemExit(
+            cmd_task_outcome_check(
+                root,
+                task_ref=args.task_ref,
+                outcome=args.outcome,
+                output_format=args.output_format,
+            )
+        )
     if args.command == "working-context":
         if args.working_context_command == "create":
             raise SystemExit(

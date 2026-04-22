@@ -20,6 +20,9 @@ from context_lib import (
     load_hydration_state,
     now_timestamp,
     resolve_context_root,
+    task_outcome_check_payload,
+    task_outcome_check_text_lines,
+    task_outcome_from_message,
     unclassified_input_items,
     write_backlog,
     write_conflicts_report,
@@ -46,6 +49,7 @@ FULL_CLI_COMMANDS = {
     "scan-conflicts",
     "guidelines-for",
     "linked-records",
+    "task-outcome-check",
 }
 
 
@@ -69,8 +73,6 @@ def raw_runtime_command(argv: list[str]) -> str | None:
 
 VALID_HYDRATION_STATUSES = {"hydrated", "hydrated-with-conflicts"}
 TEP_ICON = "🛡️"
-TASK_OUTCOME_MARKER = "TEP TASK OUTCOME:"
-TASK_TERMINAL_OUTCOMES = {"done", "blocked", "user-question"}
 
 
 def active_workspace_summaries_for_guard(records: dict[str, dict]) -> list[dict]:
@@ -277,15 +279,6 @@ def task_confirmation_token(state: dict) -> str:
     )
 
 
-def parse_task_outcome(message: str) -> str:
-    for line in message.splitlines():
-        stripped = line.strip()
-        if stripped.lower().startswith(TASK_OUTCOME_MARKER.lower()):
-            value = stripped[len(TASK_OUTCOME_MARKER) :].strip().lower()
-            return value.split()[0].strip("`.,;:") if value else ""
-    return ""
-
-
 def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bool) -> int:
     state = load_hydration_state(root)
     current_fingerprint = compute_context_fingerprint(root)
@@ -302,8 +295,16 @@ def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bo
     if str(current_task.get("execution_mode", "manual")).strip() != "autonomous":
         return 0
 
-    outcome = parse_task_outcome(last_assistant_message)
-    if outcome in TASK_TERMINAL_OUTCOMES:
+    outcome = task_outcome_from_message(last_assistant_message)
+    if outcome:
+        records, errors = collect_validation_errors(root)
+        if errors:
+            print_errors(errors)
+            return 1
+        outcome_payload = task_outcome_check_payload(records, str(current_task.get("id", "")).strip(), outcome)
+        if not outcome_payload.get("accepted"):
+            print("\n".join(task_outcome_check_text_lines(outcome_payload)))
+            return 1
         print(f"Autonomous task stop accepted: {outcome}")
         return 0
 

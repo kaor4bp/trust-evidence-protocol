@@ -294,6 +294,8 @@ from tep_runtime.logic_check import (
 from tep_runtime.models import build_model_payload, promote_model_to_domain_payloads
 from tep_runtime.open_questions import build_open_question_payload
 from tep_runtime.tasks import (
+    TASK_OUTCOME_MARKER,
+    TASK_TERMINAL_OUTCOMES,
     assign_task_payload,
     build_precedent_review_payload,
     build_task_drift_payload,
@@ -305,6 +307,9 @@ from tep_runtime.tasks import (
     select_precedent_tasks,
     task_drift_text_lines,
     task_identity_text,
+    task_outcome_check_payload,
+    task_outcome_check_text_lines,
+    task_outcome_from_message,
     task_related_counts,
     task_summary_line,
 )

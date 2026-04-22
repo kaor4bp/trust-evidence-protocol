@@ -13,6 +13,7 @@ next-step(intent, task)
 -> lookup(query, reason, kind)
 -> drill down with returned route commands
 -> record-evidence / augment-chain / validate-* when the result matters
+-> task-outcome-check before autonomous task termination
 ```
 
 The agent may reason freely between calls, but durable conclusions and
@@ -115,3 +116,16 @@ the shared model of the world.
    through validated write paths.
 
 Detailed command semantics belong in README, workflow docs, and runtime help.
+
+## Autonomous Task Outcomes
+
+Autonomous task termination is not a bare marker.
+
+`TEP TASK OUTCOME: done|blocked|user-question` is accepted only after
+`task-outcome-check` verifies linked task obligations:
+
+- `done` requires no linked blocking `OPEN-*`, `PLN-*`, `DEBT-*`, or planned `ACT-*`
+- `blocked` requires a linked open question, active/proposed/blocked plan, unresolved debt, or planned action
+- `user-question` requires a linked open `OPEN-*`
+
+`complete-task` applies the same `done` check for autonomous tasks.

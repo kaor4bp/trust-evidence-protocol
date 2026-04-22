@@ -79,6 +79,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context lookup --query "..." --reason orientation --kind auto --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context next-step --intent plan --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context next-step --intent plan --task "..." --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context task-outcome-check --task TASK-* --outcome done --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context search-records --query "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context claim-graph --query "..." --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-detail --record CLM-*
@@ -161,6 +162,7 @@ Use `build-reasoning-case` before non-trivial actions or recommendations that sp
 Use `augment-chain` when you already have record refs but need the plugin to fill quotes, source refs, and validation output mechanically.
 Use `validate-evidence-chain` before asking permission, recording a mutating `ACT-*`, or presenting a user-facing proof chain.
 Use `validate-decision` after evidence-chain validation when deciding whether that chain is sufficient for planning, permission, edit, model, flow, proposal, final, curiosity, or debugging mode.
+Use `task-outcome-check` before declaring an autonomous task `done`, `blocked`, or `user-question`; the Stop hook uses the same check, so a marker without linked obligations can still be rejected.
 If a chain uses `role=hypothesis`, first record it as `CLM-* status=tentative` and add it with `hypothesis add`; proof modes still must not rely on hypothesis nodes.
 Use `working-context check-drift` when the user changes topic, task type, or repository; switch/fork/create `WCTX-*` before persisting task-local conclusions under the wrong focus.
 Use `workspace-admission check` before attaching or analyzing an unknown checkout; if it requires a decision, ask whether to create a new workspace, add a project to the current workspace, or inspect read-only without persistence.
