@@ -3031,6 +3031,85 @@ def test_working_context_check_drift_uses_task_text_against_active_focus(tmp_pat
     assert unrelated["recommendation"] == "create-working-context"
 
 
+def test_lookup_ignores_active_working_context_linked_to_paused_task(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "stale-wctx-workspace",
+            "--title",
+            "Stale WCTX Workspace",
+            "--note",
+            "workspace for stale WCTX lookup",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--type",
+            "investigation",
+            "--scope",
+            "stale.wctx",
+            "--title",
+            "Investigate stale WCTX",
+            "--note",
+            "task that will be paused",
+        ),
+        "task",
+    )
+    stale_wctx_id = recorded_id(
+        run_cli(
+            context,
+            "working-context",
+            "create",
+            "--scope",
+            "stale.wctx",
+            "--title",
+            "Paused task context",
+            "--kind",
+            "investigation",
+            "--task",
+            task_id,
+            "--note",
+            "must not be reused after task pauses",
+        ),
+        "working_context",
+    )
+    run_cli(context, "pause-task", "--note", "simulate stale focus")
+
+    settings_path = context / "settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    settings["current_task_ref"] = task_id
+    settings_path.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    shown = json.loads(run_cli(context, "working-context", "show", "--format", "json").stdout)
+    assert stale_wctx_id not in [item["id"] for item in shown["contexts"]]
+
+    lookup = json.loads(
+        run_cli(
+            context,
+            "lookup",
+            "--query",
+            "stale working context route",
+            "--reason",
+            "orientation",
+            "--kind",
+            "facts",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert lookup["focus"]["auto_created_working_context"] is True
+    assert lookup["focus"]["working_context_ref"] != stale_wctx_id
+    created = load_record(context, "working_context", lookup["focus"]["working_context_ref"])
+    assert created["task_refs"] == []
+
+
 def test_record_detail_and_neighborhood_expose_drilldown_context(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 

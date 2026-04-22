@@ -1861,6 +1861,38 @@ def print_working_context_detail(context: dict) -> None:
         print(line)
 
 
+def task_is_active(records: dict[str, dict], task_ref: str | None) -> bool:
+    task = records.get(str(task_ref or "").strip())
+    return bool(task and task.get("record_type") == "task" and str(task.get("status", "")).strip() == "active")
+
+
+def current_active_task_ref(root: Path, records: dict[str, dict]) -> str:
+    task_ref = current_task_ref(root)
+    return task_ref if task_is_active(records, task_ref) else ""
+
+
+def working_context_task_scope_is_usable(records: dict[str, dict], context: dict, task_ref: str | None) -> bool:
+    task_refs = [str(ref).strip() for ref in context.get("task_refs", []) if str(ref).strip()]
+    if not task_refs:
+        return True
+    return bool(task_ref and task_ref in task_refs and task_is_active(records, task_ref))
+
+
+def working_context_is_usable_for_focus(
+    records: dict[str, dict],
+    context: dict,
+    project_ref: str | None,
+    task_ref: str | None,
+) -> bool:
+    return (
+        context.get("record_type") == "working_context"
+        and str(context.get("status", "")).strip() == "active"
+        and record_belongs_to_project(context, project_ref)
+        and record_belongs_to_task(context, task_ref)
+        and working_context_task_scope_is_usable(records, context, task_ref)
+    )
+
+
 def _text_tokens(*values: object) -> set[str]:
     text = " ".join(str(value or "") for value in values)
     return {token for token in re.findall(r"[a-zA-Z0-9_./-]{3,}", text.lower())}
@@ -1881,13 +1913,11 @@ def _working_context_score(context: dict, task_text: str) -> int:
 
 def working_context_drift_payload(root: Path, records: dict[str, dict], task_text: str) -> dict:
     project_ref = current_project_ref(root) or None
-    task_ref = current_task_ref(root) or None
+    task_ref = current_active_task_ref(root, records) or None
     contexts = [
         data
         for data in records.values()
-        if data.get("record_type") == "working_context"
-        and str(data.get("status", "")).strip() == "active"
-        and record_belongs_to_project(data, project_ref)
+        if working_context_is_usable_for_focus(records, data, project_ref, task_ref)
     ]
     scored = sorted(
         (
@@ -2062,13 +2092,11 @@ def cmd_working_context_show(root: Path, context_ref: str | None, show_all: bool
         contexts = [data for data in records.values() if data.get("record_type") == "working_context"]
         if not show_all:
             project_ref = current_project_ref(root) or None
-            task_ref = current_task_ref(root) or None
+            task_ref = current_active_task_ref(root, records) or None
             contexts = [
                 data
                 for data in contexts
-                if str(data.get("status", "")).strip() == "active"
-                and record_belongs_to_project(data, project_ref)
-                and record_belongs_to_task(data, task_ref)
+                if working_context_is_usable_for_focus(records, data, project_ref, task_ref)
             ]
     contexts = sorted(contexts, key=lambda item: str(item.get("updated_at", "")), reverse=True)
     if output_format == "json":
@@ -2816,18 +2844,15 @@ def infer_lookup_kind(query: str, requested_kind: str) -> str:
 
 def active_working_context_for_lookup(records: dict[str, dict], project_ref: str, task_ref: str) -> dict | None:
     task = records.get(task_ref) if task_ref else None
-    if task and task.get("record_type") == "task":
+    if task and task.get("record_type") == "task" and task_is_active(records, task_ref):
         for ref in task.get("working_context_refs", []):
             context = records.get(str(ref))
-            if context and context.get("record_type") == "working_context" and str(context.get("status", "")).strip() == "active":
+            if context and working_context_is_usable_for_focus(records, context, project_ref or None, task_ref):
                 return context
     candidates = [
         data
         for data in records.values()
-        if data.get("record_type") == "working_context"
-        and str(data.get("status", "")).strip() == "active"
-        and record_belongs_to_project(data, project_ref or None)
-        and record_belongs_to_task(data, task_ref or None)
+        if working_context_is_usable_for_focus(records, data, project_ref or None, task_ref or None)
     ]
     return sorted(candidates, key=lambda item: str(item.get("updated_at", "")), reverse=True)[0] if candidates else None
 
@@ -2835,7 +2860,7 @@ def active_working_context_for_lookup(records: dict[str, dict], project_ref: str
 def ensure_lookup_working_context(root: Path, records: dict[str, dict], query: str, reason: str) -> tuple[str, dict | None, str | None]:
     workspace_ref = current_workspace_ref(root)
     project_ref = current_project_ref(root)
-    task_ref = current_task_ref(root)
+    task_ref = current_active_task_ref(root, records)
     existing = active_working_context_for_lookup(records, project_ref, task_ref)
     if existing:
         return str(existing.get("id", "")), None, None
@@ -2856,7 +2881,7 @@ def ensure_lookup_working_context(root: Path, records: dict[str, dict], query: s
         assumptions=[],
         concerns=[],
         project_refs=project_refs_for_write(root, []),
-        task_refs=task_refs_for_write(root, []),
+        task_refs=[task_ref] if task_ref else [],
         tags=["auto-wctx", f"lookup-reason:{reason}"],
         note="Auto-created by lookup to keep agent operational context explicit. Not proof and not authorization.",
     )
