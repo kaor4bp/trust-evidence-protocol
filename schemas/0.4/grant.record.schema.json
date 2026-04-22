@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/grant.record.schema.json",
+  "title": "TEP 0.4 GRANT record",
+  "description": "Append-only authorization record. Use is inferred from linked RUN/protected records.",
+  "type": "object",
+  "required": [
+    "id",
+    "reason_ref",
+    "workspace_ref",
+    "task_ref",
+    "mode",
+    "action_kind",
+    "cwd",
+    "valid_from",
+    "valid_until",
+    "context_fingerprint"
+  ],
+  "properties": {
+    "id": {"type": "string", "pattern": "^GRANT-"},
+    "reason_ref": {"type": "string", "pattern": "^REASON-"},
+    "workspace_ref": {"type": "string", "pattern": "^WSP-"},
+    "project_ref": {"type": ["string", "null"], "pattern": "^PRJ-"},
+    "task_ref": {"type": "string", "pattern": "^TASK-"},
+    "mode": {"type": "string", "enum": ["edit", "test", "permission", "final"]},
+    "action_kind": {"type": "string", "enum": ["bash", "file-write", "mcp-write", "git", "final"]},
+    "cwd": {"type": "string", "minLength": 1},
+    "command_hash": {"type": "string"},
+    "valid_from": {"type": "string"},
+    "valid_until": {"type": "string"},
+    "context_fingerprint": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/next_step.response.schema.json",
+  "title": "TEP 0.4 next_step response",
+  "description": "Route selection response for the normal MCP front door.",
+  "type": "object",
+  "required": ["contract_version", "focus", "route_graph", "required_next", "blocked", "repair"],
+  "properties": {
+    "contract_version": {"type": "string", "const": "0.4"},
+    "focus": {"type": "object", "additionalProperties": true},
+    "route_graph": {"type": "object", "additionalProperties": true},
+    "required_next": {"type": "array", "items": {"type": "string"}},
+    "blocked": {"type": "boolean"},
+    "repair": {"type": "array", "items": {}}
+  },
+  "additionalProperties": true
+}

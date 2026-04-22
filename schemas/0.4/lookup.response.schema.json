@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/lookup.response.schema.json",
+  "title": "TEP 0.4 lookup response",
+  "description": "Navigation response for fact, code, policy, theory, and chain-extension lookup.",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "lookup_is_proof",
+    "focus",
+    "ranked_context",
+    "chain_candidates",
+    "curiosity",
+    "next_allowed_tools",
+    "route_token",
+    "repair"
+  ],
+  "properties": {
+    "contract_version": {"type": "string", "const": "0.4"},
+    "lookup_is_proof": {"type": "boolean", "const": false},
+    "focus": {"type": "object", "additionalProperties": true},
+    "ranked_context": {"type": "array", "items": {}},
+    "chain_candidates": {"type": "array", "items": {}},
+    "curiosity": {"type": "object", "additionalProperties": true},
+    "next_allowed_tools": {"type": "array", "items": {"type": "string"}},
+    "route_token": {"type": "string", "pattern": "^ROUTE-[A-Za-z0-9_.:-]+$"},
+    "repair": {"type": "array", "items": {}}
+  },
+  "additionalProperties": true
+}

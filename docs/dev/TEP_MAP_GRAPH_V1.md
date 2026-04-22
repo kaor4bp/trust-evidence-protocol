@@ -16,6 +16,9 @@ choose what to inspect next.
   clustering do not get confused.
 - Let agents reason about dense islands, bridges, cold zones, candidate links,
   and missing links without reading raw record files.
+- Support cognitive fact-map sessions that surface anchor facts, neglected
+  relevant facts, tap smell, and inquiry pressure without turning map output
+  into proof.
 
 ## Current Shape
 
@@ -52,11 +55,36 @@ Nodes are selected TEP records projected into a small LLM-readable shape.
   "scores": {
     "heat": 0.62,
     "tap_count": 2,
-    "access_count": 1
+    "access_count": 1,
+    "tap_smell": 0.1,
+    "neglect_pressure": 0.0,
+    "inquiry_pressure": 0.0,
+    "promotion_pressure": 0.0
   },
+  "signals": {
+    "anchor_fact": true,
+    "ignored_but_relevant": false,
+    "bridge_fact": false,
+    "tension_fact": false
+  },
+  "why_suggested": "short route-oriented explanation",
   "not_proof": true
 }
 ```
+
+Scores are navigation signals:
+
+- `tap_smell`: repeated access with decay; high values suggest fixation,
+  repeated reuse, or missing MODEL/FLOW integration.
+- `neglect_pressure`: graph-relevant but rarely used facts.
+- `inquiry_pressure`: hypothesis clouds, tentative branches, unresolved probes,
+  dismissed probes, or aggregate/meta claims around the fact.
+- `promotion_pressure`: supported hot facts that may deserve MODEL/FLOW
+  promotion.
+
+Map nodes may include aggregate/meta claim references that summarize inquiry
+pressure. These summaries are route hints. They do not prove object-level
+truth.
 
 ## Edges
 
@@ -111,6 +139,8 @@ Planned layers:
 - `code`: CIX package/module/function/class grouping.
 - `activity`: heat/decay and repeated-access grouping.
 - `probe`: candidate, rejected, unknown, and explicitly absent link areas.
+- `inquiry`: hypothesis clouds, tentative branches, and repeated/dismissed
+  probes around a fact.
 
 ## Topology Clusters
 
@@ -165,10 +195,29 @@ which is a compact projection over `tep.map_graph.v1`.
 - established bridges
 - candidate probes
 - cold zones
+- anchor facts
+- ignored but relevant facts
+- tap smell and neglect pressure
+- inquiry pressure
 - recommended next commands
 
 The graph helps choose inspection order. It does not justify conclusions,
 actions, or permission requests.
+
+0.4.0 map navigation should be session-based:
+
+```text
+map_open -> map_view -> map_move -> map_drilldown -> map_checkpoint
+```
+
+Map session state is stored in `WCTX-*` operational context. A session may track
+the current zone, allowed moves, suggested candidates, inspected candidates,
+chain-used candidates, dismissed candidates, deferred candidates, and sampled
+`REASON-*` or aggregate `CLM-*` refs used to explain inquiry pressure.
+
+`map_drilldown` returns a proof route such as `lookup`, `record_detail`,
+`linked_records`, `augment_chain`, and `validate_chain`. It does not return
+proof.
 
 `map-brief` currently reports:
 

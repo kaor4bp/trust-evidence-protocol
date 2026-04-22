@@ -23,7 +23,9 @@ The runtime must provide:
 - task-local REASON progression before protected planning/action/finalization
 - clear refusal and repair paths when a contract is not satisfied
 
-The skill should explain the mental model. The API should enforce the behavior.
+The skill should explain the mental model. MCP should be the normal
+agent-facing API that enforces the behavior. CLI commands are development,
+migration, debugging, and CI wrappers over the same services.
 
 ## 2. Agent Work Loop
 
@@ -128,7 +130,8 @@ Required output:
     "cold_zones": [],
     "probe_suggestions": []
   },
-  "next_allowed_commands": ["record-detail", "linked-records", "augment-chain"],
+  "next_allowed_tools": ["record_detail", "linked_records", "augment_chain"],
+  "route_token": "ROUTE-*",
   "repair": []
 }
 ```
@@ -144,6 +147,67 @@ Rules:
 - If a current `REASON-*` exists, lookup defaults to chain-extension mode and
   proposes nodes not already used in the current branch.
 - Raw record paths should not be returned for normal agent work.
+- Drill-down tools should require a `route_token`, `lookup_ref`, or
+  `map_session_ref` so the runtime can verify that the agent followed the
+  front-door route.
+
+### Map Navigation
+
+Purpose: give the agent a bounded cognitive map of the fact space without
+turning generated views into proof.
+
+Normal map loop:
+
+```text
+map_open(task/query/mode)
+-> map_view(session)
+-> map_move(session, zone/probe)
+-> map_drilldown(session, ref)
+-> map_checkpoint(session)
+```
+
+Required map view output:
+
+```json
+{
+  "contract_version": "0.4",
+  "map_is_proof": false,
+  "map_session_ref": "WCTX-*#map-session",
+  "zone": {
+    "id": "MZONE-*",
+    "kind": "scope|topology|topic|activity|code|risk|probe",
+    "summary": "..."
+  },
+  "anchor_facts": [],
+  "ignored_but_relevant": [],
+  "bridge_facts": [],
+  "tension_facts": [],
+  "signals": {
+    "tap_smell": [],
+    "neglect_pressure": [],
+    "inquiry_pressure": [],
+    "promotion_pressure": []
+  },
+  "allowed_moves": [],
+  "proof_routes": []
+}
+```
+
+Rules:
+
+- Map output is navigation only.
+- Anchor facts still require drill-down and chain validation before proof use.
+- Ignored-but-relevant facts are connected facts with low recent use, absence
+  from the current REASON branch, or low lookup/tap presence despite relevance.
+- Tap smell is a decaying signal that repeated access may indicate agent
+  fixation, missing MODEL/FLOW integration, or repeated task reuse.
+- Inquiry pressure summarizes facts with many hypotheses, tentative branches,
+  unresolved probes, or aggregate/meta claims around them.
+- Candidate, missing, rejected, and unknown links must be labelled separately.
+- Map sessions are persisted in `WCTX-*` as operational state.
+- Map tools must not automatically create `OPEN-*`, `DEBT-*`, `PRP-*`, or truth
+  records.
+- `map_drilldown` returns a proof route, not proof.
 
 ## 4. Evidence Capture Contract
 
@@ -328,6 +392,7 @@ Do not block with a dead end when a safe route exists.
 ## 10. Agent Anti-Patterns To Block Or Discourage
 
 - Reading raw `records/claim/*.json` as a normal retrieval path.
+- Reading or writing raw `~/.tep_context` records in normal agent mode.
 - Creating `SRC-*` without INP/FILE/ART/RUN provenance.
 - Creating runtime CLM without RUN provenance.
 - Promoting MODEL/FLOW from tentative or runtime-only claims.
@@ -335,6 +400,8 @@ Do not block with a dead end when a safe route exists.
 - Falling back to global current task/workspace.
 - Silently attaching a foreign repository to the current workspace.
 - Treating generated views, CIX, backend hits, telemetry, or maps as proof.
+- Calling drill-down tools without first receiving a route from `next_step`,
+  `lookup`, or map navigation.
 
 ## 11. Acceptance Criteria
 
@@ -354,10 +421,13 @@ A compatible 0.4 implementation should pass deterministic tests for:
 Live-agent smoke tests should verify behavior, not model intelligence:
 
 - agent follows route graph instead of raw records
+- agent uses MCP front doors instead of the legacy CLI command zoo
 - agent records competing hypotheses when facts underdetermine the answer
 - agent extends REASON before protected action/final answer
 - agent uses MODEL/FLOW when available instead of rereading many CLM records
 - telemetry records lookup, raw-read attempts, reason failures, and grant checks
+- map navigation surfaces neglected relevant facts and tap smell without using
+  map output as proof
 
 ## 12. Rebuild Documentation Map
 
@@ -381,8 +451,10 @@ The functional spec closes the main logical gaps. Remaining documentation work
 should now be concrete schemas and command examples, not new policy debates:
 
 - JSON Schema files or typed dataclasses for `lookup`, `next-step`,
-  `record-evidence`, `reason-step`, `GRANT`, and `RUN`
-- CLI/MCP examples for each contract
+  `record-evidence`, `reason-step`, `GRANT`, `RUN`, migration reports, and map
+  sessions
+- MCP examples for each normal-agent contract and CLI examples only for
+  development/migration/debugging contracts
 - deterministic fixtures for each acceptance criterion
 - live-agent test prompts and pass/fail assertions
 

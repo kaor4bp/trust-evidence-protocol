@@ -8,7 +8,9 @@ needs behavior not specified here, update this document before or with the code.
 
 ## 1. System Contract
 
-TEP 0.4.0 is an API-first evidence and action-control runtime for agents.
+TEP 0.4.0 is an MCP-first evidence and action-control runtime for agents.
+The normal agent-facing API is MCP. CLI remains for development, debugging,
+migration, and CI wrappers over the same core services.
 
 The runtime must:
 
@@ -22,6 +24,8 @@ The runtime must:
 - capture command provenance through RUN
 - prioritize integrated MODEL/FLOW knowledge over scattered raw claims
 - expose repair routes for every blocking response
+- route normal agents through MCP front doors instead of a command zoo
+- hard-block normal raw reads and writes of `~/.tep_context`
 
 The runtime must not:
 
@@ -32,6 +36,12 @@ The runtime must not:
 - allow runtime CLM without transitive RUN provenance
 - allow MODEL/FLOW promotion from runtime-only or tentative support
 - make cleanup/archive a required 0.4.0 mechanic
+- treat the old CLI command surface as public normal-agent API
+- use `.codex_context` as a runtime fallback
+
+Normal agents must not inspect or edit raw `~/.tep_context` records. Explicit
+debugging, migration, forensics, and plugin-development modes may bypass this
+only with an auditable raw-access mode.
 
 ## 2. Canonical Record Graph
 
@@ -244,6 +254,9 @@ Normal commands must require explicit workspace focus from one of:
 - explicit command argument
 - curator pool scope
 - migration command scope
+
+The primary context root is `~/.tep_context`. Legacy `.codex_context` data is
+not a runtime fallback and may only be used as an explicit migration input.
 
 If no workspace is available, return:
 
@@ -693,7 +706,7 @@ Input is a bounded pool, not raw global browsing:
 
 ```json
 {
-  "pool_ref": "CURPOOL-*",
+  "pool_ref": "CURP-*",
   "workspace_ref": "WSP-*",
   "project_refs": [],
   "record_refs": [],
@@ -745,7 +758,10 @@ Rules:
 
 ## 12. Curiosity And Map
 
-Curiosity map is navigation for agent attention.
+Curiosity map is navigation for agent attention and visual thinking. It is a
+cognitive fact map: a bounded map session that shows the agent support anchors,
+ignored-but-relevant facts, bridges, tensions, and inquiry pressure without
+exposing raw records.
 
 It must expose:
 
@@ -753,6 +769,14 @@ It must expose:
 - bridge candidates
 - cold zones
 - hot zones
+- anchor facts
+- ignored but relevant facts
+- bridge facts
+- tension facts
+- tap smell with decay
+- neglect pressure for cold connected facts
+- inquiry pressure around facts with many hypotheses or tentative branches
+- promotion pressure for hot facts that should become MODEL/FLOW candidates
 - missing-link probes
 - mode filter: `general`, `research`, `theory`, `code`
 - volume setting: `compact`, `normal`, `wide`
@@ -763,7 +787,16 @@ Rules:
 - Missing link does not prove absence of relation.
 - The map may induce curiosity by showing bounded probes, not by dumping raw
   records.
-- HTML map is user-facing view; text/JSON map is agent-facing route data.
+- The map must distinguish established links from candidate, rejected, missing,
+  and unknown links.
+- Candidate links must not glue topology clusters.
+- Map sessions are operational state and may be persisted in `WCTX-*`.
+- Map tools do not automatically create truth, task, debt, proposal, or open
+  question records.
+- Map drill-down returns proof routes such as lookup, record detail, chain
+  augmentation, and validation. It is not proof.
+- HTML map is optional for 0.4.0; MCP text/JSON map navigation is the required
+  agent-facing route data.
 
 ## 13. Telemetry
 

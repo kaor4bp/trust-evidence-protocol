@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/map_view.response.schema.json",
+  "title": "TEP 0.4 map_view response",
+  "description": "Bounded cognitive fact-map view. Navigation only, never proof.",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "map_is_proof",
+    "map_session_ref",
+    "zone",
+    "anchor_facts",
+    "ignored_but_relevant",
+    "bridge_facts",
+    "tension_facts",
+    "signals",
+    "allowed_moves",
+    "proof_routes"
+  ],
+  "properties": {
+    "contract_version": {"type": "string", "const": "0.4"},
+    "map_is_proof": {"type": "boolean", "const": false},
+    "map_session_ref": {"type": "string", "pattern": "^WCTX-"},
+    "zone": {"type": "object", "additionalProperties": true},
+    "anchor_facts": {"type": "array", "items": {}},
+    "ignored_but_relevant": {"type": "array", "items": {}},
+    "bridge_facts": {"type": "array", "items": {}},
+    "tension_facts": {"type": "array", "items": {}},
+    "signals": {"type": "object", "additionalProperties": true},
+    "allowed_moves": {"type": "array", "items": {}},
+    "proof_routes": {"type": "array", "items": {}}
+  },
+  "additionalProperties": true
+}

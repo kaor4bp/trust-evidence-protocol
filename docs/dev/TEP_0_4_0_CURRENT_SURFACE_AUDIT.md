@@ -20,6 +20,16 @@ This document intentionally does not prescribe runtime patches. It captures what
 - Preserve canonical record ids where possible.
 - New `GRANT.action_kind` enum is exactly `bash|file-write|mcp-write|git|final`.
 - Hooks, MCP, and CLI must call shared core services directly.
+- Normal raw reads and writes of `~/.tep_context` are hard-blocked.
+- Debugging, migration, forensics, and plugin-development raw access must use an
+  explicit auditable raw-access mode.
+- Drill-down tools should require `route_token`, `lookup_ref`, or
+  `map_session_ref` so the route discipline is mechanically checkable.
+- Migration dry-run can be MCP-visible, but migration apply is privileged and
+  should remain CLI/dev-only or require an explicit user-confirmed migration
+  grant.
+- Curiosity map is a navigation-only cognitive fact map with WCTX-backed map
+  sessions, tap smell, neglect pressure, and inquiry pressure.
 
 ## Executive Summary
 

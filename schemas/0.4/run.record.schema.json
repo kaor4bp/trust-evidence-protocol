@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/run.record.schema.json",
+  "title": "TEP 0.4 RUN record",
+  "description": "Command execution trace used as runtime provenance.",
+  "type": "object",
+  "required": [
+    "id",
+    "workspace_ref",
+    "cwd",
+    "command",
+    "command_hash",
+    "started_at",
+    "finished_at",
+    "exit_code",
+    "output_quotes"
+  ],
+  "properties": {
+    "id": {"type": "string", "pattern": "^RUN-"},
+    "workspace_ref": {"type": "string", "pattern": "^WSP-"},
+    "project_ref": {"type": ["string", "null"], "pattern": "^PRJ-"},
+    "task_ref": {"type": ["string", "null"], "pattern": "^TASK-"},
+    "grant_ref": {"type": ["string", "null"], "pattern": "^GRANT-"},
+    "cwd": {"type": "string", "minLength": 1},
+    "command": {"type": "string", "minLength": 1},
+    "command_hash": {"type": "string", "minLength": 1},
+    "started_at": {"type": "string"},
+    "finished_at": {"type": "string"},
+    "exit_code": {"type": "integer"},
+    "output_quotes": {"type": "array", "items": {}}
+  },
+  "additionalProperties": true
+}

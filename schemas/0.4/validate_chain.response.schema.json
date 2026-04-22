@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/validate_chain.response.schema.json",
+  "title": "TEP 0.4 validate_chain response",
+  "description": "Mechanical chain validation result. Validity is not proof of reasoning quality.",
+  "type": "object",
+  "required": ["contract_version", "valid", "proof_allowed", "augmented_nodes", "missing_links", "gaps", "repair"],
+  "properties": {
+    "contract_version": {"type": "string", "const": "0.4"},
+    "valid": {"type": "boolean"},
+    "proof_allowed": {"type": "boolean"},
+    "augmented_nodes": {"type": "array", "items": {}},
+    "missing_links": {"type": "array", "items": {}},
+    "gaps": {"type": "array", "items": {}},
+    "repair": {"type": "array", "items": {}}
+  },
+  "additionalProperties": true
+}

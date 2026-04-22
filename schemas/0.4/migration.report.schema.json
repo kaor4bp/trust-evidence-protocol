@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/migration.report.schema.json",
+  "title": "TEP 0.4 migration report",
+  "description": "Dry-run/apply migration report for moving legacy context into ~/.tep_context.",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "mode",
+    "source",
+    "target",
+    "planned_actions",
+    "created_refs",
+    "preserved_refs",
+    "revoked_grants",
+    "unresolved",
+    "applied"
+  ],
+  "properties": {
+    "contract_version": {"type": "string", "const": "0.4"},
+    "mode": {"type": "string", "enum": ["dry-run", "apply"]},
+    "source": {"type": "string", "minLength": 1},
+    "target": {"type": "string", "minLength": 1},
+    "planned_actions": {"type": "array", "items": {}},
+    "created_refs": {"type": "array", "items": {"type": "string"}},
+    "preserved_refs": {"type": "array", "items": {"type": "string"}},
+    "revoked_grants": {"type": "array", "items": {"type": "string", "pattern": "^GRANT-"}},
+    "unresolved": {"type": "array", "items": {}},
+    "backup_path": {"type": "string"},
+    "applied": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}
