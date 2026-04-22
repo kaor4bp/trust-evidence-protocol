@@ -4,6 +4,11 @@ TEP should not depend on agents remembering a long behavioral manual.
 The skill gives the mental model; the runtime API supplies routes, proof
 boundaries, validation, and write contracts.
 
+The detailed 0.4 agent-facing contracts live in
+`docs/dev/TEP_0_4_0_AGENT_INTERFACE_CONTRACTS.md`. This document keeps the
+short API-first direction; the 0.4 contract document defines the stricter route
+and payload expectations for a rebuild.
+
 ## Design Direction
 
 Normal agent flow is:

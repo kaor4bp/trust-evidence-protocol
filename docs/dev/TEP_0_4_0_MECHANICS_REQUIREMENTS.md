@@ -13,6 +13,7 @@ algorithm notes live in `docs/research/`.
 Related developer docs:
 
 - `docs/dev/TEP_API_FIRST_CONTRACT.md`
+- `docs/dev/TEP_0_4_0_AGENT_INTERFACE_CONTRACTS.md`
 - `docs/dev/mechanics/README.md`
 - `docs/dev/TEP_MAP_GRAPH_V1.md`
 - `docs/dev/TICK_TOCK_ADOPTION.md`
