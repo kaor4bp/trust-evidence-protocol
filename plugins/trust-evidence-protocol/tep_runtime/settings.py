@@ -84,6 +84,14 @@ DEFAULT_CLEANUP_SETTINGS = {
     "delete_after_archive_days": 180,
 }
 
+CHAIN_PERMIT_TTL_MIN_SECONDS = 30
+DEFAULT_CHAIN_PERMIT_TTL_SECONDS = 5 * 60
+CHAIN_PERMIT_TTL_MAX_SECONDS = 60 * 60
+
+DEFAULT_CHAIN_PERMIT_SETTINGS = {
+    "ttl_seconds": DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
+}
+
 LOGIC_SOLVER_BACKENDS = {"structural", "z3", "auto"}
 LOGIC_SOLVER_OPTIONAL_BACKENDS = {"z3"}
 LOGIC_SOLVER_MODES = {"candidate", "blocking"}
@@ -165,6 +173,7 @@ DEFAULT_SETTINGS = {
     "input_capture": DEFAULT_INPUT_CAPTURE_SETTINGS,
     "artifact_policy": DEFAULT_ARTIFACT_POLICY,
     "cleanup": DEFAULT_CLEANUP_SETTINGS,
+    "chain_permits": DEFAULT_CHAIN_PERMIT_SETTINGS,
     "analysis": DEFAULT_ANALYSIS_SETTINGS,
     "backends": DEFAULT_BACKEND_SETTINGS,
     "current_task_ref": None,
@@ -404,6 +413,19 @@ def normalize_cleanup_settings(raw: object) -> dict:
     return payload
 
 
+def normalize_chain_permit_settings(raw: object) -> dict:
+    payload = dict(DEFAULT_CHAIN_PERMIT_SETTINGS)
+    if not isinstance(raw, dict):
+        return payload
+    payload["ttl_seconds"] = _bounded_int(
+        raw.get("ttl_seconds"),
+        payload["ttl_seconds"],
+        CHAIN_PERMIT_TTL_MIN_SECONDS,
+        CHAIN_PERMIT_TTL_MAX_SECONDS,
+    )
+    return payload
+
+
 def normalize_analysis_settings(raw: object) -> dict:
     default_logic = DEFAULT_ANALYSIS_SETTINGS["logic_solver"]
     default_topic = DEFAULT_ANALYSIS_SETTINGS["topic_prefilter"]
@@ -627,6 +649,7 @@ def normalize_settings_payload(raw: object) -> dict:
         "input_capture": normalize_input_capture_settings(None),
         "artifact_policy": normalize_artifact_policy(None),
         "cleanup": normalize_cleanup_settings(None),
+        "chain_permits": normalize_chain_permit_settings(None),
         "analysis": normalize_analysis_settings(None),
         "backends": normalize_backend_settings(None),
         "current_task_ref": None,
@@ -645,6 +668,7 @@ def normalize_settings_payload(raw: object) -> dict:
     payload["input_capture"] = normalize_input_capture_settings(raw.get("input_capture"))
     payload["artifact_policy"] = normalize_artifact_policy(raw.get("artifact_policy"))
     payload["cleanup"] = normalize_cleanup_settings(raw.get("cleanup"))
+    payload["chain_permits"] = normalize_chain_permit_settings(raw.get("chain_permits"))
     payload["analysis"] = normalize_analysis_settings(raw.get("analysis"))
     payload["backends"] = normalize_backend_settings(raw.get("backends"))
     current_task_ref = raw.get("current_task_ref")
@@ -700,6 +724,13 @@ def load_effective_settings(root: Path, start: str | Path | None = None) -> dict
     context_budget = local_settings.get("context_budget")
     if isinstance(context_budget, dict):
         payload["context_budget"] = normalize_context_budget({**payload["context_budget"], **context_budget})
+    chain_permits = local_settings.get("chain_permits")
+    if isinstance(chain_permits, dict):
+        local_chain_permits = normalize_chain_permit_settings(chain_permits)
+        payload["chain_permits"]["ttl_seconds"] = min(
+            int(payload["chain_permits"]["ttl_seconds"]),
+            int(local_chain_permits["ttl_seconds"]),
+        )
 
     local_freedom = local_settings.get("allowed_freedom")
     current_freedom = str(payload.get("allowed_freedom") or "proof-only")
@@ -798,6 +829,18 @@ def validate_settings_state(root: Path, records: dict[str, dict]) -> list[Valida
                 value = raw_cleanup.get(key)
                 if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > 3650):
                     return [ValidationError(path, f"cleanup.{key} has invalid value")]
+        raw_chain_permits = raw_settings.get("chain_permits")
+        if raw_chain_permits is not None and not isinstance(raw_chain_permits, dict):
+            return [ValidationError(path, "chain_permits must be an object")]
+        if isinstance(raw_chain_permits, dict):
+            ttl_seconds = raw_chain_permits.get("ttl_seconds")
+            if ttl_seconds is not None and (
+                isinstance(ttl_seconds, bool)
+                or not isinstance(ttl_seconds, int)
+                or ttl_seconds < CHAIN_PERMIT_TTL_MIN_SECONDS
+                or ttl_seconds > CHAIN_PERMIT_TTL_MAX_SECONDS
+            ):
+                return [ValidationError(path, "chain_permits.ttl_seconds has invalid value")]
         raw_analysis = raw_settings.get("analysis")
         if raw_analysis is not None and not isinstance(raw_analysis, dict):
             return [ValidationError(path, "analysis must be an object")]
@@ -960,6 +1003,7 @@ def write_settings(
     input_capture: dict | None = None,
     artifact_policy: dict | None = None,
     cleanup: dict | None = None,
+    chain_permits: dict | None = None,
     analysis: dict | None = None,
     backends: dict | None = None,
     current_task_ref: object = _UNSET,
@@ -979,6 +1023,8 @@ def write_settings(
         payload["artifact_policy"] = normalize_artifact_policy(artifact_policy)
     if cleanup is not None:
         payload["cleanup"] = normalize_cleanup_settings(cleanup)
+    if chain_permits is not None:
+        payload["chain_permits"] = normalize_chain_permit_settings(chain_permits)
     if analysis is not None:
         payload["analysis"] = normalize_analysis_settings(analysis)
     if backends is not None:
@@ -1006,3 +1052,12 @@ def write_settings(
             raise ValueError("current_project_ref must be empty or PRJ-YYYYMMDD-xxxxxxxx")
     payload["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
     write_json_file(settings_path(root), payload)
+
+
+def chain_permit_ttl_seconds(root: Path, requested_ttl_seconds: int | None = None) -> int:
+    configured = int(load_effective_settings(root).get("chain_permits", {}).get("ttl_seconds", DEFAULT_CHAIN_PERMIT_TTL_SECONDS))
+    configured = max(CHAIN_PERMIT_TTL_MIN_SECONDS, min(configured, CHAIN_PERMIT_TTL_MAX_SECONDS))
+    if requested_ttl_seconds is None or isinstance(requested_ttl_seconds, bool):
+        return configured
+    requested = max(CHAIN_PERMIT_TTL_MIN_SECONDS, min(int(requested_ttl_seconds), CHAIN_PERMIT_TTL_MAX_SECONDS))
+    return min(requested, configured)

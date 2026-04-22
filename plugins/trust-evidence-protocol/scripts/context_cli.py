@@ -181,6 +181,8 @@ from context_lib import (
     attention_diagram_text_lines,
     augment_evidence_chain_payload,
     augmented_evidence_chain_text_lines,
+    CHAIN_PERMIT_TTL_MAX_SECONDS,
+    CHAIN_PERMIT_TTL_MIN_SECONDS,
     DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
     chain_hash,
     chain_permit_text_lines,
@@ -372,6 +374,7 @@ RECORD_LINK_RELATIONS = {
     "no-known-link": "has no known established link to",
     "rejected-link": "does not have the proposed link to",
 }
+CHAIN_PERMIT_REQUIRED_FREEDOMS = {"evidence-authorized", "implementation-choice"}
 from tep_runtime.repo_scope import (
     code_entry_matches_repo_scope,
     normalize_root_refs,
@@ -2298,7 +2301,7 @@ def cmd_validate_decision(
     output_format: str,
     emit_permit: bool,
     action_kind: str | None,
-    ttl_seconds: int,
+    ttl_seconds: int | None,
 ) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
@@ -2411,6 +2414,10 @@ INPUT_CAPTURE_SETTING_SPECS = {
     "session_linking": ("bool", None),
 }
 
+CHAIN_PERMIT_SETTING_SPECS = {
+    "ttl_seconds": ("int", (CHAIN_PERMIT_TTL_MIN_SECONDS, CHAIN_PERMIT_TTL_MAX_SECONDS)),
+}
+
 
 def parse_bool_setting(value: str) -> bool | None:
     normalized = value.strip().lower()
@@ -2442,6 +2449,31 @@ def apply_input_capture_setting_items(input_capture: dict, items: list[str]) -> 
             input_capture[key] = raw_value
         else:
             return changed, f"unsupported input_capture setting type for {key}"
+        changed = True
+    return changed, None
+
+
+def apply_chain_permit_setting_items(chain_permits: dict, items: list[str]) -> tuple[bool, str | None]:
+    changed = False
+    for item in items:
+        if "=" not in item:
+            return changed, f"chain permit setting must be key=value: {item}"
+        key, raw_value = [part.strip() for part in item.split("=", 1)]
+        spec = CHAIN_PERMIT_SETTING_SPECS.get(key)
+        if not spec:
+            return changed, f"unknown chain_permits setting: {key}"
+        kind, allowed = spec
+        if kind == "int":
+            try:
+                parsed_int = int(raw_value)
+            except ValueError:
+                return changed, f"invalid integer for chain_permits.{key}: {raw_value}"
+            minimum, maximum = allowed
+            if parsed_int < minimum or parsed_int > maximum:
+                return changed, f"chain_permits.{key} must be between {minimum} and {maximum}"
+            chain_permits[key] = parsed_int
+        else:
+            return changed, f"unsupported chain_permits setting type for {key}"
         changed = True
     return changed, None
 
@@ -2622,6 +2654,7 @@ def cmd_configure_runtime(
     backend_preset: str | None,
     budget_items: list[str],
     input_capture_items: list[str],
+    chain_permit_items: list[str],
     analysis_items: list[str],
     backend_items: list[str],
     show: bool,
@@ -2630,6 +2663,7 @@ def cmd_configure_runtime(
     hooks = dict(settings.get("hooks", {}))
     context_budget = dict(settings.get("context_budget", {}))
     input_capture = dict(settings.get("input_capture", {}))
+    chain_permits = dict(settings.get("chain_permits", {}))
     analysis = dict(settings.get("analysis", {}))
     backends = dict(settings.get("backends", {}))
     changed = False
@@ -2660,6 +2694,11 @@ def cmd_configure_runtime(
         print(input_capture_error)
         return 1
     changed = changed or input_capture_changed
+    chain_permit_changed, chain_permit_error = apply_chain_permit_setting_items(chain_permits, chain_permit_items)
+    if chain_permit_error:
+        print(chain_permit_error)
+        return 1
+    changed = changed or chain_permit_changed
     analysis_changed, analysis_error = apply_analysis_setting_items(analysis, analysis_items)
     if analysis_error:
         print(analysis_error)
@@ -2671,7 +2710,15 @@ def cmd_configure_runtime(
         return 1
     changed = changed or backend_changed
     if changed:
-        write_settings(root, hooks=hooks, context_budget=context_budget, input_capture=input_capture, analysis=analysis, backends=backends)
+        write_settings(
+            root,
+            hooks=hooks,
+            context_budget=context_budget,
+            input_capture=input_capture,
+            chain_permits=chain_permits,
+            analysis=analysis,
+            backends=backends,
+        )
         invalidate_hydration_state(root, "updated runtime configuration")
     settings = load_settings(root)
     if show or changed:
@@ -2684,6 +2731,8 @@ def cmd_configure_runtime(
             if isinstance(value, bool):
                 value = str(value).lower()
             print(f"input_capture.{key}={value}")
+        for key, value in sorted(settings.get("chain_permits", {}).items()):
+            print(f"chain_permits.{key}={value}")
         for section, values in sorted(settings.get("analysis", {}).items()):
             if not isinstance(values, dict):
                 continue
@@ -2802,7 +2851,7 @@ def cmd_help(topic: str) -> int:
             "backend registry: inspect optional helper availability without treating helper output as proof",
             "fact validation: backend-produced validation candidates over canonical records; navigation only",
             "strictness: inspect or change allowed_freedom through user-backed requests",
-            "runtime budget: tune hook verbosity, context budget, optional analysis policy, and external backend policy through settings",
+            "runtime budget: tune hook verbosity, context budget, chain permit TTL, optional analysis policy, and external backend policy through settings",
         ],
         "commands": [
             "review-context | reindex-context | scan-conflicts | type-graph --check",
@@ -2832,7 +2881,7 @@ def cmd_help(topic: str) -> int:
             "validate-facts --backend rdf_shacl [--format json]",
             "export-rdf --format turtle|jsonld [--output path]",
             "configure-runtime --backend-preset minimal|recommended",
-            "configure-runtime --hook-verbosity quiet --hook-run-capture mutating --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3 --backend derivation.backend=datalog",
+            "configure-runtime --hook-verbosity quiet --hook-run-capture mutating --context-budget hydration=compact --chain-permit ttl_seconds=300 --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3 --backend derivation.backend=datalog",
         ],
         "records": [
             "INP-* preserves prompt/input provenance; it is not proof until classified into source-backed records",
@@ -7968,18 +8017,18 @@ def cmd_record_action(
     if strictness == "proof-only" and is_mutating_action_kind(kind):
         print(f"record-action kind {kind!r} requires implementation-choice strictness")
         return 1
-    if strictness == "evidence-authorized" and is_mutating_action_kind(kind):
+    if strictness in CHAIN_PERMIT_REQUIRED_FREEDOMS and is_mutating_action_kind(kind):
         if safety_class == "unsafe":
-            print("evidence-authorized cannot record unsafe mutating actions")
+            print(f"{strictness} cannot record unsafe mutating actions")
             return 1
         if not current_task_ref(root):
-            print("evidence-authorized mutating actions require an active TASK-*")
+            print(f"{strictness} mutating actions require an active TASK-*")
             return 1
         if not evidence_chain:
-            print("evidence-authorized mutating actions require --evidence-chain")
+            print(f"{strictness} mutating actions require --evidence-chain")
             return 1
         if cmd_validate_evidence_chain(root, evidence_chain) != 0:
-            print("evidence-authorized mutating action blocked by invalid evidence chain")
+            print(f"{strictness} mutating action blocked by invalid evidence chain")
             return 1
         try:
             chain_payload = json.loads(evidence_chain.read_text(encoding="utf-8"))
@@ -7995,7 +8044,7 @@ def cmd_record_action(
         )
         if not permit.get("ok"):
             print(
-                "evidence-authorized mutating actions require a fresh valid chain permit "
+                f"{strictness} mutating actions require a fresh valid chain permit "
                 f"for mode=edit kind={kind!r}: {permit.get('reason')}"
             )
             print(
@@ -8051,7 +8100,7 @@ def cmd_record_model(
             print(message)
         return 1
     strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
-    if strictness == "evidence-authorized" and status in {"working", "stable", "contested"}:
+    if strictness in CHAIN_PERMIT_REQUIRED_FREEDOMS and status in {"working", "stable", "contested"}:
         permit = validate_chain_permit(
             root,
             mode="model",
@@ -8060,7 +8109,7 @@ def cmd_record_model(
         )
         if not permit.get("ok"):
             print(
-                "evidence-authorized model updates require a fresh valid chain permit "
+                f"{strictness} model updates require a fresh valid chain permit "
                 f"for mode=model: {permit.get('reason')}"
             )
             print("Run: validate-decision --mode model --chain <evidence-chain.json> --emit-permit")
@@ -8202,7 +8251,7 @@ def cmd_record_flow(
             print(message)
         return 1
     strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
-    if strictness == "evidence-authorized" and status in {"working", "stable", "contested"}:
+    if strictness in CHAIN_PERMIT_REQUIRED_FREEDOMS and status in {"working", "stable", "contested"}:
         permit = validate_chain_permit(
             root,
             mode="flow",
@@ -8211,7 +8260,7 @@ def cmd_record_flow(
         )
         if not permit.get("ok"):
             print(
-                "evidence-authorized flow updates require a fresh valid chain permit "
+                f"{strictness} flow updates require a fresh valid chain permit "
                 f"for mode=flow: {permit.get('reason')}"
             )
             print("Run: validate-decision --mode flow --chain <evidence-chain.json> --emit-permit")
@@ -8801,7 +8850,11 @@ def parse_args() -> argparse.Namespace:
     validate_decision.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     validate_decision.add_argument("--kind", dest="action_kind")
     validate_decision.add_argument("--emit-permit", action="store_true")
-    validate_decision.add_argument("--ttl-seconds", type=int, default=DEFAULT_CHAIN_PERMIT_TTL_SECONDS)
+    validate_decision.add_argument(
+        "--ttl-seconds",
+        type=int,
+        help=f"Request a shorter permit TTL; capped by settings chain_permits.ttl_seconds (default {DEFAULT_CHAIN_PERMIT_TTL_SECONDS}).",
+    )
     augment_chain = subparsers.add_parser(
         "augment-chain",
         help="Read-only enrichment of an evidence chain with record metadata, quotes, sources, and validation.",
@@ -9046,6 +9099,13 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help="Set input_capture key=value, e.g. user_prompts=metadata-only or session_linking=false.",
+    )
+    configure_runtime.add_argument(
+        "--chain-permit",
+        dest="chain_permit_items",
+        action="append",
+        default=[],
+        help="Set chain_permits key=value, e.g. ttl_seconds=300.",
     )
     configure_runtime.add_argument("--show", action="store_true")
 
@@ -10441,6 +10501,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                     backend_preset=args.backend_preset,
                 budget_items=args.context_budget,
                 input_capture_items=args.input_capture_items,
+                chain_permit_items=args.chain_permit_items,
                 analysis_items=args.analysis_items,
                 backend_items=args.backend_items,
                 show=args.show,

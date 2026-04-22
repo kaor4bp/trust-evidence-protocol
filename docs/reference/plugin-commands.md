@@ -169,9 +169,11 @@ Use `build-reasoning-case` before non-trivial actions or recommendations that sp
 Use `augment-chain` when you already have record refs but need the plugin to fill quotes, source refs, and validation output mechanically.
 Use `validate-evidence-chain` before asking permission, recording a mutating `ACT-*`, or presenting a user-facing proof chain.
 Use `validate-decision` after evidence-chain validation when deciding whether that chain is sufficient for planning, permission, edit, model, flow, proposal, final, curiosity, or debugging mode.
-Use `validate-decision --emit-permit --mode edit --kind <action-kind>` before evidence-authorized mutating Bash; the PreToolUse hook requires a fresh time-limited chain permit for the current workspace/project/task/fingerprint.
+Use `validate-decision --emit-permit --mode edit --kind <action-kind>` before protected mutating Bash in `evidence-authorized` or `implementation-choice`; the PreToolUse hook requires a fresh time-limited chain permit for the current workspace/project/task/fingerprint.
 Permit output includes a compact `Signed Chain` summary with ids and quotes so the agent can show the user what it actually signed.
-Use the same permit before write-API commitments in `evidence-authorized`: mutating `record-action` checks a matching edit permit and chain hash; working/stable/contested `record-model` and `record-flow` check `mode=model` or `mode=flow` permits.
+Permits require exactly one current `TASK-*` node in the chain and bind to one mode, optional action kind, current workspace/project/task, chain hash, and context fingerprint.
+Permit TTL defaults to `settings.chain_permits.ttl_seconds = 300`; `--ttl-seconds` may request a shorter window but cannot exceed settings.
+Use the same permit before write-API commitments in `evidence-authorized` or `implementation-choice`: mutating `record-action` checks a matching edit permit and chain hash; working/stable/contested `record-model` and `record-flow` check `mode=model` or `mode=flow` permits.
 Use `validate-decision --emit-permit --mode final` before marking an autonomous task `done`; Stop/final guards reject `done` without a fresh final permit.
 Use `telemetry-report --format json` to inspect permit pressure counters such as `permit_missing_count`, `permit_expired_count`, `permit_issued_count`, and `permit_used_count`.
 Use `task-outcome-check` before declaring an autonomous task `done`, `blocked`, or `user-question`; the Stop hook uses the same check, so a marker without linked obligations can still be rejected.
@@ -225,6 +227,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend-preset minimal
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend-preset recommended
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --hook-verbosity quiet --hook-run-capture mutating --context-budget hydration=compact
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --chain-permit ttl_seconds=300
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --input-capture user_prompts=metadata-only --input-capture session_linking=false
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis logic_solver.backend=z3 --analysis logic_solver.install_policy=ask
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis topic_prefilter.backend=nmf --analysis topic_prefilter.missing_dependency=warn
@@ -236,6 +239,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 Use `hooks.verbosity=quiet` to reduce routine hook chatter while preserving stale/conflict/blocking messages.
 Use `hooks.run_capture=off|mutating|all` to control automatic PostToolUse `RUN-*` capture; default `mutating` avoids turning every read-only `rg/ls/sed` into canonical context churn.
 Use `context_budget` as policy for compact/normal/debug output; do not treat compact output as permission to omit decisive ids.
+Use `chain_permits.ttl_seconds` to tune signed-chain permit lifetime; local `.tep.settings.chain_permits.ttl_seconds` can only lower the effective value for a workdir.
 Use `input_capture` as policy for prompt provenance; `INP-*` records are not proof until classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
 Do not call an `INP-*` a remembered fact/rule. Use `review/inputs.md` to find unclassified inputs, then create/link the derived canonical records before final response.
 Use `analysis` as policy for optional helpers such as Z3 and NMF; it is not proof and not permission to silently install dependencies.

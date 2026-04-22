@@ -98,6 +98,7 @@ Runtime state:
 - current project pointer lives in `settings.json.current_project_ref`
 - current task pointer lives in `settings.json.current_task_ref`
 - hook verbosity and context budget preferences live in `settings.json`
+- signed chain permit TTL lives in `settings.json.chain_permits`
 - input capture, artifact copy policy, and cleanup retention thresholds live in `settings.json`
 - optional analysis backend policy for logic solver and topic prefilter lives in `settings.json.analysis`
 

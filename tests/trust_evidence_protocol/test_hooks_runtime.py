@@ -1458,6 +1458,111 @@ def test_pre_and_post_tool_hooks_track_mutating_bash_commands(tmp_path: Path) ->
     )
     run_runtime(context, "hydrate-context")
 
+    missing_task = run_script(
+        HOOK_DIR / "pre_tool_use_guard.py",
+        hook_payload(context, "rm -rf /tmp/example"),
+    )
+    assert "requires an active TASK-*" in missing_task.stdout
+
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.hooks",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest hook mutation",
+            "--quote",
+            "hook mutation is bounded by a test fixture",
+            "--note",
+            "hook mutation source",
+        ),
+        "source",
+    )
+    claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.hooks",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Hook mutation is bounded by a test fixture.",
+            "--source",
+            source_id,
+            "--note",
+            "hook mutation claim",
+        ),
+        "claim",
+    )
+    run_cli(
+        context,
+        "start-task",
+        "--scope",
+        "demo.hooks",
+        "--title",
+        "Track mutating hook command",
+        "--related-claim",
+        claim_id,
+        "--note",
+        "active task for mutating hook command",
+    )
+    task_id = record_ids(context, "task")[0]
+    run_cli(
+        context,
+        "confirm-atomic-task",
+        "--task",
+        task_id,
+        "--deliverable",
+        "Mutating hook command is preflighted and reviewed.",
+        "--done",
+        "Pre and post hook assertions pass.",
+        "--verify",
+        "Focused hook test passes.",
+        "--boundary",
+        "Only hook command tracking behavior.",
+        "--blocker-policy",
+        "Record OPEN-* for blockers.",
+        "--note",
+        "confirm hook tracking task as atomic",
+    )
+    run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "hook tracking focus confirmed")
+    chain = tmp_path / "delete-chain.json"
+    chain.write_text(
+        json.dumps(
+            {
+                "task": "track mutating hook command",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Hook mutation is bounded by a test fixture."},
+                    {"role": "task", "ref": task_id, "quote": "Track mutating hook command"},
+                ],
+                "edges": [{"from": claim_id, "to": task_id, "relation": "supports bounded task"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_cli(
+        context,
+        "validate-decision",
+        "--mode",
+        "edit",
+        "--kind",
+        "delete",
+        "--chain",
+        str(chain),
+        "--emit-permit",
+    )
+
     allow_result = run_script(
         HOOK_DIR / "pre_tool_use_guard.py",
         hook_payload(context, "rm -rf /tmp/example"),

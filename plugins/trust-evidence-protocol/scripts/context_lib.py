@@ -65,7 +65,6 @@ from tep_runtime.code_index import (
     write_code_index_views,
 )
 from tep_runtime.chain_permits import (
-    DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
     chain_hash,
     chain_permit_text_lines,
     create_chain_permit,
@@ -486,8 +485,11 @@ from tep_runtime.settings import (
     CODE_INTELLIGENCE_BACKENDS,
     CONTEXT_BUDGET_KEYS,
     CONTEXT_BUDGET_VALUES,
+    CHAIN_PERMIT_TTL_MAX_SECONDS,
+    CHAIN_PERMIT_TTL_MIN_SECONDS,
     DEFAULT_ANALYSIS_SETTINGS,
     DEFAULT_BACKEND_SETTINGS,
+    DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
     DEFAULT_CONTEXT_BUDGET,
     DEFAULT_HOOK_SETTINGS,
     DEFAULT_SETTINGS,
@@ -504,6 +506,7 @@ from tep_runtime.settings import (
     TOPIC_PREFILTER_BACKENDS,
     TOPIC_PREFILTER_OPTIONAL_BACKENDS,
     TOPIC_PREFILTER_REBUILD_MODES,
+    chain_permit_ttl_seconds,
     is_strictness_escalation,
     load_effective_settings,
     load_settings,

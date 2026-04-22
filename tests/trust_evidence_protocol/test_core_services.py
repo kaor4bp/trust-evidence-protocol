@@ -1298,6 +1298,18 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     evidence_lines = next_step_text_lines(evidence_payload, "TEP", detail="compact")
     assert any(line.startswith("- chain-permit: missing") for line in evidence_lines)
 
+    write_settings(
+        root,
+        allowed_freedom="implementation-choice",
+        current_workspace_ref=workspace_id,
+        current_project_ref=project_id,
+        current_task_ref=task_id,
+    )
+    write_hydration_state(root, {"status": "hydrated", "fingerprint": compute_context_fingerprint(root)})
+    implementation_payload = build_next_step_payload(records, root, intent="edit", task="change action graph")
+    assert implementation_payload["chain_permit"]["required"] is True
+    assert implementation_payload["chain_permit"]["ok"] is False
+
 
 def test_reasoning_case_core_builds_payload_and_text() -> None:
     project_id = "PRJ-20260418-project1"
@@ -5884,6 +5896,7 @@ def test_settings_core_normalizes_and_persists_policy(tmp_path: Path) -> None:
                 "orphan_artifact_stale_after_days": 21,
                 "delete_after_archive_days": 365,
             },
+            "chain_permits": {"ttl_seconds": 120},
             "analysis": {
                 "logic_solver": {"backend": "z3", "timeout_ms": 50, "max_symbols": 12},
                 "topic_prefilter": {"backend": "nmf", "max_records": 10},
@@ -5931,6 +5944,7 @@ def test_settings_core_normalizes_and_persists_policy(tmp_path: Path) -> None:
     assert normalized["cleanup"]["orphan_record_stale_after_days"] == 120
     assert normalized["cleanup"]["orphan_artifact_stale_after_days"] == 21
     assert normalized["cleanup"]["delete_after_archive_days"] == 365
+    assert normalized["chain_permits"]["ttl_seconds"] == 120
     assert normalized["analysis"]["logic_solver"]["backend"] == "z3"
     assert normalized["analysis"]["logic_solver"]["timeout_ms"] == 2000
     assert normalized["analysis"]["logic_solver"]["max_symbols"] == 12
@@ -5949,9 +5963,10 @@ def test_settings_core_normalizes_and_persists_policy(tmp_path: Path) -> None:
     assert normalized["backends"]["derivation"]["datalog"]["mode"] == "fake"
     assert normalized["current_task_ref"] == "TASK-20260418-abcdef12"
 
-    write_settings(root, allowed_freedom="evidence-authorized", current_task_ref=None)
+    write_settings(root, allowed_freedom="evidence-authorized", current_task_ref=None, chain_permits={"ttl_seconds": 90})
     stored = load_settings(root)
     assert stored["allowed_freedom"] == "evidence-authorized"
+    assert stored["chain_permits"]["ttl_seconds"] == 90
     assert stored["current_task_ref"] is None
     assert "updated_at" in json.loads(settings_path(root).read_text(encoding="utf-8"))
 

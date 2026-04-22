@@ -13,10 +13,10 @@ from .hydration import compute_context_fingerprint
 from .io import parse_json_file, write_json_file
 from .paths import chain_permits_dir
 from .scopes import current_project_ref, current_task_ref, current_workspace_ref
+from .settings import DEFAULT_CHAIN_PERMIT_TTL_SECONDS, chain_permit_ttl_seconds
 from .telemetry import append_access_event
 
 
-DEFAULT_CHAIN_PERMIT_TTL_SECONDS = 20 * 60
 SIGNED_CHAIN_NODE_LIMIT = 8
 
 
@@ -76,6 +76,20 @@ def signed_chain_summary(chain_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def signed_chain_task_refs(chain_payload: dict[str, Any]) -> list[str]:
+    refs: list[str] = []
+    nodes = chain_payload.get("nodes", [])
+    if not isinstance(nodes, list):
+        return refs
+    for node in nodes:
+        if not isinstance(node, dict) or str(node.get("role", "")).strip() != "task":
+            continue
+        ref = str(node.get("ref", "")).strip()
+        if ref and ref not in refs:
+            refs.append(ref)
+    return refs
+
+
 def next_chain_permit_id(root: Path) -> str:
     today = _now().strftime("%Y%m%d")
     existing = {path.stem for path in chain_permits_dir(root).glob("CHSIG-*.json")}
@@ -93,16 +107,22 @@ def create_chain_permit(
     *,
     mode: str,
     action_kind: str | None,
-    ttl_seconds: int,
+    ttl_seconds: int | None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     if not decision_payload.get("decision_valid"):
         return None, "cannot emit chain permit for an invalid decision chain"
     normalized_kind = (action_kind or "").strip()
     if mode == "edit" and not normalized_kind:
         return None, "edit chain permits require --kind matching the planned action kind"
+    task_ref = current_task_ref(root)
+    if not task_ref:
+        return None, "chain permits require an active TASK-*"
+    chain_task_refs = signed_chain_task_refs(chain_payload)
+    if chain_task_refs != [task_ref]:
+        return None, f"chain permits require exactly one task node matching current TASK-* {task_ref}"
 
     issued = _now()
-    safe_ttl = max(30, min(int(ttl_seconds), 24 * 60 * 60))
+    safe_ttl = chain_permit_ttl_seconds(root, ttl_seconds)
     chain_hash_value = chain_hash(chain_payload)
     permit = {
         "id": next_chain_permit_id(root),
@@ -117,7 +137,7 @@ def create_chain_permit(
         "exploration_context_refs": decision_payload.get("exploration_context_refs", []),
         "workspace_ref": current_workspace_ref(root),
         "project_ref": current_project_ref(root),
-        "task_ref": current_task_ref(root),
+        "task_ref": task_ref,
         "context_fingerprint": compute_context_fingerprint(root),
         "issued_at": issued.isoformat(timespec="seconds"),
         "expires_at": (issued + timedelta(seconds=safe_ttl)).isoformat(timespec="seconds"),

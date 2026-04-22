@@ -15,6 +15,7 @@ from .tasks import validate_task_decomposition_payload
 
 NEXT_STEP_INTENTS = {"auto", "answer", "plan", "edit", "test", "persist", "permission", "debug", "after-mutation"}
 VALID_HYDRATION_STATUSES = {"hydrated", "hydrated-with-conflicts"}
+CHAIN_PERMIT_REQUIRED_FREEDOMS = {"evidence-authorized", "implementation-choice"}
 
 
 def _record_summary(records: dict[str, dict], record_ref: str, key_field: str) -> dict:
@@ -158,7 +159,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         "reason": "",
         "command": "",
     }
-    if intent == "edit" and str(settings.get("allowed_freedom", "proof-only")) == "evidence-authorized":
+    if intent == "edit" and str(settings.get("allowed_freedom", "proof-only")) in CHAIN_PERMIT_REQUIRED_FREEDOMS:
         permit_check = validate_chain_permit(root, mode="edit", action_kind=None)
         permit_status = {
             "required": True,
@@ -197,7 +198,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
             "route_graph_required": True,
             "drill_down_tools": ["brief-context", "search-records", "claim-graph", "record-detail", "linked-records"],
             "proof_rule": "Navigation output is not proof; cite canonical records with quotes before decisions.",
-            "permit_rule": "Evidence-authorized mutating actions require a fresh validate-decision --emit-permit result bound to current workspace/project/task/fingerprint.",
+            "permit_rule": "Mutating protected actions in evidence-authorized or implementation-choice require a fresh validate-decision --emit-permit result bound to current workspace/project/task/fingerprint.",
             "write_rule": "Use record-support/record-evidence so FILE/RUN/SRC/CLM links are built mechanically; low-level record-source/record-claim are for plugin-dev or migration.",
             "task_rule": "Mutating work belongs on a valid atomic leaf TASK-*; parent tasks are orchestration only.",
         },

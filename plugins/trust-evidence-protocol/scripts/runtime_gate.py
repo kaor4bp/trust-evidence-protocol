@@ -75,6 +75,7 @@ def raw_runtime_command(argv: list[str]) -> str | None:
 
 
 VALID_HYDRATION_STATUSES = {"hydrated", "hydrated-with-conflicts"}
+CHAIN_PERMIT_REQUIRED_FREEDOMS = {"evidence-authorized", "implementation-choice"}
 TEP_ICON = "🛡️"
 
 
@@ -604,9 +605,9 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
     if action_kind and is_mutating_action_kind(action_kind) and strictness == "proof-only":
         print(f"Mutating action kind {action_kind!r} requires implementation-choice strictness")
         return 1
-    if action_kind and is_mutating_action_kind(action_kind) and strictness == "evidence-authorized":
+    if action_kind and is_mutating_action_kind(action_kind) and strictness in CHAIN_PERMIT_REQUIRED_FREEDOMS:
         if not isinstance(current_task, dict) or not current_task.get("id"):
-            print("Mutating action in evidence-authorized mode requires an active TASK-*")
+            print(f"Mutating action in {strictness} mode requires an active TASK-*")
             return 1
         records, errors = collect_validation_errors(root)
         if errors:
@@ -624,7 +625,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
         ]
         if hard_restrictions:
             print(
-                "Mutating action in evidence-authorized mode is blocked by hard restriction(s): "
+                f"Mutating action in {strictness} mode is blocked by hard restriction(s): "
                 + ", ".join(str(item.get("id", "")) for item in hard_restrictions)
             )
             return 1
@@ -637,7 +638,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
         )
         if not permit.get("ok"):
             print(
-                "Mutating action in evidence-authorized mode requires a fresh valid chain permit "
+                f"Mutating action in {strictness} mode requires a fresh valid chain permit "
                 f"for mode=edit kind={action_kind!r}: {permit.get('reason')}"
             )
             print(
@@ -646,7 +647,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
             )
             return 1
         permit_id = permit.get("permit", {}).get("id", "")
-        print(f"Evidence-authorized preflight passed with chain permit {permit_id}.")
+        print(f"{strictness} preflight passed with chain permit {permit_id}.")
 
     if status == "hydrated-with-conflicts":
         print(f"Preflight passed with conflicts present for {mode}; proceed only with conflict-aware reasoning.")

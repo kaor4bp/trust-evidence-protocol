@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 
@@ -4854,6 +4855,55 @@ def test_returning_to_proof_only_allows_historical_mutating_actions(tmp_path: Pa
         "--approval-source",
         approval_source_id,
     )
+
+    missing_task = run_cli(
+        context,
+        "record-action",
+        "--kind",
+        "edit",
+        "--scope",
+        "demo.action",
+        "--justify",
+        claim_id,
+        "--safety-class",
+        "safe",
+        "--status",
+        "executed",
+        "--note",
+        "historical mutating action without task",
+        check=False,
+    )
+    assert missing_task.returncode == 1
+    assert "require an active TASK-*" in missing_task.stdout
+
+    run_cli(
+        context,
+        "start-task",
+        "--scope",
+        "demo.action",
+        "--title",
+        "Record bounded historical action",
+        "--related-claim",
+        claim_id,
+        "--note",
+        "active task for historical action",
+    )
+    task_id = only_record_id(context, "task")
+    chain = context.parent / "historical-action-chain.json"
+    chain.write_text(
+        json.dumps(
+            {
+                "task": "record bounded historical action",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "A bounded edit was justified."},
+                    {"role": "task", "ref": task_id, "quote": "Record bounded historical action"},
+                ],
+                "edges": [{"from": claim_id, "to": task_id, "relation": "supports bounded task"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_cli(context, "validate-decision", "--mode", "edit", "--kind", "edit", "--chain", str(chain), "--emit-permit")
     run_cli(
         context,
         "record-action",
@@ -4867,6 +4917,8 @@ def test_returning_to_proof_only_allows_historical_mutating_actions(tmp_path: Pa
         "safe",
         "--status",
         "executed",
+        "--evidence-chain",
+        str(chain),
         "--note",
         "historical mutating action",
     )
@@ -5061,6 +5113,144 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
     assert only_record_id(context, "action").startswith("ACT-")
 
 
+def test_chain_permit_requires_current_task_node_and_uses_configured_ttl(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    run_cli(
+        context,
+        "record-source",
+        "--scope",
+        "demo.chain-permit",
+        "--source-kind",
+        "runtime",
+        "--critique-status",
+        "accepted",
+        "--origin-kind",
+        "command",
+        "--origin-ref",
+        "pytest chain permit",
+        "--quote",
+        "validated reasoning supports a bounded action",
+        "--note",
+        "chain permit source",
+    )
+    source_id = only_record_id(context, "source")
+    run_cli(
+        context,
+        "record-claim",
+        "--scope",
+        "demo.chain-permit",
+        "--plane",
+        "runtime",
+        "--status",
+        "supported",
+        "--statement",
+        "Validated reasoning supports a bounded action.",
+        "--source",
+        source_id,
+        "--note",
+        "chain permit claim",
+    )
+    claim_id = only_record_id(context, "claim")
+    fact_only_chain = context.parent / "fact-only-chain.json"
+    fact_only_chain.write_text(
+        json.dumps(
+                {
+                    "task": "chain permit without task node",
+                    "nodes": [{"role": "fact", "ref": claim_id, "quote": "Validated reasoning supports a bounded action."}],
+                    "edges": [{"from": claim_id, "to": claim_id, "relation": "supports-decision"}],
+                }
+            ),
+        encoding="utf-8",
+    )
+
+    no_task = run_cli(
+        context,
+        "validate-decision",
+        "--mode",
+        "edit",
+        "--kind",
+        "write",
+        "--chain",
+        str(fact_only_chain),
+        "--emit-permit",
+        check=False,
+    )
+    assert no_task.returncode == 1
+    assert "chain permits require an active TASK-*" in no_task.stdout
+
+    run_cli(
+        context,
+        "start-task",
+        "--scope",
+        "demo.chain-permit",
+        "--title",
+        "Bounded chain-permit task",
+        "--related-claim",
+        claim_id,
+        "--note",
+        "active task for chain permit",
+    )
+    task_id = only_record_id(context, "task")
+
+    missing_task_node = run_cli(
+        context,
+        "validate-decision",
+        "--mode",
+        "edit",
+        "--kind",
+        "write",
+        "--chain",
+        str(fact_only_chain),
+        "--emit-permit",
+        check=False,
+    )
+    assert missing_task_node.returncode == 1
+    assert f"exactly one task node matching current TASK-* {task_id}" in missing_task_node.stdout
+
+    task_chain = context.parent / "task-chain.json"
+    task_chain.write_text(
+        json.dumps(
+            {
+                "task": "chain permit with task node",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Validated reasoning supports a bounded action."},
+                    {"role": "task", "ref": task_id, "quote": "Bounded chain-permit task"},
+                ],
+                "edges": [{"from": claim_id, "to": task_id, "relation": "supports bounded task"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    configured = run_cli(context, "configure-runtime", "--chain-permit", "ttl_seconds=60")
+    assert "chain_permits.ttl_seconds=60" in configured.stdout
+    permit_payload = json.loads(
+        run_cli(
+            context,
+            "validate-decision",
+            "--mode",
+            "edit",
+            "--kind",
+            "write",
+            "--chain",
+            str(task_chain),
+            "--emit-permit",
+            "--ttl-seconds",
+            "3600",
+            "--format",
+            "json",
+        ).stdout
+    )
+    permit = permit_payload["permit"]
+    assert permit["task_ref"] == task_id
+    assert permit["mode"] == "edit"
+    assert permit["action_kind"] == "write"
+    assert permit["signed_chain"]["node_count"] == 2
+    issued = datetime.fromisoformat(permit["issued_at"])
+    expires = datetime.fromisoformat(permit["expires_at"])
+    assert 30 <= (expires - issued).total_seconds() <= 60
+
+
 def test_evidence_authorized_model_and_flow_require_chain_permits(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     claim_id = user_confirmed_theory_claim(
@@ -5068,6 +5258,19 @@ def test_evidence_authorized_model_and_flow_require_chain_permits(tmp_path: Path
         "demo.model-permit",
         "User confirms that the cache refreshes only at startup.",
     )
+    run_cli(
+        context,
+        "start-task",
+        "--scope",
+        "demo.model-permit",
+        "--title",
+        "Record model and flow from confirmed theory",
+        "--related-claim",
+        claim_id,
+        "--note",
+        "active task for model and flow permits",
+    )
+    task_id = only_record_id(context, "task")
 
     request_id, approval_source_id = strictness_approval(context, "evidence-authorized")
     run_cli(
@@ -5109,8 +5312,11 @@ def test_evidence_authorized_model_and_flow_require_chain_permits(tmp_path: Path
         json.dumps(
             {
                 "task": "record model from confirmed theory",
-                "nodes": [{"role": "fact", "ref": claim_id, "quote": "cache refreshes only at startup"}],
-                "edges": [{"from": claim_id, "to": claim_id, "relation": "anchors-model"}],
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "cache refreshes only at startup"},
+                    {"role": "task", "ref": task_id, "quote": "Record model and flow from confirmed theory"},
+                ],
+                "edges": [{"from": claim_id, "to": task_id, "relation": "anchors-model-task"}],
             }
         ),
         encoding="utf-8",
@@ -5187,8 +5393,12 @@ def test_evidence_authorized_model_and_flow_require_chain_permits(tmp_path: Path
                 "nodes": [
                     {"role": "fact", "ref": claim_id, "quote": "cache refreshes only at startup"},
                     {"role": "model", "ref": model_id, "quote": "Cache refreshes only at startup."},
+                    {"role": "task", "ref": task_id, "quote": "Record model and flow from confirmed theory"},
                 ],
-                "edges": [{"from": claim_id, "to": model_id, "relation": "anchors-flow"}],
+                "edges": [
+                    {"from": claim_id, "to": model_id, "relation": "anchors-flow"},
+                    {"from": model_id, "to": task_id, "relation": "supports-flow-task"},
+                ],
             }
         ),
         encoding="utf-8",
