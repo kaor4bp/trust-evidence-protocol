@@ -87,6 +87,16 @@ Exit criteria:
 - Validators are importable services, not CLI subprocess behavior.
 - Hook and MCP checks can call the same functions.
 
+Progress:
+
+- Added `tep_runtime.core_validators` as the shared graph-level validation
+  service for 0.4/graph-v2 records.
+- Enforced source provenance, runtime-claim RUN reachability, owner-bound WCTX,
+  and MODEL/FLOW authority without forcing legacy records through migration
+  prematurely.
+- Added optional `AGENT-*` record loading so WCTX ownership validation can
+  resolve local agent identities while old contexts remain readable.
+
 ## Milestone 4: MCP-Only Agent Route
 
 Goals:

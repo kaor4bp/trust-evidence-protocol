@@ -117,6 +117,8 @@ REF_KEYS = {
     "existing_flow_refs",
 }
 
+AGENT_IDENTITY_STATUSES = {"active", "revoked", "archived"}
+
 
 def artifact_ref_exists(record_path: Path, artifact_ref: str) -> bool:
     if not artifact_ref.strip():
@@ -185,7 +187,21 @@ def validate_record(record_id: str, data: dict) -> list[str]:
     if not str(data.get("note", "")).strip():
         errors.append("note is required")
 
-    if record_type == "workspace":
+    if record_type == "agent_identity":
+        if not str(data.get("agent_name", "")).strip():
+            errors.append("agent_name is required")
+        if str(data.get("key_algorithm", "")).strip() != "hmac-sha256":
+            errors.append("agent_identity.key_algorithm must be hmac-sha256")
+        if not str(data.get("key_fingerprint", "")).strip().startswith("sha256:"):
+            errors.append("agent_identity.key_fingerprint must start with sha256:")
+        if str(data.get("key_scope", "")).strip() != "local-agent":
+            errors.append("agent_identity.key_scope must be local-agent")
+        if str(data.get("status", "")).strip() not in AGENT_IDENTITY_STATUSES:
+            errors.append("invalid agent_identity status")
+        if not str(data.get("created_at", "")).strip():
+            errors.append("created_at is required")
+
+    elif record_type == "workspace":
         if not str(data.get("workspace_key", "")).strip():
             errors.append("workspace_key is required")
         if not str(data.get("title", "")).strip():

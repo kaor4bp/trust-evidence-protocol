@@ -8,6 +8,7 @@ from .paths import code_index_entries_root
 
 
 RECORD_DIRS = {
+    "agent_identity": "agent_identity",
     "workspace": "workspace",
     "project": "project",
     "input": "input",
@@ -30,7 +31,10 @@ RECORD_DIRS = {
     "open_question": "open_question",
 }
 
+OPTIONAL_RECORD_DIRS = {"agent_identity"}
+
 RECORD_TYPE_TO_PREFIX = {
+    "agent_identity": "AGENT-",
     "workspace": "WSP-",
     "project": "PRJ-",
     "input": "INP-",
@@ -84,7 +88,8 @@ def load_records(root: Path) -> tuple[dict[str, dict], list[ValidationError]]:
     for directory in RECORD_DIRS:
         folder = root / "records" / directory
         if not folder.exists():
-            errors.append(ValidationError(folder, "missing record directory"))
+            if directory not in OPTIONAL_RECORD_DIRS:
+                errors.append(ValidationError(folder, "missing record directory"))
             continue
         for path in sorted(folder.glob("*.json")):
             try:

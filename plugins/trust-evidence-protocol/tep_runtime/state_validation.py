@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .code_index import validate_code_index_state
+from .core_validators import validate_core_graph
 from .errors import ValidationError
 from .hypotheses import validate_hypotheses_index
 from .logic import validate_logic_state
@@ -25,6 +26,7 @@ def validate_records_state(
         for message in validate_record(record_id, data):
             errors.append(ValidationError(Path(data["_path"]), message))
     errors.extend(validate_refs(records))
+    errors.extend(validate_core_graph(root, records))
     errors.extend(validate_logic_state(root, records))
     errors.extend(validate_code_index_state(root, records))
     errors.extend(validate_settings_state(root, records))

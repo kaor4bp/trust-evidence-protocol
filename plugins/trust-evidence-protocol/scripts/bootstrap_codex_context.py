@@ -15,6 +15,7 @@ PLUGIN_ROOT = SCRIPT_DIR.parent
 TEMPLATES_ROOT = PLUGIN_ROOT / "templates" / "codex_context"
 
 REQUIRED_DIRS = (
+    "records/agent_identity",
     "records/workspace",
     "records/project",
     "records/input",
