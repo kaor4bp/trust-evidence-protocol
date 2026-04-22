@@ -170,6 +170,7 @@ Use `augment-chain` when you already have record refs but need the plugin to fil
 Use `validate-evidence-chain` before asking permission, recording a mutating `ACT-*`, or presenting a user-facing proof chain.
 Use `validate-decision` after evidence-chain validation when deciding whether that chain is sufficient for planning, permission, edit, model, flow, proposal, final, curiosity, or debugging mode.
 Use `validate-decision --emit-permit --mode edit --kind <action-kind>` before evidence-authorized mutating Bash; the PreToolUse hook requires a fresh time-limited chain permit for the current workspace/project/task/fingerprint.
+Permit output includes a compact `Signed Chain` summary with ids and quotes so the agent can show the user what it actually signed.
 Use the same permit before write-API commitments in `evidence-authorized`: mutating `record-action` checks a matching edit permit and chain hash; working/stable/contested `record-model` and `record-flow` check `mode=model` or `mode=flow` permits.
 Use `validate-decision --emit-permit --mode final` before marking an autonomous task `done`; Stop/final guards reject `done` without a fresh final permit.
 Use `telemetry-report --format json` to inspect permit pressure counters such as `permit_missing_count`, `permit_expired_count`, `permit_issued_count`, and `permit_used_count`.

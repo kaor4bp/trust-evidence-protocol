@@ -1664,6 +1664,9 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
     assert permit["decision_valid"] is True
     assert permit["permit"]["mode"] == "edit"
     assert permit["permit"]["action_kind"] == "write"
+    assert permit["permit"]["signed_chain"]["node_count"] == 2
+    assert permit["permit"]["signed_chain"]["nodes"][0]["ref"] == claim_id
+    assert permit["permit"]["signed_chain"]["nodes"][0]["quote"] == "Bounded hook mutation is supported."
     permit_path = context / "runtime" / "chain_permits" / f"{permit['permit']['id']}.json"
     expired_payload = json.loads(permit_path.read_text(encoding="utf-8"))
     expired_payload["expires_at"] = "2000-01-01T00:00:00+00:00"

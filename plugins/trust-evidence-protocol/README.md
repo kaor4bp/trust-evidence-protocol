@@ -854,6 +854,7 @@ Commands:
   - blocks `hypothesis` and `exploration_context` nodes as decisive proof for permission, edit, model, flow, and final decisions
   - requires `requested_permission` nodes for permission-mode chains
   - returns `valid_for`, `invalid_for`, hypothesis refs, blockers, warnings, and recommended follow-up commands
+  - with `--emit-permit`, prints and stores a compact `Signed Chain` summary with node ids and quotes beside the time-limited `CHSIG-*`
 
 Reasoning checkpoint disclosure:
 

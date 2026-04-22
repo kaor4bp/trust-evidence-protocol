@@ -1,6 +1,6 @@
 {
   "name": "trust-evidence-protocol",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Evidence-first reasoning protocol with scoped records, workflow-guided context lookup, action preflight, and persistent project memory.",
   "hooks": "./hooks/claude/hooks.json",
   "author": {

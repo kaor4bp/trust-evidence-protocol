@@ -5023,7 +5023,7 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
     assert missing_permit.returncode == 1
     assert "fresh valid chain permit" in missing_permit.stdout
 
-    run_cli(
+    permit_result = run_cli(
         context,
         "validate-decision",
         "--mode",
@@ -5034,6 +5034,11 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
         str(chain),
         "--emit-permit",
     )
+    assert "## Chain Permit" in permit_result.stdout
+    assert "## Signed Chain" in permit_result.stdout
+    assert "chain_hash" in permit_result.stdout
+    assert f"- fact `{claim_id}`: \"Bounded edit is supported by runtime evidence.\"" in permit_result.stdout
+    assert f"- task `{task_id}`: \"Bounded evidence-authorized edit\"" in permit_result.stdout
 
     run_cli(
         context,

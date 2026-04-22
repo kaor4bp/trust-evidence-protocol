@@ -17,6 +17,14 @@ from .telemetry import append_access_event
 
 
 DEFAULT_CHAIN_PERMIT_TTL_SECONDS = 20 * 60
+SIGNED_CHAIN_NODE_LIMIT = 8
+
+
+def _concise(value: str, limit: int) -> str:
+    normalized = " ".join(str(value or "").split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(0, limit - 3)].rstrip() + "..."
 
 
 def _now() -> datetime:
@@ -36,6 +44,36 @@ def _parse_timestamp(value: str) -> datetime | None:
 def chain_hash(payload: dict[str, Any]) -> str:
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def signed_chain_summary(chain_payload: dict[str, Any]) -> dict[str, Any]:
+    nodes = chain_payload.get("nodes", [])
+    edges = chain_payload.get("edges", [])
+    node_list = nodes if isinstance(nodes, list) else []
+    edge_list = edges if isinstance(edges, list) else []
+    display_nodes: list[dict[str, str]] = []
+    for node in node_list:
+        if not isinstance(node, dict):
+            continue
+        role = str(node.get("role", "")).strip()
+        ref = str(node.get("ref", "")).strip()
+        quote = _concise(str(node.get("quote", "")), 220)
+        if not (role or ref or quote):
+            continue
+        display_nodes.append(
+            {
+                "role": role,
+                "ref": ref,
+                "quote": quote,
+            }
+        )
+    return {
+        "task": _concise(str(chain_payload.get("task", "")), 180),
+        "node_count": len(node_list),
+        "edge_count": len(edge_list),
+        "nodes": display_nodes[:SIGNED_CHAIN_NODE_LIMIT],
+        "truncated_node_count": max(0, len(display_nodes) - SIGNED_CHAIN_NODE_LIMIT),
+    }
 
 
 def next_chain_permit_id(root: Path) -> str:
@@ -65,13 +103,15 @@ def create_chain_permit(
 
     issued = _now()
     safe_ttl = max(30, min(int(ttl_seconds), 24 * 60 * 60))
+    chain_hash_value = chain_hash(chain_payload)
     permit = {
         "id": next_chain_permit_id(root),
         "kind": "chain_permit",
         "version": 1,
         "mode": mode,
         "action_kind": normalized_kind,
-        "chain_hash": chain_hash(chain_payload),
+        "chain_hash": chain_hash_value,
+        "signed_chain": signed_chain_summary(chain_payload),
         "valid_for": decision_payload.get("valid_for", []),
         "hypothesis_refs": decision_payload.get("hypothesis_refs", []),
         "exploration_context_refs": decision_payload.get("exploration_context_refs", []),
@@ -230,10 +270,31 @@ def validate_chain_permit(
 
 
 def chain_permit_text_lines(permit: dict[str, Any]) -> list[str]:
-    return [
+    lines = [
         "## Chain Permit",
         f"- permit: `{permit.get('id')}`",
         f"- mode: `{permit.get('mode')}`",
         f"- action_kind: `{permit.get('action_kind') or 'none'}`",
         f"- expires_at: `{permit.get('expires_at')}`",
+        f"- chain_hash: `{str(permit.get('chain_hash') or '')[:16]}`",
     ]
+    signed_chain = permit.get("signed_chain")
+    if isinstance(signed_chain, dict):
+        lines.extend(
+            [
+                "",
+                "## Signed Chain",
+                f"- task: `{signed_chain.get('task') or 'none'}`",
+                f"- nodes: `{signed_chain.get('node_count', 0)}` edges: `{signed_chain.get('edge_count', 0)}`",
+            ]
+        )
+        for node in signed_chain.get("nodes", []):
+            if not isinstance(node, dict):
+                continue
+            role = node.get("role") or "node"
+            ref = node.get("ref") or "no-ref"
+            quote = node.get("quote") or ""
+            lines.append(f"- {role} `{ref}`: \"{quote}\"")
+        if int(signed_chain.get("truncated_node_count") or 0) > 0:
+            lines.append(f"- ... {signed_chain.get('truncated_node_count')} more node(s)")
+    return lines
