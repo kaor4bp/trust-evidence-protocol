@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -11,7 +12,9 @@ plugin_root = str(PLUGIN_ROOT)
 if plugin_root not in sys.path:
     sys.path.insert(0, plugin_root)
 
-from tep_runtime.core_validators import validate_core_graph  # noqa: E402
+from tep_runtime.core_validators import validate_active_focus, validate_core_graph  # noqa: E402
+from tep_runtime.paths import reasoning_seal_path, reasons_ledger_path  # noqa: E402
+from tep_runtime.reason_ledger import append_reason_entry, chain_payload_hash  # noqa: E402
 from tep_runtime.state_validation import validate_records_state  # noqa: E402
 
 
@@ -43,6 +46,40 @@ def workspace() -> dict:
         root_refs=["/tmp/tep"],
         created_at=TS,
         updated_at=TS,
+    )
+
+
+def project(project_id: str, **payload) -> dict:
+    values = {
+        "project_key": "pytest-project",
+        "title": "Pytest Project",
+        "status": "active",
+        "root_refs": ["/tmp/tep/project"],
+        "created_at": TS,
+        "updated_at": TS,
+        "workspace_refs": [WORKSPACE_REF],
+        **payload,
+    }
+    return record(
+        "project",
+        project_id,
+        **values,
+    )
+
+
+def task(task_id: str, **payload) -> dict:
+    values = {
+        "title": "Pytest Task",
+        "status": "active",
+        "created_at": TS,
+        "updated_at": TS,
+        "project_refs": ["PRJ-20260423-a0000011"],
+        **payload,
+    }
+    return record(
+        "task",
+        task_id,
+        **values,
     )
 
 
@@ -219,3 +256,68 @@ def test_v04_core_validators_are_part_of_state_validation(tmp_path: Path) -> Non
 
     assert "0.4 source requires INP/FILE/RUN/ART provenance" in errors
     assert "0.4 runtime claim requires source transitively linked to RUN-*" in errors
+
+
+def test_v04_active_focus_requires_active_compatible_records(tmp_path: Path) -> None:
+    project_id = "PRJ-20260423-a0000011"
+    task_id = "TASK-20260423-a0000012"
+    settings = {
+        "current_workspace_ref": WORKSPACE_REF,
+        "current_project_ref": project_id,
+        "current_task_ref": task_id,
+    }
+    (tmp_path / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+    current_workspace = workspace()
+    current_workspace["contract_version"] = "0.4"
+    current_workspace["project_refs"] = []
+    records = base_records(
+        project(project_id, contract_version="0.4", workspace_refs=[]),
+        task(task_id, status="completed", project_refs=["PRJ-20260423-other"]),
+    )
+    records[WORKSPACE_REF] = current_workspace
+
+    errors = messages(validate_active_focus(tmp_path, records))
+
+    assert f"current_task_ref must reference an open task record: {task_id}" in errors
+    assert "current_project_ref must belong to current_workspace_ref" in errors
+    assert "current_task_ref must belong to current_project_ref" in errors
+
+
+def test_reason_ledger_state_validation_is_read_only_when_empty(tmp_path: Path) -> None:
+    assert messages(validate_records_state(tmp_path, {})) == []
+    assert not reasoning_seal_path(tmp_path).exists()
+
+
+def test_reason_ledger_state_validation_detects_tamper(tmp_path: Path) -> None:
+    (tmp_path / "settings.json").write_text(
+        json.dumps({"reasoning": {"pow": {"enabled": False}}}),
+        encoding="utf-8",
+    )
+    chain_payload = {
+        "task": "ledger validation",
+        "nodes": [{"role": "task", "ref": "TASK-20260423-a0000012", "quote": "validate ledger"}],
+        "edges": [],
+    }
+    entry, error = append_reason_entry(
+        tmp_path,
+        {
+            "entry_type": "step",
+            "status": "reviewed",
+            "task_ref": "TASK-20260423-a0000012",
+            "mode": "edit",
+            "chain_hash": chain_payload_hash(chain_payload),
+            "chain_payload": chain_payload,
+        },
+    )
+    assert entry is not None, error
+    assert messages(validate_records_state(tmp_path, {})) == []
+
+    ledger = reasons_ledger_path(tmp_path)
+    ledger.write_text(
+        ledger.read_text(encoding="utf-8").replace("ledger validation", "tampered validation", 1),
+        encoding="utf-8",
+    )
+
+    errors = messages(validate_records_state(tmp_path, {}))
+
+    assert any("ledger appears tampered" in error for error in errors)

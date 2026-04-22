@@ -12,6 +12,7 @@ from .logic import validate_logic_state
 from .paths import record_path
 from .policy import validate_runtime_policy
 from .records import load_records
+from .reason_ledger import validate_reason_ledger_state
 from .schemas import validate_record, validate_refs
 from .settings import validate_settings_state
 
@@ -31,6 +32,7 @@ def validate_records_state(
     errors.extend(validate_code_index_state(root, records))
     errors.extend(validate_settings_state(root, records))
     errors.extend(validate_hypotheses_index(root, records))
+    errors.extend(validate_reason_ledger_state(root))
     errors.extend(validate_runtime_policy(root, records, allowed_freedom=allowed_freedom))
     return errors
 

@@ -15,6 +15,7 @@ from .hypotheses import active_hypothesis_entry_by_claim
 from .io import write_json_file
 from .paths import reasoning_runtime_dir, reasoning_seal_path, reasons_ledger_path
 from .records import load_records
+from .errors import ValidationError
 from .reasoning import decision_validation_payload
 from .scopes import current_project_ref, current_task_ref, current_workspace_ref
 from .settings import chain_permit_ttl_seconds, load_effective_settings
@@ -188,14 +189,9 @@ def normalize_cwd(cwd: str | Path | None) -> str:
 
 def ensure_reasoning_secret(root: Path) -> str:
     path = reasoning_seal_path(root)
-    if path.exists():
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            payload = {}
-        secret = str(payload.get("secret", "")).strip()
-        if secret:
-            return secret
+    secret = load_reasoning_secret(root)
+    if secret:
+        return secret
     secret = secrets.token_hex(32)
     payload = {
         "version": 1,
@@ -209,6 +205,19 @@ def ensure_reasoning_secret(root: Path) -> str:
     except OSError:
         pass
     return secret
+
+
+def load_reasoning_secret(root: Path) -> str:
+    """Read the local ledger seal secret without creating it."""
+
+    path = reasoning_seal_path(root)
+    if not path.exists():
+        return ""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return str(payload.get("secret", "")).strip()
 
 
 def signed_chain_summary(chain_payload: dict[str, Any]) -> dict[str, Any]:
@@ -273,9 +282,11 @@ def read_reason_entries(root: Path) -> tuple[list[dict[str, Any]], list[str]]:
     return entries, errors
 
 
-def validate_reason_ledger(root: Path) -> dict[str, Any]:
+def validate_reason_ledger(root: Path, *, create_secret: bool = True) -> dict[str, Any]:
     entries, errors = read_reason_entries(root)
-    secret = ensure_reasoning_secret(root)
+    secret = ensure_reasoning_secret(root) if create_secret else load_reasoning_secret(root)
+    if entries and not secret:
+        errors.append("reason seal secret missing; ledger cannot be fully validated")
     previous = ZERO_LEDGER_HASH
     ids: set[str] = set()
     for index, entry in enumerate(entries, start=1):
@@ -294,12 +305,13 @@ def validate_reason_ledger(root: Path) -> dict[str, Any]:
         pow_error = _validate_pow(entry)
         if pow_error:
             errors.append(f"{entry_id or index}: {pow_error}; ledger appears tampered")
-        expected_seal = _seal_payload(secret, expected_entry_hash)
-        if str(entry.get("seal", "")).strip() != expected_seal:
-            errors.append(f"{entry_id or index}: seal mismatch; ledger appears tampered")
-        expected_ledger_hash = _ledger_hash(previous, expected_entry_hash, expected_seal)
-        if str(entry.get("ledger_hash", "")).strip() != expected_ledger_hash:
-            errors.append(f"{entry_id or index}: ledger_hash mismatch; ledger appears tampered")
+        if secret:
+            expected_seal = _seal_payload(secret, expected_entry_hash)
+            if str(entry.get("seal", "")).strip() != expected_seal:
+                errors.append(f"{entry_id or index}: seal mismatch; ledger appears tampered")
+            expected_ledger_hash = _ledger_hash(previous, expected_entry_hash, expected_seal)
+            if str(entry.get("ledger_hash", "")).strip() != expected_ledger_hash:
+                errors.append(f"{entry_id or index}: ledger_hash mismatch; ledger appears tampered")
         if str(entry.get("entry_type", "")).strip() == "step" and int(entry.get("version", 1) or 1) >= 2:
             chain_payload = entry.get("chain_payload")
             if not isinstance(chain_payload, dict):
@@ -313,6 +325,18 @@ def validate_reason_ledger(root: Path) -> dict[str, Any]:
         "errors": errors,
         "head_hash": previous,
     }
+
+
+def validate_reason_ledger_state(root: Path) -> list[ValidationError]:
+    """Read-only state/preflight validation for the append-only reason ledger."""
+
+    validation = validate_reason_ledger(root, create_secret=False)
+    if validation["ok"]:
+        return []
+    path = reasons_ledger_path(root)
+    if not path.exists():
+        path = reasoning_seal_path(root)
+    return [ValidationError(path, message) for message in validation["errors"]]
 
 
 def _next_ledger_id(entries: list[dict[str, Any]], prefix: str) -> str:

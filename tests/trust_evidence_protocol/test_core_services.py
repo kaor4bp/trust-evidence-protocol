@@ -1263,6 +1263,7 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     payload = build_next_step_payload(records, root, intent="edit", task="change action graph")
 
     assert payload["hydration_fresh"] is True
+    assert payload["active_focus"]["ok"] is True
     assert payload["route_graph"]["graph_version"] == 1
     assert payload["api_contract"]["normal_entrypoint"] == "lookup"
     assert payload["route_steps"][0].startswith("validate-task-decomposition ")
@@ -1309,6 +1310,16 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     implementation_payload = build_next_step_payload(records, root, intent="edit", task="change action graph")
     assert implementation_payload["grant"]["required"] is True
     assert implementation_payload["grant"]["ok"] is False
+
+    write_settings(
+        root,
+        current_workspace_ref=workspace_id,
+        current_project_ref="PRJ-20260418-99999999",
+        current_task_ref=task_id,
+    )
+    focus_payload = build_next_step_payload(records, root, intent="edit", task="change action graph")
+    assert focus_payload["active_focus"]["ok"] is False
+    assert "resolve-active-focus" in focus_payload["forced_first"]
 
 
 def test_reasoning_case_core_builds_payload_and_text() -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .core_validators import validate_active_focus
 from .hydration import compute_context_fingerprint, load_hydration_state
 from .reason_ledger import validate_reason_access
 from .retrieval import active_guidelines_for
@@ -126,6 +127,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
     task_ref = current_task_ref(root)
     active_restrictions = active_restrictions_for(records, project_ref or None, task_ref or None)
     active_guidelines = active_guidelines_for(records, [], project_ref or None, task_ref or None, 5)
+    active_focus_errors = validate_active_focus(root, records)
     fresh = _hydration_is_fresh(root, hydration)
     conflict_count = int(hydration.get("conflict_count") or 0)
     error_count = int(hydration.get("error_count") or 0)
@@ -137,6 +139,8 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         forced.append("review-context")
     if conflict_count:
         forced.append("scan-conflicts")
+    if active_focus_errors and intent in {"edit", "test", "persist", "permission"}:
+        forced.append("resolve-active-focus")
     if active_restrictions and intent in {"edit", "test", "persist", "permission"}:
         forced.append("show-restrictions")
     task_decomposition = None
@@ -188,6 +192,10 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         "restriction_count": len(active_restrictions),
         "guideline_count": len(active_guidelines),
         "task_decomposition": task_decomposition,
+        "active_focus": {
+            "ok": not active_focus_errors,
+            "errors": [error.message for error in active_focus_errors],
+        },
         "forced_first": forced,
         "route_steps": route_steps,
         "route_graph": _route_graph(intent),

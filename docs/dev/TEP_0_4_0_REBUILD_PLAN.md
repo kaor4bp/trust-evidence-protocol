@@ -96,6 +96,15 @@ Progress:
   prematurely.
 - Added optional `AGENT-*` record loading so WCTX ownership validation can
   resolve local agent identities while old contexts remain readable.
+- Added active focus validation as a shared preflight service for current
+  workspace/project/task status and compatibility. It is intentionally not a
+  whole-state invariant because lifecycle commands can briefly keep stale focus
+  while switching or completing tasks.
+- Connected reason ledger integrity to state validation through a read-only
+  preflight path. `validate_reason_ledger()` keeps the existing write-path
+  behavior by default, while shared validation checks `prev_ledger_hash`,
+  `entry_hash`, seal, `ledger_hash`, `chain_hash`, and PoW without creating
+  `runtime/reasoning/seal.json` for empty contexts.
 
 ## Milestone 4: MCP-Only Agent Route
 

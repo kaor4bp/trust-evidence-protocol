@@ -6,7 +6,8 @@ from pathlib import Path
 
 from .claims import claim_is_fallback
 from .errors import ValidationError
-from .scopes import current_workspace_ref
+from .paths import settings_path
+from .scopes import current_project_ref, current_task_ref, current_workspace_ref
 from .validation import safe_list
 
 
@@ -56,6 +57,53 @@ def validate_workspace_focus(root: Path, records: dict[str, dict]) -> list[Valid
         workspace_ref = str(record.get("workspace_ref", "")).strip()
         if not workspace_refs and not workspace_ref and not current_workspace:
             errors.append(ValidationError(_path(record), "0.4 durable record requires explicit workspace focus"))
+    return errors
+
+
+def validate_active_focus(root: Path, records: dict[str, dict]) -> list[ValidationError]:
+    """Current workspace/project/task focus must resolve to active, compatible records."""
+
+    errors: list[ValidationError] = []
+    path = settings_path(root)
+    workspace_ref = current_workspace_ref(root)
+    project_ref = current_project_ref(root)
+    task_ref = current_task_ref(root)
+
+    workspace = records.get(workspace_ref) if workspace_ref else None
+    project = records.get(project_ref) if project_ref else None
+    task = records.get(task_ref) if task_ref else None
+
+    if workspace_ref:
+        if not workspace or workspace.get("record_type") != "workspace":
+            errors.append(ValidationError(path, f"current_workspace_ref must reference an active workspace record: {workspace_ref}"))
+        elif str(workspace.get("status", "")).strip() != "active":
+            errors.append(ValidationError(path, f"current_workspace_ref must reference an active workspace record: {workspace_ref}"))
+
+    if project_ref:
+        if not project or project.get("record_type") != "project":
+            errors.append(ValidationError(path, f"current_project_ref must reference an active project record: {project_ref}"))
+        elif str(project.get("status", "")).strip() != "active":
+            errors.append(ValidationError(path, f"current_project_ref must reference an active project record: {project_ref}"))
+
+    if task_ref:
+        if not task or task.get("record_type") != "task":
+            errors.append(ValidationError(path, f"current_task_ref must reference an open task record: {task_ref}"))
+        elif str(task.get("status", "")).strip() not in {"active", "paused"}:
+            errors.append(ValidationError(path, f"current_task_ref must reference an open task record: {task_ref}"))
+
+    if workspace and project:
+        workspace_projects = safe_list(workspace, "project_refs")
+        project_workspaces = safe_list(project, "workspace_refs")
+        if (
+            workspace_projects or project_workspaces or _is_v04(workspace) or _is_v04(project)
+        ) and project_ref not in workspace_projects and workspace_ref not in project_workspaces:
+            errors.append(ValidationError(path, "current_project_ref must belong to current_workspace_ref"))
+
+    if project and task:
+        task_projects = safe_list(task, "project_refs")
+        if (task_projects or _is_v04(task)) and project_ref not in task_projects:
+            errors.append(ValidationError(path, "current_task_ref must belong to current_project_ref"))
+
     return errors
 
 
