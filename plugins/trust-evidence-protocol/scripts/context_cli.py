@@ -7677,6 +7677,7 @@ def cmd_record_action(
             mode="edit",
             action_kind=kind,
             chain_hash_value=chain_hash(chain_payload),
+            telemetry={"channel": "cli", "tool": "record-action"},
         )
         if not permit.get("ok"):
             print(
@@ -7737,7 +7738,12 @@ def cmd_record_model(
         return 1
     strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
     if strictness == "evidence-authorized" and status in {"working", "stable", "contested"}:
-        permit = validate_chain_permit(root, mode="model", action_kind=None)
+        permit = validate_chain_permit(
+            root,
+            mode="model",
+            action_kind=None,
+            telemetry={"channel": "cli", "tool": "record-model"},
+        )
         if not permit.get("ok"):
             print(
                 "evidence-authorized model updates require a fresh valid chain permit "
@@ -7883,7 +7889,12 @@ def cmd_record_flow(
         return 1
     strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
     if strictness == "evidence-authorized" and status in {"working", "stable", "contested"}:
-        permit = validate_chain_permit(root, mode="flow", action_kind=None)
+        permit = validate_chain_permit(
+            root,
+            mode="flow",
+            action_kind=None,
+            telemetry={"channel": "cli", "tool": "record-flow"},
+        )
         if not permit.get("ok"):
             print(
                 "evidence-authorized flow updates require a fresh valid chain permit "

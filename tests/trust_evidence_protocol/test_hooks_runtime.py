@@ -487,16 +487,105 @@ def test_autonomous_task_stop_guard_requires_terminal_outcome(tmp_path: Path) ->
     task_id = recorded_id(start, "task")
     task = json.loads((context / "records" / "task" / f"{task_id}.json").read_text(encoding="utf-8"))
     assert task["execution_mode"] == "autonomous"
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.autonomous",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest autonomous completion",
+            "--quote",
+            "autonomous completion guard work is complete",
+            "--note",
+            "autonomous final permit source",
+        ),
+        "source",
+    )
+    claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.autonomous",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Autonomous completion guard work is complete.",
+            "--source",
+            source_id,
+            "--note",
+            "autonomous final permit claim",
+        ),
+        "claim",
+    )
+    final_chain = tmp_path / "final-chain.json"
+    final_chain.write_text(
+        json.dumps(
+            {
+                "task": "autonomous completion proof",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Autonomous completion guard work is complete."},
+                    {"role": "task", "ref": task_id, "quote": "Autonomous completion guard"},
+                ],
+                "edges": [{"from": claim_id, "to": task_id, "relation": "supports-completion"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_cli(
+        context,
+        "confirm-atomic-task",
+        "--task",
+        task_id,
+        "--deliverable",
+        "Autonomous completion guard final response is controlled.",
+        "--done",
+        "Final stop requires a valid chain permit.",
+        "--verify",
+        "Stop guard and final preflight pass with permit.",
+        "--boundary",
+        "Only autonomous final gating.",
+        "--blocker-policy",
+        "Record OPEN-* for blockers.",
+        "--note",
+        "autonomous final task is atomic",
+    )
 
     hydrate = run_runtime(context, "hydrate-context")
     assert f"Current task: {task_id}" in hydrate.stdout
     assert "mode=autonomous" in hydrate.stdout
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "autonomous final focus")
 
     blocked = run_runtime(context, "stop-guard", "--last-assistant-message", "partial status", check=False)
     assert blocked.returncode == 1
     assert "Autonomous TASK-* cannot stop" in blocked.stdout
     assert "TEP TASK OUTCOME: done" in blocked.stdout
 
+    no_final_permit = run_runtime(
+        context,
+        "stop-guard",
+        "--last-assistant-message",
+        "TEP TASK OUTCOME: done\nCompleted the requested work.",
+        check=False,
+    )
+    assert no_final_permit.returncode == 1
+    assert "mode=final" in no_final_permit.stdout
+    final_preflight_block = run_runtime(context, "preflight-task", "--mode", "final", check=False)
+    assert final_preflight_block.returncode == 1
+    assert "mode=final" in final_preflight_block.stdout
+
+    run_cli(context, "validate-decision", "--mode", "final", "--chain", str(final_chain), "--emit-permit")
+    final_preflight = run_runtime(context, "preflight-task", "--mode", "final")
+    assert "Preflight passed for final" in final_preflight.stdout
     accepted = run_runtime(
         context,
         "stop-guard",
@@ -504,6 +593,11 @@ def test_autonomous_task_stop_guard_requires_terminal_outcome(tmp_path: Path) ->
         "TEP TASK OUTCOME: done\nCompleted the requested work.",
     )
     assert "Autonomous task stop accepted: done" in accepted.stdout
+
+    telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
+    assert telemetry["permit_missing_count"] >= 1
+    assert telemetry["permit_issued_count"] >= 1
+    assert telemetry["permit_used_count"] >= 1
 
     codex_payload = hook_json(
         HOOK_DIR / "stop_guard.py",

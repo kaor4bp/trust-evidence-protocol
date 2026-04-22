@@ -79,7 +79,10 @@ def access_event_record_refs(event: dict) -> list[str]:
 
 def policy_event(event: dict) -> bool:
     access_kind = str(event.get("access_kind") or "")
-    return any(key in event for key in POLICY_TELEMETRY_EVENT_KEYS) or access_kind in {"raw_claim_read", "raw_claim_read_blocked"}
+    return (
+        any(key in event for key in POLICY_TELEMETRY_EVENT_KEYS)
+        or access_kind in {"raw_claim_read", "raw_claim_read_blocked"}
+    )
 
 
 def ratio(numerator: int, denominator: int) -> float:
@@ -126,6 +129,12 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
     ]
     raw_blocked_events = [event for event in raw_events if str(event.get("access_kind") or "") == "raw_claim_read_blocked"]
     raw_allowed_events = [event for event in raw_events if str(event.get("access_kind") or "") == "raw_claim_read"]
+    permit_events = [event for event in event_list if str(event.get("access_kind") or "").startswith("chain_permit_")]
+    permit_issued_events = [event for event in permit_events if str(event.get("access_kind") or "") == "chain_permit_issued"]
+    permit_used_events = [event for event in permit_events if str(event.get("access_kind") or "") == "chain_permit_used"]
+    permit_missing_events = [event for event in permit_events if str(event.get("access_kind") or "") == "chain_permit_missing"]
+    permit_expired_events = [event for event in permit_events if str(event.get("access_kind") or "") == "chain_permit_expired"]
+    permit_rejected_events = [event for event in permit_events if str(event.get("access_kind") or "") == "chain_permit_rejected"]
     policy_events = [event for event in event_list if policy_event(event)]
     recent_events = event_list[-RECENT_POLICY_WINDOW:]
     recent_policy_events = policy_events[-RECENT_POLICY_WINDOW:]
@@ -144,6 +153,19 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
                 "message": "Allowed raw record reads are escape-hatch events; normal lookup should use compact MCP/CLI projections.",
                 "recommended_tools": ["record_detail", "claim_graph", "linked_records", "lookup", "map_brief"],
                 "next_action": "Use raw claim JSON only with an explicit debug/migration/forensics/plugin-dev reason; otherwise replace it with compact projections.",
+            }
+        )
+    if permit_missing_events or permit_expired_events or permit_rejected_events:
+        anomalies.append(
+            {
+                "kind": "chain-permit-pressure",
+                "severity": "info",
+                "missing_count": len(permit_missing_events),
+                "expired_count": len(permit_expired_events),
+                "rejected_count": len(permit_rejected_events),
+                "message": "Chain permit gates are forcing agents to validate reasoning before protected actions.",
+                "recommended_tools": ["next_step", "validate_decision", "augment_chain"],
+                "next_action": "If missing permit events dominate, route agents through next-step and validate-decision --emit-permit earlier.",
             }
         )
     if recent_policy["event_count"] and recent_policy["unspecified_reason_ratio"] > 0.25:
@@ -211,6 +233,12 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
         "raw_read_allowed_count": len(raw_allowed_events),
         "raw_read_blocked_count": len(raw_blocked_events),
         "raw_path_count": sum(int(event.get("raw_path_count") or 0) for event in raw_events),
+        "permit_event_count": len(permit_events),
+        "permit_issued_count": len(permit_issued_events),
+        "permit_used_count": len(permit_used_events),
+        "permit_missing_count": len(permit_missing_events),
+        "permit_expired_count": len(permit_expired_events),
+        "permit_rejected_count": len(permit_rejected_events),
         "policy_event_count": len(policy_events),
         "recent_window_size": RECENT_POLICY_WINDOW,
         "recent": recent_all,
@@ -229,6 +257,7 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
             for (reason, record_ref), count in record_by_reason.most_common(max(1, limit))
         ],
         "recent_raw_events": raw_events[-max(1, limit) :],
+        "recent_permit_events": permit_events[-max(1, limit) :],
         "anomalies": anomalies,
     }
 
@@ -238,7 +267,7 @@ def access_report_text_lines(payload: dict) -> list[str]:
         "# TEP Telemetry Report",
         "",
         "Telemetry is navigation data only. It is not proof.",
-        f"events: `{payload.get('event_count', 0)}` policy_events: `{payload.get('policy_event_count', 0)}` raw_events: `{payload.get('raw_event_count', 0)}` raw_allowed: `{payload.get('raw_read_allowed_count', 0)}` raw_blocked: `{payload.get('raw_read_blocked_count', 0)}` raw_paths: `{payload.get('raw_path_count', 0)}`",
+        f"events: `{payload.get('event_count', 0)}` policy_events: `{payload.get('policy_event_count', 0)}` raw_events: `{payload.get('raw_event_count', 0)}` raw_allowed: `{payload.get('raw_read_allowed_count', 0)}` raw_blocked: `{payload.get('raw_read_blocked_count', 0)}` raw_paths: `{payload.get('raw_path_count', 0)}` permit_events: `{payload.get('permit_event_count', 0)}` permit_missing: `{payload.get('permit_missing_count', 0)}` permit_used: `{payload.get('permit_used_count', 0)}`",
         "",
         "## Recent Policy Window",
     ]

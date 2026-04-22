@@ -13,6 +13,7 @@ from .hydration import compute_context_fingerprint
 from .io import parse_json_file, write_json_file
 from .paths import chain_permits_dir
 from .scopes import current_project_ref, current_task_ref, current_workspace_ref
+from .telemetry import append_access_event
 
 
 DEFAULT_CHAIN_PERMIT_TTL_SECONDS = 20 * 60
@@ -82,7 +83,41 @@ def create_chain_permit(
         "expires_at": (issued + timedelta(seconds=safe_ttl)).isoformat(timespec="seconds"),
     }
     write_json_file(chain_permits_dir(root) / f"{permit['id']}.json", permit)
+    append_chain_permit_event(root, "chain_permit_issued", permit=permit, mode=mode, action_kind=normalized_kind)
     return permit, None
+
+
+def append_chain_permit_event(
+    root: Path,
+    access_kind: str,
+    *,
+    permit: dict[str, Any] | None = None,
+    mode: str,
+    action_kind: str | None,
+    reason: str = "",
+    channel: str = "cli",
+    tool: str = "validate-decision",
+) -> None:
+    payload = {
+        "channel": channel,
+        "tool": tool,
+        "access_kind": access_kind,
+        "permit_reason": "chain-permit-gate",
+        "mode": mode,
+        "action_kind": (action_kind or "").strip(),
+        "workspace_ref": current_workspace_ref(root),
+        "project_ref": current_project_ref(root),
+        "task_ref": current_task_ref(root),
+        "access_is_proof": False,
+    }
+    if permit:
+        payload["permit_ref"] = str(permit.get("id", "")).strip()
+    if reason:
+        payload["failure_reason"] = reason
+    try:
+        append_access_event(root, payload)
+    except OSError:
+        return
 
 
 def load_chain_permits(root: Path) -> list[dict[str, Any]]:
@@ -108,6 +143,7 @@ def validate_chain_permit(
     action_kind: str | None,
     chain_hash_value: str | None = None,
     context_fingerprint: str | None = None,
+    telemetry: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     normalized_kind = (action_kind or "").strip()
     current_refs = {
@@ -156,9 +192,35 @@ def validate_chain_permit(
         if mismatched_ref:
             failures.append(f"{permit_id}: {mismatched_ref} mismatch")
             continue
+        if telemetry:
+            append_chain_permit_event(
+                root,
+                "chain_permit_used",
+                permit=permit,
+                mode=mode,
+                action_kind=normalized_kind,
+                channel=telemetry.get("channel", "cli"),
+                tool=telemetry.get("tool", "validate-chain-permit"),
+            )
         return {"ok": True, "permit": permit, "reason": ""}
 
     reason = "no chain permits found" if not candidates else failures[0] if failures else "no matching chain permit"
+    if telemetry:
+        if "expired" in reason:
+            access_kind = "chain_permit_expired"
+        elif "no chain permits" in reason or "no matching" in reason:
+            access_kind = "chain_permit_missing"
+        else:
+            access_kind = "chain_permit_rejected"
+        append_chain_permit_event(
+            root,
+            access_kind,
+            mode=mode,
+            action_kind=normalized_kind,
+            reason=reason,
+            channel=telemetry.get("channel", "cli"),
+            tool=telemetry.get("tool", "validate-chain-permit"),
+        )
     return {
         "ok": False,
         "permit": None,

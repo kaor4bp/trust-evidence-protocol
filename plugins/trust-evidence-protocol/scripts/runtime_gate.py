@@ -308,6 +308,21 @@ def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bo
         if not outcome_payload.get("accepted"):
             print("\n".join(task_outcome_check_text_lines(outcome_payload)))
             return 1
+        if outcome == "done":
+            permit = validate_chain_permit(
+                root,
+                mode="final",
+                action_kind=None,
+                context_fingerprint=current_fingerprint,
+                telemetry={"channel": "hook", "tool": "stop-guard"},
+            )
+            if not permit.get("ok"):
+                print(
+                    "Autonomous TASK-* cannot be marked done without a fresh valid chain permit "
+                    f"for mode=final: {permit.get('reason')}"
+                )
+                print("Run: context_cli.py validate-decision --mode final --chain <evidence-chain.json> --emit-permit")
+                return 1
         print(f"Autonomous task stop accepted: {outcome}")
         return 0
 
@@ -553,6 +568,25 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
             if len(unresolved_inputs) > 12:
                 print(f"... {len(unresolved_inputs) - 12} more unresolved INP-*")
             return 1
+        if (
+            isinstance(current_task, dict)
+            and str(current_task.get("status", "")).strip() == "active"
+            and str(current_task.get("execution_mode", "manual")).strip() == "autonomous"
+        ):
+            permit = validate_chain_permit(
+                root,
+                mode="final",
+                action_kind=None,
+                context_fingerprint=current_fingerprint,
+                telemetry={"channel": "runtime", "tool": "preflight-task"},
+            )
+            if not permit.get("ok"):
+                print(
+                    "Final response for an autonomous TASK-* requires a fresh valid chain permit "
+                    f"for mode=final: {permit.get('reason')}"
+                )
+                print("Run: context_cli.py validate-decision --mode final --chain <evidence-chain.json> --emit-permit")
+                return 1
 
     if status == "hydrated-with-conflicts" and mode == "planning":
         print("Planning is blocked while hydrated conflicts remain unresolved. Review review/conflicts.md first.")
@@ -599,6 +633,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
             mode="edit",
             action_kind=action_kind,
             context_fingerprint=current_fingerprint,
+            telemetry={"channel": "runtime", "tool": "preflight-task"},
         )
         if not permit.get("ok"):
             print(
