@@ -22,6 +22,12 @@ Rules:
 
 The ledger is not canonical truth. It is runtime control evidence.
 
+The ledger also functions as task-local working-memory pressure. Each step
+forces the agent to attach its next move to cited facts, observations, marked
+hypotheses, or an explicit fork. The runtime can verify that structure and
+progression, but it cannot verify that the agent chose the globally best
+reasoning path.
+
 ## Planning And Final Gates
 
 - Planning continuation requires a current valid `REASON-*` for the active task.
@@ -65,6 +71,8 @@ transitively reach RUN.
 - Lookup extension exists to make honest REASON progression easier than bypass.
 - Evidence chain validators provide the semantic boundary; ledger validation
   provides append-only integrity.
+- REASON progression is a discipline mechanism: it should improve the agent's
+  local context formation, not pretend to certify thought quality.
 
 ## Known Gaps
 
@@ -73,4 +81,3 @@ transitively reach RUN.
 - Final response enforcement depends on hooks; CLI-only paths need equivalent
   command discipline.
 - The policy for non-Bash protected writes should be explicit per tool.
-

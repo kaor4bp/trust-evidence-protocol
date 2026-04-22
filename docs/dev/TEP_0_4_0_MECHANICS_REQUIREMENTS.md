@@ -34,6 +34,14 @@ boundary between:
 The goal is not to make the agent mechanical. The goal is to make the API do
 the mechanical work so the agent can spend tokens on useful reasoning.
 
+TEP does not mechanically prove that an agent's reasoning is adequate. It can
+validate provenance, ids, quotes, graph shape, mode boundaries, and progression.
+Evidence chains are therefore a cognitive scaffold: by forcing the agent to
+fit facts, observations, and marked hypotheses into a valid graph, TEP increases
+the chance that the agent builds a correct local working context before acting.
+Invalid chains are rejected; weak or incomplete thinking is surfaced as gaps,
+open questions, competing hypotheses, or curator/review work.
+
 ## 2. Architecture Stance
 
 TEP 0.4.0 should be API-first.
@@ -185,6 +193,12 @@ fact: CLM-* "quote"
 -> provenance: SRC/RUN/INP/ART links surfaced by augmentation
 -> decision
 ```
+
+The validator does not judge whether the conclusion is clever, complete, or the
+best possible interpretation. It judges whether the conclusion is allowed to
+stand on the cited graph. This distinction is deliberate: the chain gives the
+agent a disciplined local memory and gives the user/reviewer a compact audit
+surface, but it does not replace human or curator review.
 
 Allowed chain roles:
 

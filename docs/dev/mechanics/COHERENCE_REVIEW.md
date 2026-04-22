@@ -28,6 +28,12 @@ Required implementation pressure:
 - planning/final preflight requires valid reason
 - fallback is fork/new hypothesis/open question, not old-chain reuse
 
+Important limit: this invariant does not mean TEP can prove the agent's
+reasoning is adequate. It only proves that the agent is progressing through a
+valid, inspectable graph. The expected benefit is cognitive scaffolding: the
+agent has to form and update a local working context from records instead of
+acting from unstated impressions.
+
 ### Agent Freedom With Mechanical Boundaries
 
 Consistent across hypotheses, curiosity, proposals, and reason ledger.
@@ -116,16 +122,18 @@ Needed:
 - explicit route when workspace search is needed
 - no repo pollution from backend markers unless explicitly allowed
 
-### 7. Cleanup Can Hide Useful Historical Context
+### 7. Historical Context Ranking Is Not Yet Precise
 
-Forgetting old bug claims is necessary, but stale records can still matter for
-regressions.
+Cleanup is not a 0.4.0 development mechanic. Still, lookup must avoid drowning
+agents in resolved or stale high-trust records while keeping them available for
+regression analysis.
 
 Needed:
 
 - lookup fallback ranking for historical/resolved claims
 - "regression suspicion" route that compares old bug with new symptoms
-- archive restore and audit trail
+- explicit stale/resolved labels in compact lookup output
+- cleanup/archive policy can stay future work
 
 ### 8. Token-Pressure Wins Need Measurement
 
@@ -175,6 +183,5 @@ Decision: describe as tamper friction/detection, not access control.
 6. Stabilize backend status honesty.
 7. Stabilize map/curiosity compact views.
 8. Add curator pool mechanics.
-9. Add cleanup/forgetting staging.
+9. Stabilize historical/resolved lookup ranking.
 10. Run deterministic and then explicit live-agent smoke tests.
-

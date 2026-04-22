@@ -18,6 +18,16 @@ fact: CLM-* "quote"
 -> decision
 ```
 
+The chain is a cognitive scaffold, not proof that the agent's reasoning is
+adequate. TEP validates that the agent is using allowed records, matching
+quotes, valid provenance, compatible roles, and explicit uncertainty. It cannot
+mechanically prove that the selected interpretation is the best one.
+
+This is intentional. The main pressure is to make the agent assemble a local
+working context from facts and graph links before it plans, acts, or answers.
+When the chain is incomplete, the right output is a gap, open question,
+competing hypothesis, or proposal instead of an unsupported conclusion.
+
 Allowed roles:
 
 - fact
@@ -47,6 +57,7 @@ Allowed roles:
 - Proof modes reject hypothesis and exploration context.
 - Planning/proposal/curiosity/debugging may include uncertainty if it is
   explicitly marked.
+- Validation rejects invalid support, not "bad thinking" in the abstract.
 
 ## Hypothesis Semantics
 
@@ -90,4 +101,3 @@ or close them.
 - There is no complete formal solver for hypothesis compatibility yet; current
   checks are structural and source-backed.
 - Runtime staleness hypotheses need stricter lifecycle guidance.
-
