@@ -92,6 +92,19 @@ DEFAULT_CHAIN_PERMIT_SETTINGS = {
     "ttl_seconds": DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
 }
 
+REASON_POW_DIFFICULTY_MIN_BITS = 0
+REASON_POW_DIFFICULTY_MAX_BITS = 28
+REASON_POW_MAX_ATTEMPTS_MIN = 1
+REASON_POW_MAX_ATTEMPTS_MAX = 20_000_000
+
+DEFAULT_REASONING_SETTINGS = {
+    "pow": {
+        "enabled": True,
+        "difficulty_bits": 12,
+        "max_attempts": 1_000_000,
+    },
+}
+
 LOGIC_SOLVER_BACKENDS = {"structural", "z3", "auto"}
 LOGIC_SOLVER_OPTIONAL_BACKENDS = {"z3"}
 LOGIC_SOLVER_MODES = {"candidate", "blocking"}
@@ -174,6 +187,7 @@ DEFAULT_SETTINGS = {
     "artifact_policy": DEFAULT_ARTIFACT_POLICY,
     "cleanup": DEFAULT_CLEANUP_SETTINGS,
     "chain_permits": DEFAULT_CHAIN_PERMIT_SETTINGS,
+    "reasoning": DEFAULT_REASONING_SETTINGS,
     "analysis": DEFAULT_ANALYSIS_SETTINGS,
     "backends": DEFAULT_BACKEND_SETTINGS,
     "current_task_ref": None,
@@ -426,6 +440,37 @@ def normalize_chain_permit_settings(raw: object) -> dict:
     return payload
 
 
+def normalize_reasoning_settings(raw: object) -> dict:
+    default_pow = DEFAULT_REASONING_SETTINGS["pow"]
+    payload = {
+        "pow": {
+            "enabled": bool(default_pow["enabled"]),
+            "difficulty_bits": int(default_pow["difficulty_bits"]),
+            "max_attempts": int(default_pow["max_attempts"]),
+        },
+    }
+    if not isinstance(raw, dict):
+        return payload
+    pow_settings = raw.get("pow")
+    if isinstance(pow_settings, dict):
+        enabled = pow_settings.get("enabled")
+        if isinstance(enabled, bool):
+            payload["pow"]["enabled"] = enabled
+        payload["pow"]["difficulty_bits"] = _bounded_int(
+            pow_settings.get("difficulty_bits"),
+            payload["pow"]["difficulty_bits"],
+            REASON_POW_DIFFICULTY_MIN_BITS,
+            REASON_POW_DIFFICULTY_MAX_BITS,
+        )
+        payload["pow"]["max_attempts"] = _bounded_int(
+            pow_settings.get("max_attempts"),
+            payload["pow"]["max_attempts"],
+            REASON_POW_MAX_ATTEMPTS_MIN,
+            REASON_POW_MAX_ATTEMPTS_MAX,
+        )
+    return payload
+
+
 def normalize_analysis_settings(raw: object) -> dict:
     default_logic = DEFAULT_ANALYSIS_SETTINGS["logic_solver"]
     default_topic = DEFAULT_ANALYSIS_SETTINGS["topic_prefilter"]
@@ -650,6 +695,7 @@ def normalize_settings_payload(raw: object) -> dict:
         "artifact_policy": normalize_artifact_policy(None),
         "cleanup": normalize_cleanup_settings(None),
         "chain_permits": normalize_chain_permit_settings(None),
+        "reasoning": normalize_reasoning_settings(None),
         "analysis": normalize_analysis_settings(None),
         "backends": normalize_backend_settings(None),
         "current_task_ref": None,
@@ -669,6 +715,7 @@ def normalize_settings_payload(raw: object) -> dict:
     payload["artifact_policy"] = normalize_artifact_policy(raw.get("artifact_policy"))
     payload["cleanup"] = normalize_cleanup_settings(raw.get("cleanup"))
     payload["chain_permits"] = normalize_chain_permit_settings(raw.get("chain_permits"))
+    payload["reasoning"] = normalize_reasoning_settings(raw.get("reasoning"))
     payload["analysis"] = normalize_analysis_settings(raw.get("analysis"))
     payload["backends"] = normalize_backend_settings(raw.get("backends"))
     current_task_ref = raw.get("current_task_ref")
@@ -731,6 +778,9 @@ def load_effective_settings(root: Path, start: str | Path | None = None) -> dict
             int(payload["chain_permits"]["ttl_seconds"]),
             int(local_chain_permits["ttl_seconds"]),
         )
+    reasoning = local_settings.get("reasoning")
+    if isinstance(reasoning, dict):
+        payload["reasoning"] = normalize_reasoning_settings({**payload["reasoning"], **reasoning})
 
     local_freedom = local_settings.get("allowed_freedom")
     current_freedom = str(payload.get("allowed_freedom") or "proof-only")
@@ -841,6 +891,33 @@ def validate_settings_state(root: Path, records: dict[str, dict]) -> list[Valida
                 or ttl_seconds > CHAIN_PERMIT_TTL_MAX_SECONDS
             ):
                 return [ValidationError(path, "chain_permits.ttl_seconds has invalid value")]
+        raw_reasoning = raw_settings.get("reasoning")
+        if raw_reasoning is not None and not isinstance(raw_reasoning, dict):
+            return [ValidationError(path, "reasoning must be an object")]
+        if isinstance(raw_reasoning, dict):
+            raw_pow = raw_reasoning.get("pow")
+            if raw_pow is not None and not isinstance(raw_pow, dict):
+                return [ValidationError(path, "reasoning.pow must be an object")]
+            if isinstance(raw_pow, dict):
+                enabled = raw_pow.get("enabled")
+                if enabled is not None and not isinstance(enabled, bool):
+                    return [ValidationError(path, "reasoning.pow.enabled has invalid value")]
+                difficulty_bits = raw_pow.get("difficulty_bits")
+                if difficulty_bits is not None and (
+                    isinstance(difficulty_bits, bool)
+                    or not isinstance(difficulty_bits, int)
+                    or difficulty_bits < REASON_POW_DIFFICULTY_MIN_BITS
+                    or difficulty_bits > REASON_POW_DIFFICULTY_MAX_BITS
+                ):
+                    return [ValidationError(path, "reasoning.pow.difficulty_bits has invalid value")]
+                max_attempts = raw_pow.get("max_attempts")
+                if max_attempts is not None and (
+                    isinstance(max_attempts, bool)
+                    or not isinstance(max_attempts, int)
+                    or max_attempts < REASON_POW_MAX_ATTEMPTS_MIN
+                    or max_attempts > REASON_POW_MAX_ATTEMPTS_MAX
+                ):
+                    return [ValidationError(path, "reasoning.pow.max_attempts has invalid value")]
         raw_analysis = raw_settings.get("analysis")
         if raw_analysis is not None and not isinstance(raw_analysis, dict):
             return [ValidationError(path, "analysis must be an object")]
@@ -1004,6 +1081,7 @@ def write_settings(
     artifact_policy: dict | None = None,
     cleanup: dict | None = None,
     chain_permits: dict | None = None,
+    reasoning: dict | None = None,
     analysis: dict | None = None,
     backends: dict | None = None,
     current_task_ref: object = _UNSET,
@@ -1025,6 +1103,8 @@ def write_settings(
         payload["cleanup"] = normalize_cleanup_settings(cleanup)
     if chain_permits is not None:
         payload["chain_permits"] = normalize_chain_permit_settings(chain_permits)
+    if reasoning is not None:
+        payload["reasoning"] = normalize_reasoning_settings(reasoning)
     if analysis is not None:
         payload["analysis"] = normalize_analysis_settings(analysis)
     if backends is not None:

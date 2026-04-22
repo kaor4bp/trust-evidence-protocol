@@ -75,8 +75,10 @@ from tep_runtime.reason_ledger import (
     consume_reason_access,
     create_reason_step,
     grant_reason_access,
+    latest_reason_use_for_command,
     reason_access_text_lines,
     reason_current_text_lines,
+    reserve_reason_access,
     validate_reason_access,
     validate_reason_ledger,
 )

@@ -124,7 +124,8 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-evidence-chain --file evidence-chain.json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-decision --mode planning --chain evidence-chain.json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-step --mode edit --kind write --chain evidence-chain.json --why "why this action follows from the current reasoning"
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-review --reason REASON-* --mode edit --kind write --grant
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-review --reason REASON-* --mode edit --kind write --grant --command "exact bash command" --cwd /abs/repo
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-reserve-access --mode edit --kind write --command "exact bash command" --cwd /abs/repo
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-current
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-decision --mode edit --kind write --chain evidence-chain.json --emit-permit
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-decision --mode model --chain evidence-chain.json --emit-permit
@@ -173,10 +174,10 @@ Use `augment-chain` when you already have record refs but need the plugin to fil
 Use `validate-evidence-chain` before asking permission, recording a mutating `ACT-*`, or presenting a user-facing proof chain.
 Use `validate-decision` after evidence-chain validation when deciding whether that chain is sufficient for planning, permission, edit, model, flow, proposal, final, curiosity, or debugging mode.
 Use `reason-step` to append a task-scoped `REASON-*` reasoning step when the agent changes direction or needs protected access.
-Use `reason-review --reason REASON-* --mode edit --kind <action-kind> --grant` before protected mutating Bash in `evidence-authorized` or `implementation-choice`; the PreToolUse hook requires a fresh one-shot reason access for the current workspace/project/task/fingerprint.
-Use `validate-decision --emit-permit --mode edit --kind <action-kind>` as a compatibility shortcut; it creates a `REASON-*` step, a one-shot `REASON-*` access, and a legacy `CHSIG-*`.
-Reason access output includes ids, mode, action kind, expiry, and single-use status so the agent can show the user what it actually requested.
-Access grants require exactly one current `TASK-*` node in the chain and bind to one mode, optional action kind, current workspace/project/task, chain hash, and context fingerprint.
+Use `reason-review --reason REASON-* --mode edit --kind <action-kind> --grant --command "..." --cwd ...` before protected mutating Bash in `evidence-authorized` or `implementation-choice`; the PreToolUse hook requires a command-bound `AUTH-*` and reserves it as `USE-*` before the command starts.
+Use `validate-decision --emit-permit --mode edit --kind <action-kind>` as a compatibility shortcut for write-API gates; for Bash hooks, follow it with a command-bound `reason-review`.
+Reason authorization output includes ids, mode, action kind, expiry, command hash, and max uses so the agent can show the user what it actually requested.
+Access grants require exactly one current `TASK-*` node in the chain and bind to one mode, optional action kind, current workspace/project/task, chain hash, context fingerprint, and, for Bash, exact command hash plus cwd.
 Access TTL defaults to `settings.chain_permits.ttl_seconds = 300`; `--ttl-seconds` may request a shorter window but cannot exceed settings.
 Use the same reason access before write-API commitments in `evidence-authorized` or `implementation-choice`: mutating `record-action` checks a matching edit access and chain hash; working/stable/contested `record-model` and `record-flow` check `mode=model` or `mode=flow` access.
 Use `reason-review --reason REASON-* --mode final --grant` before marking an autonomous task `done`; Stop/final guards reject `done` without fresh final reason access.
@@ -245,6 +246,7 @@ Use `hooks.verbosity=quiet` to reduce routine hook chatter while preserving stal
 Use `hooks.run_capture=off|mutating|all` to control automatic PostToolUse `RUN-*` capture; default `mutating` avoids turning every read-only `rg/ls/sed` into canonical context churn.
 Use `context_budget` as policy for compact/normal/debug output; do not treat compact output as permission to omit decisive ids.
 Use `chain_permits.ttl_seconds` to tune signed-chain permit lifetime; local `.tep.settings.chain_permits.ttl_seconds` can only lower the effective value for a workdir.
+Use `reasoning.pow.enabled`, `reasoning.pow.difficulty_bits`, and `reasoning.pow.max_attempts` to tune weak proof-of-work for new `REASON/AUTH/USE` ledger entries; PoW is friction and tamper-evidence, not a sandbox boundary.
 Use `input_capture` as policy for prompt provenance; `INP-*` records are not proof until classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
 Do not call an `INP-*` a remembered fact/rule. Use `review/inputs.md` to find unclassified inputs, then create/link the derived canonical records before final response.
 Use `analysis` as policy for optional helpers such as Z3 and NMF; it is not proof and not permission to silently install dependencies.

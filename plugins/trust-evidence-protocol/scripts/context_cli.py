@@ -191,6 +191,7 @@ from context_lib import (
     consume_reason_access,
     create_reason_step,
     create_chain_permit,
+    latest_reason_use_for_command,
     current_project_ref,
     current_task_ref,
     curiosity_probe_text_lines,
@@ -279,6 +280,7 @@ from context_lib import (
     reasoning_case_text_lines,
     reason_access_text_lines,
     reason_current_text_lines,
+    reserve_reason_access,
     score_record,
     select_precedent_tasks,
     validate_evidence_chain_payload,
@@ -2437,6 +2439,9 @@ def cmd_reason_review(
     action_kind: str | None,
     grant: bool,
     ttl_seconds: int | None,
+    command: str | None,
+    cwd: str | None,
+    tool: str,
     output_format: str,
 ) -> int:
     validation = validate_reason_ledger(root)
@@ -2462,6 +2467,9 @@ def cmd_reason_review(
         mode=mode,
         action_kind=action_kind,
         ttl_seconds=ttl_seconds,
+        command=command,
+        cwd=cwd,
+        tool=tool,
     )
     if error:
         print(error)
@@ -2487,6 +2495,60 @@ def cmd_reason_use_access(root: Path, mode: str, action_kind: str | None, used_b
         return 1
     print(f"Consumed reason access {used.get('access_ref')} with {used_by_ref}")
     return 0
+
+
+def cmd_reason_reserve_access(
+    root: Path,
+    mode: str,
+    action_kind: str | None,
+    command: str,
+    cwd: str | None,
+    tool: str,
+    output_format: str,
+) -> int:
+    use, error = reserve_reason_access(
+        root,
+        mode=mode,
+        action_kind=action_kind,
+        command=command,
+        cwd=cwd or str(Path.cwd()),
+        tool=tool,
+    )
+    if error:
+        print(error)
+        return 1
+    if output_format == "json":
+        print(json.dumps(use, indent=2, ensure_ascii=False))
+    else:
+        print(f"Reserved reason auth {use.get('auth_ref') or use.get('access_ref')} with {use.get('id')}")
+    return 0
+
+
+def cmd_reason_match_use(
+    root: Path,
+    mode: str,
+    action_kind: str | None,
+    command: str,
+    cwd: str | None,
+    tool: str,
+    output_format: str,
+) -> int:
+    use = latest_reason_use_for_command(
+        root,
+        mode=mode,
+        action_kind=action_kind,
+        command=command,
+        cwd=cwd or str(Path.cwd()),
+        tool=tool,
+    )
+    payload = {"use": use, "found": bool(use)}
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    elif use:
+        print(f"Matched reason use {use.get('id')} for auth {use.get('auth_ref') or use.get('access_ref')}")
+    else:
+        print("No matching reason use")
+    return 0 if use else 1
 
 
 def cmd_augment_chain(root: Path, chain_file: Path, output_format: str) -> int:
@@ -3010,7 +3072,7 @@ def cmd_help(topic: str) -> int:
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|model|flow|proposal|final --chain evidence-chain.json",
-            "reason-step --mode edit --kind write --chain evidence-chain.json --why ... | reason-review --reason REASON-* --mode edit --kind write --grant | reason-current",
+            "reason-step --mode edit --kind write --chain evidence-chain.json --why ... | reason-review --reason REASON-* --mode edit --kind write --grant [--command ... --cwd ...] | reason-reserve-access --mode edit --kind write --command ... --cwd ... | reason-current",
             "record-input ... | record-run --command ... | record-support --thought ... --kind file-line|command-output|user-confirmation | classify-input --input INP-* --derived-record REF",
             "curator-pool build --workspace WSP-* [--project PRJ-*] [--task TASK-*] --kind health|duplicates|conflicts|modeling|flow|staleness --query ... | curator-pool show --pool CURP-* [--format json]",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
@@ -7492,6 +7554,7 @@ def build_run_support_record(
     stdout_quote: str,
     stderr_quote: str,
     action_kind: str | None,
+    reason_use_ref: str | None,
     artifact_refs: list[str],
     project_refs: list[str],
     task_refs: list[str],
@@ -7510,6 +7573,7 @@ def build_run_support_record(
         stdout_quote=stdout_quote,
         stderr_quote=stderr_quote,
         action_kind=action_kind,
+        reason_use_ref=reason_use_ref,
         artifact_refs=artifact_refs,
         workspace_refs=workspace_refs,
         project_refs=project_refs,
@@ -7671,6 +7735,7 @@ def cmd_record_evidence(
             stdout_quote if stdout_quote is not None else quote,
             stderr_quote or "",
             action_kind,
+            None,
             resolved_artifact_refs,
             resolved_project_refs,
             resolved_task_refs,
@@ -7842,6 +7907,7 @@ def cmd_record_run(
     stdout_quote: str | None,
     stderr_quote: str | None,
     action_kind: str | None,
+    reason_use_ref: str | None,
     artifact_refs: list[str],
     project_refs: list[str],
     task_refs: list[str],
@@ -7865,6 +7931,7 @@ def cmd_record_run(
         stdout_quote or "",
         stderr_quote or "",
         action_kind,
+        reason_use_ref,
         [ref.strip() for ref in artifact_refs if ref.strip()],
         project_refs_for_write(root, project_refs),
         task_refs_for_write(root, task_refs),
@@ -9036,8 +9103,31 @@ def parse_args() -> argparse.Namespace:
     reason_review.add_argument("--kind", dest="action_kind")
     reason_review.add_argument("--grant", action="store_true")
     reason_review.add_argument("--ttl-seconds", type=int)
+    reason_review.add_argument("--command", dest="shell_command", help="Bind the authorization to one exact Bash command.")
+    reason_review.add_argument("--cwd", help="Bind the authorization to the command working directory.")
+    reason_review.add_argument("--tool", default="bash")
     reason_review.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     subparsers.add_parser("reason-current", help="Show current REASON-* step and recent access grants.")
+    reason_reserve = subparsers.add_parser(
+        "reason-reserve-access",
+        help="Reserve a command-bound AUTH-* before running a protected Bash command.",
+    )
+    reason_reserve.add_argument("--mode", choices=sorted(DECISION_MODES), required=True)
+    reason_reserve.add_argument("--kind", dest="action_kind")
+    reason_reserve.add_argument("--command", dest="shell_command", required=True)
+    reason_reserve.add_argument("--cwd")
+    reason_reserve.add_argument("--tool", default="bash")
+    reason_reserve.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    reason_match = subparsers.add_parser(
+        "reason-match-use",
+        help="Find the latest USE-* reservation for a command.",
+    )
+    reason_match.add_argument("--mode", choices=sorted(DECISION_MODES), required=True)
+    reason_match.add_argument("--kind", dest="action_kind")
+    reason_match.add_argument("--command", dest="shell_command", required=True)
+    reason_match.add_argument("--cwd")
+    reason_match.add_argument("--tool", default="bash")
+    reason_match.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     reason_use = subparsers.add_parser("reason-use-access", help="Consume one active reason access grant.")
     reason_use.add_argument("--mode", choices=sorted(DECISION_MODES), required=True)
     reason_use.add_argument("--kind", dest="action_kind")
@@ -9620,6 +9710,7 @@ def parse_args() -> argparse.Namespace:
     record_run.add_argument("--stdout-quote")
     record_run.add_argument("--stderr-quote")
     record_run.add_argument("--action-kind")
+    record_run.add_argument("--reason-use-ref")
     record_run.add_argument("--artifact-ref", dest="artifact_refs", action="append", default=[])
     record_run.add_argument("--project", dest="project_refs", action="append", default=[])
     record_run.add_argument("--task", dest="task_refs", action="append", default=[])
@@ -10523,11 +10614,38 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 action_kind=args.action_kind,
                 grant=args.grant,
                 ttl_seconds=args.ttl_seconds,
+                command=args.shell_command,
+                cwd=args.cwd,
+                tool=args.tool,
                 output_format=args.output_format,
             )
         )
     if args.command == "reason-current":
         raise SystemExit(cmd_reason_current(root))
+    if args.command == "reason-reserve-access":
+        raise SystemExit(
+            cmd_reason_reserve_access(
+                root,
+                mode=args.mode,
+                action_kind=args.action_kind,
+                command=args.shell_command,
+                cwd=args.cwd,
+                tool=args.tool,
+                output_format=args.output_format,
+            )
+        )
+    if args.command == "reason-match-use":
+        raise SystemExit(
+            cmd_reason_match_use(
+                root,
+                mode=args.mode,
+                action_kind=args.action_kind,
+                command=args.shell_command,
+                cwd=args.cwd,
+                tool=args.tool,
+                output_format=args.output_format,
+            )
+        )
     if args.command == "reason-use-access":
         raise SystemExit(
             cmd_reason_use_access(
@@ -10976,6 +11094,7 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 stdout_quote=args.stdout_quote,
                 stderr_quote=args.stderr_quote,
                 action_kind=args.action_kind,
+                reason_use_ref=args.reason_use_ref,
                 artifact_refs=args.artifact_refs,
                 project_refs=args.project_refs,
                 task_refs=args.task_refs,

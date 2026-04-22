@@ -136,6 +136,7 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
     permit_expired_events = [event for event in permit_events if str(event.get("access_kind") or "") == "chain_permit_expired"]
     permit_rejected_events = [event for event in permit_events if str(event.get("access_kind") or "") == "chain_permit_rejected"]
     reason_access_events = [event for event in event_list if str(event.get("access_kind") or "").startswith("reason_access_")]
+    reason_access_authorized_events = [event for event in reason_access_events if str(event.get("access_kind") or "") == "reason_access_authorized"]
     reason_access_used_events = [event for event in reason_access_events if str(event.get("access_kind") or "") == "reason_access_used"]
     reason_access_missing_events = [event for event in reason_access_events if str(event.get("access_kind") or "") == "reason_access_missing"]
     reason_access_expired_events = [event for event in reason_access_events if str(event.get("access_kind") or "") == "reason_access_expired"]
@@ -258,6 +259,7 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
         "permit_expired_count": len(permit_expired_events),
         "permit_rejected_count": len(permit_rejected_events),
         "reason_access_event_count": len(reason_access_events),
+        "reason_access_authorized_count": len(reason_access_authorized_events),
         "reason_access_used_count": len(reason_access_used_events),
         "reason_access_missing_count": len(reason_access_missing_events),
         "reason_access_expired_count": len(reason_access_expired_events),
@@ -291,7 +293,7 @@ def access_report_text_lines(payload: dict) -> list[str]:
         "# TEP Telemetry Report",
         "",
         "Telemetry is navigation data only. It is not proof.",
-        f"events: `{payload.get('event_count', 0)}` policy_events: `{payload.get('policy_event_count', 0)}` raw_events: `{payload.get('raw_event_count', 0)}` raw_allowed: `{payload.get('raw_read_allowed_count', 0)}` raw_blocked: `{payload.get('raw_read_blocked_count', 0)}` raw_paths: `{payload.get('raw_path_count', 0)}` permit_events: `{payload.get('permit_event_count', 0)}` permit_missing: `{payload.get('permit_missing_count', 0)}` permit_used: `{payload.get('permit_used_count', 0)}` reason_access_missing: `{payload.get('reason_access_missing_count', 0)}` reason_access_used: `{payload.get('reason_access_used_count', 0)}`",
+        f"events: `{payload.get('event_count', 0)}` policy_events: `{payload.get('policy_event_count', 0)}` raw_events: `{payload.get('raw_event_count', 0)}` raw_allowed: `{payload.get('raw_read_allowed_count', 0)}` raw_blocked: `{payload.get('raw_read_blocked_count', 0)}` raw_paths: `{payload.get('raw_path_count', 0)}` permit_events: `{payload.get('permit_event_count', 0)}` permit_missing: `{payload.get('permit_missing_count', 0)}` permit_used: `{payload.get('permit_used_count', 0)}` reason_access_missing: `{payload.get('reason_access_missing_count', 0)}` reason_access_authorized: `{payload.get('reason_access_authorized_count', 0)}` reason_access_used: `{payload.get('reason_access_used_count', 0)}`",
         "",
         "## Recent Policy Window",
     ]

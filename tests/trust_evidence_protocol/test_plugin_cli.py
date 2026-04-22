@@ -5086,7 +5086,7 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
         str(chain),
         "--emit-permit",
     )
-    assert "## Reason Access" in permit_result.stdout
+    assert "## Reason Authorization" in permit_result.stdout
     assert "## Chain Permit" in permit_result.stdout
     assert "## Signed Chain" in permit_result.stdout
     assert "chain_hash" in permit_result.stdout
@@ -5337,7 +5337,7 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
         "--emit-permit",
     )
     reason_match = re.search(r"reason: `(REASON-\d{8}-[0-9a-f]{8})`", decision.stdout)
-    access_match = re.search(r"access: `(REASON-\d{8}-[0-9a-f]{8})`", decision.stdout)
+    access_match = re.search(r"auth: `(AUTH-\d{8}-[0-9a-f]{8})`", decision.stdout)
     assert reason_match, decision.stdout
     assert access_match, decision.stdout
     reason_id = reason_match.group(1)

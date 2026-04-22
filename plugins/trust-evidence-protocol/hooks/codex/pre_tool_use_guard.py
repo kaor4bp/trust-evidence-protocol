@@ -16,6 +16,7 @@ from hook_common import (
     locate_context,
     protected_reasoning_write_violation,
     raw_claim_read_allowed,
+    run_context_cli,
     run_runtime_gate,
     TEP_ICON,
 )
@@ -84,6 +85,34 @@ def main() -> int:
         cwd=cwd,
     )
     if result.returncode == 0:
+        reserve = run_context_cli(
+            "--context",
+            str(context_root),
+            "reason-reserve-access",
+            "--mode",
+            "edit",
+            "--kind",
+            action_kind,
+            "--command",
+            command,
+            "--cwd",
+            str(cwd or ""),
+            "--format",
+            "json",
+            cwd=cwd,
+        )
+        if reserve.returncode != 0:
+            message = (reserve.stdout or reserve.stderr or "").strip()
+            if not message:
+                message = "Protected Bash command requires command-bound AUTH-* reservation."
+            emit_denial(
+                message.splitlines()[0],
+                permission_context=(
+                    "Create a command-bound authorization first: "
+                    "reason-review --reason REASON-* --mode edit "
+                    f"--kind {action_kind} --grant --command <exact-command> --cwd <cwd>"
+                ),
+            )
         return 0
 
     message = (result.stdout or result.stderr or "").strip()

@@ -22,6 +22,7 @@ def build_run_payload(
     stdout_quote: str,
     stderr_quote: str,
     action_kind: str | None,
+    reason_use_ref: str | None,
     artifact_refs: list[str],
     workspace_refs: list[str],
     project_refs: list[str],
@@ -51,4 +52,6 @@ def build_run_payload(
         payload["exit_code"] = exit_code
     if action_kind:
         payload["action_kind"] = action_kind.strip()
+    if reason_use_ref:
+        payload["reason_use_ref"] = reason_use_ref.strip()
     return payload

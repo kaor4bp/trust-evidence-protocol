@@ -84,6 +84,10 @@ MUTATING_COMMANDS = {
     "assign-code-index",
     "tap-record",
     "attention-index",
+    "reason-step",
+    "reason-review",
+    "reason-reserve-access",
+    "reason-use-access",
 }
 
 MUTATING_HYPOTHESIS_COMMANDS = {"add", "close", "reopen", "remove", "sync"}

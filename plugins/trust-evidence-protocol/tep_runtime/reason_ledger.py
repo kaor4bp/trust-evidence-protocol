@@ -14,13 +14,17 @@ from .hydration import compute_context_fingerprint
 from .io import write_json_file
 from .paths import reasoning_runtime_dir, reasoning_seal_path, reasons_ledger_path
 from .scopes import current_project_ref, current_task_ref, current_workspace_ref
-from .settings import chain_permit_ttl_seconds
+from .settings import chain_permit_ttl_seconds, load_effective_settings
 from .telemetry import append_access_event
 
 
-REASON_ENTRY_VERSION = 1
+REASON_ENTRY_VERSION = 2
 REASON_SIGNED_CHAIN_NODE_LIMIT = 8
 ZERO_LEDGER_HASH = "sha256:0"
+LEDGER_ID_PREFIXES = {"REASON", "AUTH", "USE"}
+LEGACY_ACCESS_ENTRY_TYPES = {"access_granted", "auth_granted"}
+USE_ENTRY_TYPES = {"access_used", "auth_reserved"}
+POW_ALGORITHM = "sha256-leading-zero-bits"
 
 
 def _now() -> datetime:
@@ -68,6 +72,93 @@ def _entry_hash(entry: dict[str, Any]) -> str:
     return _sha256_text(_canonical_json(_entry_material(entry)))
 
 
+def _pow_material(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in entry.items()
+        if key not in {"entry_hash", "ledger_hash", "seal", "pow"}
+    }
+
+
+def _pow_settings(root: Path) -> dict[str, Any]:
+    settings = load_effective_settings(root).get("reasoning", {})
+    pow_settings = settings.get("pow", {}) if isinstance(settings, dict) else {}
+    if not isinstance(pow_settings, dict):
+        pow_settings = {}
+    return {
+        "enabled": bool(pow_settings.get("enabled", True)),
+        "difficulty_bits": int(pow_settings.get("difficulty_bits", 12) or 0),
+        "max_attempts": int(pow_settings.get("max_attempts", 1_000_000) or 1_000_000),
+    }
+
+
+def _has_leading_zero_bits(hex_digest: str, bits: int) -> bool:
+    if bits <= 0:
+        return True
+    full_nibbles = bits // 4
+    remainder = bits % 4
+    if len(hex_digest) < full_nibbles + (1 if remainder else 0):
+        return False
+    if full_nibbles and hex_digest[:full_nibbles] != "0" * full_nibbles:
+        return False
+    if not remainder:
+        return True
+    nibble = int(hex_digest[full_nibbles], 16)
+    return nibble >> (4 - remainder) == 0
+
+
+def _pow_digest(material: dict[str, Any], nonce: str) -> str:
+    return hashlib.sha256(f"{_canonical_json(material)}\n{nonce}".encode("utf-8")).hexdigest()
+
+
+def _mine_pow(root: Path, entry: dict[str, Any]) -> dict[str, Any]:
+    settings = _pow_settings(root)
+    difficulty = max(0, int(settings["difficulty_bits"]))
+    if not settings["enabled"] or difficulty <= 0:
+        return {
+            "algorithm": POW_ALGORITHM,
+            "difficulty_bits": 0,
+            "nonce": "",
+            "digest": "",
+        }
+    max_attempts = max(1, int(settings["max_attempts"]))
+    material = _pow_material(entry)
+    seed = secrets.token_hex(8)
+    for attempt in range(max_attempts):
+        nonce = f"{seed}:{attempt}"
+        digest = _pow_digest(material, nonce)
+        if _has_leading_zero_bits(digest, difficulty):
+            return {
+                "algorithm": POW_ALGORITHM,
+                "difficulty_bits": difficulty,
+                "nonce": nonce,
+                "digest": digest,
+            }
+    raise RuntimeError(f"could not mine reason ledger PoW at difficulty_bits={difficulty}")
+
+
+def _validate_pow(entry: dict[str, Any]) -> str | None:
+    pow_payload = entry.get("pow")
+    if pow_payload is None and int(entry.get("version", 1) or 1) < 2:
+        return None
+    if not isinstance(pow_payload, dict):
+        return "missing pow"
+    algorithm = str(pow_payload.get("algorithm", "")).strip()
+    if algorithm != POW_ALGORITHM:
+        return "unsupported pow algorithm"
+    difficulty = int(pow_payload.get("difficulty_bits", 0) or 0)
+    nonce = str(pow_payload.get("nonce", ""))
+    digest = str(pow_payload.get("digest", "")).strip()
+    if difficulty <= 0:
+        return None
+    expected = _pow_digest(_pow_material(entry), nonce)
+    if digest != expected:
+        return "pow digest mismatch"
+    if not _has_leading_zero_bits(digest, difficulty):
+        return "pow difficulty mismatch"
+    return None
+
+
 def _ledger_hash(prev_ledger_hash: str, entry_hash: str, seal: str) -> str:
     return _sha256_text(f"{prev_ledger_hash}\n{entry_hash}\n{seal}")
 
@@ -75,6 +166,20 @@ def _ledger_hash(prev_ledger_hash: str, entry_hash: str, seal: str) -> str:
 def _seal_payload(secret: str, entry_hash: str) -> str:
     digest = hmac.new(secret.encode("utf-8"), entry_hash.encode("utf-8"), hashlib.sha256).hexdigest()
     return "hmac-sha256:" + digest
+
+
+def command_hash(command: str) -> str:
+    return hashlib.sha256(str(command or "").encode("utf-8")).hexdigest()
+
+
+def normalize_cwd(cwd: str | Path | None) -> str:
+    value = str(cwd or "").strip()
+    if not value:
+        return ""
+    try:
+        return str(Path(value).expanduser().resolve())
+    except OSError:
+        return value
 
 
 def ensure_reasoning_secret(root: Path) -> str:
@@ -158,8 +263,9 @@ def validate_reason_ledger(root: Path) -> dict[str, Any]:
     ids: set[str] = set()
     for index, entry in enumerate(entries, start=1):
         entry_id = str(entry.get("id", "")).strip()
-        if not entry_id.startswith("REASON-"):
-            errors.append(f"entry {index}: missing REASON-* id")
+        prefix = entry_id.split("-", 1)[0] if "-" in entry_id else ""
+        if prefix not in LEDGER_ID_PREFIXES:
+            errors.append(f"entry {index}: missing REASON-/AUTH-/USE-* id")
         elif entry_id in ids:
             errors.append(f"{entry_id}: duplicate id")
         ids.add(entry_id)
@@ -168,6 +274,9 @@ def validate_reason_ledger(root: Path) -> dict[str, Any]:
         expected_entry_hash = _entry_hash(entry)
         if str(entry.get("entry_hash", "")).strip() != expected_entry_hash:
             errors.append(f"{entry_id or index}: entry_hash mismatch; ledger appears tampered")
+        pow_error = _validate_pow(entry)
+        if pow_error:
+            errors.append(f"{entry_id or index}: {pow_error}; ledger appears tampered")
         expected_seal = _seal_payload(secret, expected_entry_hash)
         if str(entry.get("seal", "")).strip() != expected_seal:
             errors.append(f"{entry_id or index}: seal mismatch; ledger appears tampered")
@@ -183,30 +292,42 @@ def validate_reason_ledger(root: Path) -> dict[str, Any]:
     }
 
 
-def _next_reason_id(entries: list[dict[str, Any]]) -> str:
+def _next_ledger_id(entries: list[dict[str, Any]], prefix: str) -> str:
+    normalized_prefix = prefix.strip().upper()
+    if normalized_prefix not in LEDGER_ID_PREFIXES:
+        raise ValueError(f"unsupported reason ledger prefix: {prefix!r}")
     today = _now().strftime("%Y%m%d")
     existing = {str(entry.get("id", "")).strip() for entry in entries}
     for _ in range(32):
-        candidate = f"REASON-{today}-{secrets.token_hex(4)}"
+        candidate = f"{normalized_prefix}-{today}-{secrets.token_hex(4)}"
         if candidate not in existing:
             return candidate
-    raise RuntimeError(f"could not allocate collision-free reason id for REASON-{today}")
+    raise RuntimeError(f"could not allocate collision-free reason id for {normalized_prefix}-{today}")
 
 
-def append_reason_entry(root: Path, payload: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+def append_reason_entry(
+    root: Path,
+    payload: dict[str, Any],
+    *,
+    id_prefix: str = "REASON",
+) -> tuple[dict[str, Any] | None, str | None]:
     validation = validate_reason_ledger(root)
     if not validation["ok"]:
         return None, "; ".join(validation["errors"])
     entries = validation["entries"]
     secret = ensure_reasoning_secret(root)
     entry = {
-        "id": _next_reason_id(entries),
+        "id": _next_ledger_id(entries, id_prefix),
         "record_type": "reason",
         "version": REASON_ENTRY_VERSION,
         "created_at": _now().isoformat(timespec="seconds"),
         "prev_ledger_hash": validation["head_hash"],
         **payload,
     }
+    try:
+        entry["pow"] = _mine_pow(root, entry)
+    except RuntimeError as exc:
+        return None, str(exc)
     entry_hash = _entry_hash(entry)
     seal = _seal_payload(secret, entry_hash)
     entry["entry_hash"] = entry_hash
@@ -302,6 +423,9 @@ def grant_reason_access(
     mode: str,
     action_kind: str | None,
     ttl_seconds: int | None,
+    command: str | None = None,
+    cwd: str | Path | None = None,
+    tool: str = "bash",
 ) -> tuple[dict[str, Any] | None, str | None]:
     validation = validate_reason_ledger(root)
     if not validation["ok"]:
@@ -330,23 +454,35 @@ def grant_reason_access(
         return None, f"{reason_ref} is not valid for mode {mode}"
     issued = _now()
     safe_ttl = chain_permit_ttl_seconds(root, ttl_seconds)
+    normalized_command = str(command or "").strip()
+    normalized_cwd = normalize_cwd(cwd)
+    grant_type = "exact_command" if normalized_command else "action_kind"
+    payload = {
+        "entry_type": "auth_granted",
+        "status": "active",
+        "grant_type": grant_type,
+        "reason_ref": reason_ref,
+        "workspace_ref": current_workspace_ref(root),
+        "project_ref": current_project_ref(root),
+        "task_ref": task_ref,
+        "mode": mode,
+        "action_kind": normalized_kind,
+        "chain_hash": str(reason.get("chain_hash", "")).strip(),
+        "context_fingerprint": compute_context_fingerprint(root),
+        "max_uses": 1,
+        "issued_at": issued.isoformat(timespec="seconds"),
+        "valid_from": issued.isoformat(timespec="seconds"),
+        "expires_at": (issued + timedelta(seconds=safe_ttl)).isoformat(timespec="seconds"),
+    }
+    if normalized_command:
+        payload["tool"] = tool.strip() or "bash"
+        payload["command"] = normalized_command
+        payload["command_sha256"] = command_hash(normalized_command)
+        payload["cwd"] = normalized_cwd
     return append_reason_entry(
         root,
-        {
-            "entry_type": "access_granted",
-            "status": "active",
-            "reason_ref": reason_ref,
-            "workspace_ref": current_workspace_ref(root),
-            "project_ref": current_project_ref(root),
-            "task_ref": task_ref,
-            "mode": mode,
-            "action_kind": normalized_kind,
-            "chain_hash": str(reason.get("chain_hash", "")).strip(),
-            "context_fingerprint": compute_context_fingerprint(root),
-            "single_use": True,
-            "issued_at": issued.isoformat(timespec="seconds"),
-            "expires_at": (issued + timedelta(seconds=safe_ttl)).isoformat(timespec="seconds"),
-        },
+        payload,
+        id_prefix="AUTH",
     )
 
 
@@ -386,9 +522,9 @@ def append_reason_access_event(
 
 def used_access_refs(entries: list[dict[str, Any]]) -> set[str]:
     return {
-        str(entry.get("access_ref", "")).strip()
+        str(entry.get("auth_ref") or entry.get("access_ref", "")).strip()
         for entry in entries
-        if str(entry.get("entry_type", "")).strip() == "access_used"
+        if str(entry.get("entry_type", "")).strip() in USE_ENTRY_TYPES
     }
 
 
@@ -399,6 +535,9 @@ def validate_reason_access(
     action_kind: str | None,
     chain_hash_value: str | None = None,
     context_fingerprint: str | None = None,
+    command: str | None = None,
+    cwd: str | Path | None = None,
+    tool: str | None = None,
     telemetry: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     validation = validate_reason_ledger(root)
@@ -424,12 +563,16 @@ def validate_reason_access(
         "task_ref": current_task_ref(root),
     }
     current_fingerprint = context_fingerprint or compute_context_fingerprint(root)
+    normalized_command = str(command or "").strip()
+    normalized_command_hash = command_hash(normalized_command) if normalized_command else ""
+    normalized_cwd = normalize_cwd(cwd)
+    normalized_tool = str(tool or "").strip()
     used_refs = used_access_refs(entries)
     failures: list[str] = []
     candidates = [
         entry
         for entry in entries
-        if str(entry.get("entry_type", "")).strip() == "access_granted"
+        if str(entry.get("entry_type", "")).strip() in LEGACY_ACCESS_ENTRY_TYPES
     ]
     for access in reversed(candidates):
         access_id = str(access.get("id", "")).strip() or "unknown"
@@ -443,6 +586,21 @@ def validate_reason_access(
         if access_id in used_refs:
             failures.append(f"{access_id}: used")
             continue
+        if normalized_command:
+            access_command_hash = str(access.get("command_sha256", "")).strip()
+            if not access_command_hash:
+                failures.append(f"{access_id}: command hash missing")
+                continue
+            if access_command_hash != normalized_command_hash:
+                failures.append(f"{access_id}: command hash mismatch")
+                continue
+            access_cwd = normalize_cwd(str(access.get("cwd", "")).strip())
+            if access_cwd != normalized_cwd:
+                failures.append(f"{access_id}: cwd mismatch")
+                continue
+            if normalized_tool and str(access.get("tool", "")).strip() not in {normalized_tool, "*"}:
+                failures.append(f"{access_id}: tool mismatch")
+                continue
         if chain_hash_value and str(access.get("chain_hash", "")).strip() != chain_hash_value:
             failures.append(f"{access_id}: chain hash mismatch")
             continue
@@ -467,7 +625,7 @@ def validate_reason_access(
         if telemetry:
             append_reason_access_event(
                 root,
-                "reason_access_used",
+                "reason_access_authorized",
                 access=access,
                 mode=mode,
                 action_kind=normalized_kind,
@@ -502,16 +660,89 @@ def consume_reason_access(
     mode: str,
     action_kind: str | None,
     used_by_ref: str,
+    command: str | None = None,
+    cwd: str | Path | None = None,
+    tool: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
-    validation = validate_reason_access(root, mode=mode, action_kind=action_kind)
+    validation = validate_reason_access(
+        root,
+        mode=mode,
+        action_kind=action_kind,
+        command=command,
+        cwd=cwd,
+        tool=tool,
+    )
     if not validation.get("ok"):
         return None, str(validation.get("reason", "missing reason access"))
     access = validation["access"]
-    return append_reason_entry(
+    normalized_command = str(command or "").strip()
+    payload = {
+        "entry_type": "access_used",
+        "status": "used",
+        "auth_ref": str(access.get("id", "")).strip(),
+        "access_ref": str(access.get("id", "")).strip(),
+        "reason_ref": str(access.get("reason_ref", "")).strip(),
+        "workspace_ref": current_workspace_ref(root),
+        "project_ref": current_project_ref(root),
+        "task_ref": current_task_ref(root),
+        "mode": mode,
+        "action_kind": (action_kind or "").strip(),
+        "used_by_ref": used_by_ref.strip(),
+        "used_at": _now().isoformat(timespec="seconds"),
+    }
+    if normalized_command:
+        payload["tool"] = (tool or "bash").strip() or "bash"
+        payload["command"] = normalized_command
+        payload["command_sha256"] = command_hash(normalized_command)
+        payload["cwd"] = normalize_cwd(cwd)
+    used, error = append_reason_entry(
+        root,
+        payload,
+        id_prefix="USE",
+    )
+    if used and not error:
+        append_reason_access_event(
+            root,
+            "reason_access_used",
+            access=access,
+            mode=mode,
+            action_kind=action_kind,
+            channel="cli",
+            tool="reason-use-access",
+        )
+    return used, error
+
+
+def reserve_reason_access(
+    root: Path,
+    *,
+    mode: str,
+    action_kind: str | None,
+    command: str,
+    cwd: str | Path | None,
+    tool: str = "bash",
+) -> tuple[dict[str, Any] | None, str | None]:
+    normalized_command = command.strip()
+    if not normalized_command:
+        return None, "reason access reservation requires a command"
+    validation = validate_reason_access(
+        root,
+        mode=mode,
+        action_kind=action_kind,
+        command=normalized_command,
+        cwd=cwd,
+        tool=tool,
+        telemetry={"channel": "runtime", "tool": "reason-reserve-access"},
+    )
+    if not validation.get("ok"):
+        return None, str(validation.get("reason", "missing reason access"))
+    access = validation["access"]
+    reserved, error = append_reason_entry(
         root,
         {
-            "entry_type": "access_used",
-            "status": "used",
+            "entry_type": "auth_reserved",
+            "status": "reserved",
+            "auth_ref": str(access.get("id", "")).strip(),
             "access_ref": str(access.get("id", "")).strip(),
             "reason_ref": str(access.get("reason_ref", "")).strip(),
             "workspace_ref": current_workspace_ref(root),
@@ -519,21 +750,72 @@ def consume_reason_access(
             "task_ref": current_task_ref(root),
             "mode": mode,
             "action_kind": (action_kind or "").strip(),
-            "used_by_ref": used_by_ref.strip(),
-            "used_at": _now().isoformat(timespec="seconds"),
+            "tool": tool.strip() or "bash",
+            "command": normalized_command,
+            "command_sha256": command_hash(normalized_command),
+            "cwd": normalize_cwd(cwd),
+            "reserved_at": _now().isoformat(timespec="seconds"),
+            "auth_expires_at": str(access.get("expires_at", "")).strip(),
         },
+        id_prefix="USE",
     )
+    if reserved and not error:
+        append_reason_access_event(
+            root,
+            "reason_access_used",
+            access=access,
+            mode=mode,
+            action_kind=action_kind,
+            channel="runtime",
+            tool="reason-reserve-access",
+        )
+    return reserved, error
+
+
+def latest_reason_use_for_command(
+    root: Path,
+    *,
+    mode: str,
+    action_kind: str | None,
+    command: str,
+    cwd: str | Path | None,
+    tool: str = "bash",
+) -> dict[str, Any] | None:
+    validation = validate_reason_ledger(root)
+    if not validation["ok"]:
+        return None
+    normalized_command_hash = command_hash(command.strip())
+    normalized_cwd = normalize_cwd(cwd)
+    normalized_kind = (action_kind or "").strip()
+    for entry in reversed(validation["entries"]):
+        if str(entry.get("entry_type", "")).strip() not in USE_ENTRY_TYPES:
+            continue
+        if str(entry.get("mode", "")).strip() != mode:
+            continue
+        entry_kind = str(entry.get("action_kind", "")).strip()
+        if normalized_kind and entry_kind not in {normalized_kind, "*"}:
+            continue
+        if str(entry.get("command_sha256", "")).strip() != normalized_command_hash:
+            continue
+        if normalize_cwd(str(entry.get("cwd", "")).strip()) != normalized_cwd:
+            continue
+        if tool and str(entry.get("tool", "")).strip() not in {tool, "*"}:
+            continue
+        return entry
+    return None
 
 
 def reason_access_text_lines(access: dict[str, Any]) -> list[str]:
     return [
-        "## Reason Access",
-        f"- access: `{access.get('id')}`",
+        "## Reason Authorization",
+        f"- auth: `{access.get('id')}`",
         f"- reason: `{access.get('reason_ref')}`",
         f"- mode: `{access.get('mode')}`",
         f"- action_kind: `{access.get('action_kind') or 'none'}`",
+        f"- grant_type: `{access.get('grant_type') or 'action_kind'}`",
+        f"- command_sha256: `{access.get('command_sha256') or 'none'}`",
         f"- expires_at: `{access.get('expires_at')}`",
-        f"- single_use: `{str(bool(access.get('single_use'))).lower()}`",
+        f"- max_uses: `{access.get('max_uses', 1)}`",
     ]
 
 
@@ -547,7 +829,7 @@ def reason_current_text_lines(root: Path) -> tuple[list[str], int]:
     accesses = [
         entry
         for entry in entries
-        if str(entry.get("entry_type", "")).strip() == "access_granted"
+        if str(entry.get("entry_type", "")).strip() in LEGACY_ACCESS_ENTRY_TYPES
         and (not task_ref or str(entry.get("task_ref", "")).strip() == task_ref)
     ]
     used = used_access_refs(entries)
@@ -565,6 +847,6 @@ def reason_current_text_lines(root: Path) -> tuple[list[str], int]:
     for access in accesses[-5:]:
         status = "used" if str(access.get("id", "")).strip() in used else str(access.get("status", "active"))
         lines.append(
-            f"- access `{access.get('id')}` reason=`{access.get('reason_ref')}` mode=`{access.get('mode')}` kind=`{access.get('action_kind') or 'none'}` status=`{status}`"
+            f"- auth `{access.get('id')}` reason=`{access.get('reason_ref')}` mode=`{access.get('mode')}` kind=`{access.get('action_kind') or 'none'}` status=`{status}` command_sha256=`{access.get('command_sha256') or 'none'}`"
         )
     return lines, 0

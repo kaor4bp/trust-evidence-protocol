@@ -460,6 +460,31 @@ They should preserve:
 
 A probe result is navigation metadata until backed by canonical records.
 
+## Reason Authorization Ledger
+
+`runtime/reasoning/reasons.jsonl` is an append-only runtime ledger for protected
+agent actions.
+
+Ledger entries are not canonical truth records. They are runtime control
+evidence:
+
+- `REASON-*`: task-scoped reasoning step with the validated chain snapshot.
+- `AUTH-*`: reviewed authorization bound to mode, action kind, task scope,
+  context fingerprint, expiry, and optionally exact command hash plus cwd.
+- `USE-*`: append-only reservation/use of an `AUTH-*`; older entries are never
+  mutated with `used=true`.
+
+For protected Bash, the intended path is:
+
+```text
+REASON-* -> AUTH-* -> USE-* -> RUN-* -> SRC-* -> CLM-*
+```
+
+New ledger entries include a hash-chain seal and weak proof-of-work metadata.
+This makes accidental/manual rewriting cheap to detect and bulk rewriting more
+expensive, but it is not a sandbox boundary against a process that can directly
+modify all runtime files.
+
 ## Access Telemetry
 
 `activity/access.jsonl` is append-only lookup telemetry.

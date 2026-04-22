@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import re
 
 from hook_common import (
     TEP_ICON,
@@ -54,8 +53,33 @@ def main() -> int:
 
     command = str(payload.get("tool_input", {}).get("command", "")).strip()
     action_kind = infer_action_kind(command, context_root)
-    run_id = ""
+    reason_use_ref = ""
     capture_mode = hook_mode(context_root, "run_capture")
+    if command and action_kind:
+        match_result = run_context_cli(
+            "--context",
+            str(context_root),
+            "reason-match-use",
+            "--mode",
+            "edit",
+            "--kind",
+            action_kind,
+            "--command",
+            command,
+            "--cwd",
+            str(cwd or ""),
+            "--format",
+            "json",
+            cwd=cwd,
+        )
+        if match_result.returncode == 0:
+            try:
+                matched = json.loads(match_result.stdout)
+            except json.JSONDecodeError:
+                matched = {}
+            use = matched.get("use") if isinstance(matched, dict) else None
+            if isinstance(use, dict):
+                reason_use_ref = str(use.get("id", "")).strip()
     if command and (capture_mode == "all" or (capture_mode == "mutating" and action_kind)):
         exit_code = payload.get("tool_response", {}).get("exit_code")
         run_args = [
@@ -71,25 +95,11 @@ def main() -> int:
         ]
         if isinstance(exit_code, int):
             run_args.extend(["--exit-code", str(exit_code)])
-        run_result = run_context_cli(*run_args, cwd=cwd)
-        match = re.search(r"Recorded run (RUN-\d{8}-[0-9a-f]{8})", run_result.stdout)
-        if match:
-            run_id = match.group(1)
+        if reason_use_ref:
+            run_args.extend(["--reason-use-ref", reason_use_ref])
+        run_context_cli(*run_args, cwd=cwd)
     if not action_kind:
         return 0
-    if run_id:
-        run_context_cli(
-            "--context",
-            str(context_root),
-            "reason-use-access",
-            "--mode",
-            "edit",
-            "--kind",
-            action_kind,
-            "--used-by",
-            run_id,
-            cwd=cwd,
-        )
 
     if mode == "notify":
         emit_warning(

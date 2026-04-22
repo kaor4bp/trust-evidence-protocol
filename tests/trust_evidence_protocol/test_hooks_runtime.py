@@ -597,7 +597,7 @@ def test_autonomous_task_stop_guard_requires_terminal_outcome(tmp_path: Path) ->
     telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
     assert telemetry["reason_access_missing_count"] >= 1
     assert telemetry["permit_issued_count"] >= 1
-    assert telemetry["reason_access_used_count"] >= 1
+    assert telemetry["reason_access_authorized_count"] >= 1
 
     codex_payload = hook_json(
         HOOK_DIR / "stop_guard.py",
@@ -1551,16 +1551,35 @@ def test_pre_and_post_tool_hooks_track_mutating_bash_commands(tmp_path: Path) ->
         ),
         encoding="utf-8",
     )
+    permit = json.loads(
+        run_cli(
+            context,
+            "validate-decision",
+            "--mode",
+            "edit",
+            "--kind",
+            "delete",
+            "--chain",
+            str(chain),
+            "--emit-permit",
+            "--format",
+            "json",
+        ).stdout
+    )
     run_cli(
         context,
-        "validate-decision",
+        "reason-review",
+        "--reason",
+        permit["reason"]["id"],
         "--mode",
         "edit",
         "--kind",
         "delete",
-        "--chain",
-        str(chain),
-        "--emit-permit",
+        "--grant",
+        "--command",
+        "rm -rf /tmp/example",
+        "--cwd",
+        str(tmp_path),
     )
 
     allow_result = run_script(
@@ -1571,12 +1590,13 @@ def test_pre_and_post_tool_hooks_track_mutating_bash_commands(tmp_path: Path) ->
 
     post_payload = hook_json(
         HOOK_DIR / "post_tool_use_review.py",
-        hook_payload(context, "echo hi > /tmp/example"),
+        hook_payload(context, "rm -rf /tmp/example"),
     )
     assert "Hydration marked stale" in post_payload["systemMessage"]
     run_id = record_ids(context, "run")[0]
     run_payload = json.loads((context / "records" / "run" / f"{run_id}.json").read_text(encoding="utf-8"))
-    assert run_payload["command"] == "echo hi > /tmp/example"
+    assert run_payload["command"] == "rm -rf /tmp/example"
+    assert run_payload["reason_use_ref"].startswith("USE-")
 
     stale = run_runtime(context, "show-hydration", check=False)
     assert stale.returncode == 1
@@ -1792,6 +1812,21 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         "--chain",
         str(chain),
         "--emit-permit",
+    )
+    run_cli(
+        context,
+        "reason-review",
+        "--reason",
+        permit["reason"]["id"],
+        "--mode",
+        "edit",
+        "--kind",
+        "write",
+        "--grant",
+        "--command",
+        "echo hi > /tmp/example",
+        "--cwd",
+        str(tmp_path),
     )
 
     allow_result = run_script(
