@@ -53,13 +53,13 @@ def main() -> int:
 
     command = str(payload.get("tool_input", {}).get("command", "")).strip()
     action_kind = infer_action_kind(command, context_root)
-    reason_use_ref = ""
+    grant_ref = ""
     capture_mode = hook_mode(context_root, "run_capture")
     if command and action_kind:
         match_result = run_context_cli(
             "--context",
             str(context_root),
-            "reason-match-use",
+            "reason-match-grant",
             "--mode",
             "edit",
             "--kind",
@@ -77,9 +77,9 @@ def main() -> int:
                 matched = json.loads(match_result.stdout)
             except json.JSONDecodeError:
                 matched = {}
-            use = matched.get("use") if isinstance(matched, dict) else None
-            if isinstance(use, dict):
-                reason_use_ref = str(use.get("id", "")).strip()
+            grant = matched.get("grant") if isinstance(matched, dict) else None
+            if isinstance(grant, dict):
+                grant_ref = str(grant.get("id", "")).strip()
     if command and (capture_mode == "all" or (capture_mode == "mutating" and action_kind)):
         exit_code = payload.get("tool_response", {}).get("exit_code")
         run_args = [
@@ -95,8 +95,8 @@ def main() -> int:
         ]
         if isinstance(exit_code, int):
             run_args.extend(["--exit-code", str(exit_code)])
-        if reason_use_ref:
-            run_args.extend(["--reason-use-ref", reason_use_ref])
+        if grant_ref:
+            run_args.extend(["--grant-ref", grant_ref])
         run_context_cli(*run_args, cwd=cwd)
     if not action_kind:
         return 0

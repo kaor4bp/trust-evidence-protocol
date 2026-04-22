@@ -1291,12 +1291,12 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     )
     write_hydration_state(root, {"status": "hydrated", "fingerprint": compute_context_fingerprint(root)})
     evidence_payload = build_next_step_payload(records, root, intent="edit", task="change action graph")
-    assert evidence_payload["chain_permit"]["required"] is True
-    assert evidence_payload["chain_permit"]["ok"] is False
-    assert "reason-review --reason REASON-*" in evidence_payload["chain_permit"]["command"]
+    assert evidence_payload["grant"]["required"] is True
+    assert evidence_payload["grant"]["ok"] is False
+    assert "reason-review --reason REASON-*" in evidence_payload["grant"]["command"]
     assert any("reason-review --reason REASON-*" in step for step in evidence_payload["route_steps"])
     evidence_lines = next_step_text_lines(evidence_payload, "TEP", detail="compact")
-    assert any(line.startswith("- reason-access: missing") for line in evidence_lines)
+    assert any(line.startswith("- grant: missing") for line in evidence_lines)
 
     write_settings(
         root,
@@ -1307,8 +1307,8 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     )
     write_hydration_state(root, {"status": "hydrated", "fingerprint": compute_context_fingerprint(root)})
     implementation_payload = build_next_step_payload(records, root, intent="edit", task="change action graph")
-    assert implementation_payload["chain_permit"]["required"] is True
-    assert implementation_payload["chain_permit"]["ok"] is False
+    assert implementation_payload["grant"]["required"] is True
+    assert implementation_payload["grant"]["ok"] is False
 
 
 def test_reasoning_case_core_builds_payload_and_text() -> None:

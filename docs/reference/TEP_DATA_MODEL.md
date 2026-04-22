@@ -469,15 +469,13 @@ Ledger entries are not canonical truth records. They are runtime control
 evidence:
 
 - `REASON-*`: task-scoped reasoning step with the validated chain snapshot.
-- `AUTH-*`: reviewed authorization bound to mode, action kind, task scope,
-  context fingerprint, expiry, and optionally exact command hash plus cwd.
-- `USE-*`: append-only reservation/use of an `AUTH-*`; older entries are never
-  mutated with `used=true`.
+- `GRANT-*`: reviewed one-shot authorization bound to mode, action kind, task
+  scope, context fingerprint, expiry, and optionally exact command hash plus cwd.
 
 For protected Bash, the intended path is:
 
 ```text
-REASON-* -> AUTH-* -> USE-* -> RUN-* -> SRC-* -> CLM-*
+REASON-* -> GRANT-* -> RUN-* -> SRC-* -> CLM-*
 ```
 
 New ledger entries include a hash-chain seal and weak proof-of-work metadata.

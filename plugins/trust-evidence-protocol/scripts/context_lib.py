@@ -64,15 +64,8 @@ from tep_runtime.code_index import (
     validate_code_index_state,
     write_code_index_views,
 )
-from tep_runtime.chain_permits import (
-    chain_hash,
-    chain_permit_text_lines,
-    create_chain_permit,
-    validate_chain_permit,
-)
 from tep_runtime.reason_ledger import (
     chain_payload_hash,
-    consume_reason_access,
     create_reason_step,
     grant_reason_access,
     latest_reason_use_for_command,

@@ -135,12 +135,32 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
     permit_missing_events = [event for event in permit_events if str(event.get("access_kind") or "") == "chain_permit_missing"]
     permit_expired_events = [event for event in permit_events if str(event.get("access_kind") or "") == "chain_permit_expired"]
     permit_rejected_events = [event for event in permit_events if str(event.get("access_kind") or "") == "chain_permit_rejected"]
-    reason_access_events = [event for event in event_list if str(event.get("access_kind") or "").startswith("reason_access_")]
-    reason_access_authorized_events = [event for event in reason_access_events if str(event.get("access_kind") or "") == "reason_access_authorized"]
-    reason_access_used_events = [event for event in reason_access_events if str(event.get("access_kind") or "") == "reason_access_used"]
-    reason_access_missing_events = [event for event in reason_access_events if str(event.get("access_kind") or "") == "reason_access_missing"]
-    reason_access_expired_events = [event for event in reason_access_events if str(event.get("access_kind") or "") == "reason_access_expired"]
-    reason_access_rejected_events = [event for event in reason_access_events if str(event.get("access_kind") or "") in {"reason_access_rejected", "reason_access_used_rejected"}]
+    reason_grant_events = [
+        event
+        for event in event_list
+        if str(event.get("access_kind") or "").startswith(("reason_grant_", "reason_access_"))
+    ]
+    reason_grant_authorized_events = [
+        event
+        for event in reason_grant_events
+        if str(event.get("access_kind") or "") in {"reason_grant_authorized", "reason_access_authorized"}
+    ]
+    reason_grant_missing_events = [
+        event
+        for event in reason_grant_events
+        if str(event.get("access_kind") or "") in {"reason_grant_missing", "reason_access_missing"}
+    ]
+    reason_grant_expired_events = [
+        event
+        for event in reason_grant_events
+        if str(event.get("access_kind") or "") in {"reason_grant_expired", "reason_access_expired"}
+    ]
+    reason_grant_rejected_events = [
+        event
+        for event in reason_grant_events
+        if str(event.get("access_kind") or "")
+        in {"reason_grant_rejected", "reason_grant_used_rejected", "reason_access_rejected", "reason_access_used_rejected"}
+    ]
     policy_events = [event for event in event_list if policy_event(event)]
     recent_events = event_list[-RECENT_POLICY_WINDOW:]
     recent_policy_events = policy_events[-RECENT_POLICY_WINDOW:]
@@ -174,17 +194,17 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
                 "next_action": "If missing permit events dominate, route agents through next-step and validate-decision --emit-permit earlier.",
             }
         )
-    if reason_access_missing_events or reason_access_expired_events or reason_access_rejected_events:
+    if reason_grant_missing_events or reason_grant_expired_events or reason_grant_rejected_events:
         anomalies.append(
             {
-                "kind": "reason-access-pressure",
+                "kind": "reason-grant-pressure",
                 "severity": "info",
-                "missing_count": len(reason_access_missing_events),
-                "expired_count": len(reason_access_expired_events),
-                "rejected_count": len(reason_access_rejected_events),
-                "message": "REASON-* gates are forcing agents to review the active reasoning step before protected actions.",
+                "missing_count": len(reason_grant_missing_events),
+                "expired_count": len(reason_grant_expired_events),
+                "rejected_count": len(reason_grant_rejected_events),
+                "message": "GRANT-* gates are forcing agents to validate reasoning before protected actions.",
                 "recommended_tools": ["next_step", "reason-current", "reason-step", "reason-review"],
-                "next_action": "If missing reason access dominates, route agents through a REASON-* step/review before protected actions.",
+                "next_action": "If missing grants dominate, route agents through a REASON-* step/review before protected actions.",
             }
         )
     if recent_policy["event_count"] and recent_policy["unspecified_reason_ratio"] > 0.25:
@@ -258,12 +278,17 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
         "permit_missing_count": len(permit_missing_events),
         "permit_expired_count": len(permit_expired_events),
         "permit_rejected_count": len(permit_rejected_events),
-        "reason_access_event_count": len(reason_access_events),
-        "reason_access_authorized_count": len(reason_access_authorized_events),
-        "reason_access_used_count": len(reason_access_used_events),
-        "reason_access_missing_count": len(reason_access_missing_events),
-        "reason_access_expired_count": len(reason_access_expired_events),
-        "reason_access_rejected_count": len(reason_access_rejected_events),
+        "reason_grant_event_count": len(reason_grant_events),
+        "reason_grant_authorized_count": len(reason_grant_authorized_events),
+        "reason_grant_missing_count": len(reason_grant_missing_events),
+        "reason_grant_expired_count": len(reason_grant_expired_events),
+        "reason_grant_rejected_count": len(reason_grant_rejected_events),
+        "reason_access_event_count": len(reason_grant_events),
+        "reason_access_authorized_count": len(reason_grant_authorized_events),
+        "reason_access_used_count": 0,
+        "reason_access_missing_count": len(reason_grant_missing_events),
+        "reason_access_expired_count": len(reason_grant_expired_events),
+        "reason_access_rejected_count": len(reason_grant_rejected_events),
         "policy_event_count": len(policy_events),
         "recent_window_size": RECENT_POLICY_WINDOW,
         "recent": recent_all,
@@ -283,7 +308,8 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
         ],
         "recent_raw_events": raw_events[-max(1, limit) :],
         "recent_permit_events": permit_events[-max(1, limit) :],
-        "recent_reason_access_events": reason_access_events[-max(1, limit) :],
+        "recent_reason_grant_events": reason_grant_events[-max(1, limit) :],
+        "recent_reason_access_events": reason_grant_events[-max(1, limit) :],
         "anomalies": anomalies,
     }
 
@@ -293,7 +319,7 @@ def access_report_text_lines(payload: dict) -> list[str]:
         "# TEP Telemetry Report",
         "",
         "Telemetry is navigation data only. It is not proof.",
-        f"events: `{payload.get('event_count', 0)}` policy_events: `{payload.get('policy_event_count', 0)}` raw_events: `{payload.get('raw_event_count', 0)}` raw_allowed: `{payload.get('raw_read_allowed_count', 0)}` raw_blocked: `{payload.get('raw_read_blocked_count', 0)}` raw_paths: `{payload.get('raw_path_count', 0)}` permit_events: `{payload.get('permit_event_count', 0)}` permit_missing: `{payload.get('permit_missing_count', 0)}` permit_used: `{payload.get('permit_used_count', 0)}` reason_access_missing: `{payload.get('reason_access_missing_count', 0)}` reason_access_authorized: `{payload.get('reason_access_authorized_count', 0)}` reason_access_used: `{payload.get('reason_access_used_count', 0)}`",
+        f"events: `{payload.get('event_count', 0)}` policy_events: `{payload.get('policy_event_count', 0)}` raw_events: `{payload.get('raw_event_count', 0)}` raw_allowed: `{payload.get('raw_read_allowed_count', 0)}` raw_blocked: `{payload.get('raw_read_blocked_count', 0)}` raw_paths: `{payload.get('raw_path_count', 0)}` permit_events: `{payload.get('permit_event_count', 0)}` permit_missing: `{payload.get('permit_missing_count', 0)}` permit_used: `{payload.get('permit_used_count', 0)}` reason_grant_missing: `{payload.get('reason_grant_missing_count', 0)}` reason_grant_authorized: `{payload.get('reason_grant_authorized_count', 0)}`",
         "",
         "## Recent Policy Window",
     ]

@@ -5069,11 +5069,11 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
         "--evidence-chain",
         str(chain),
         "--note",
-        "missing chain permit",
+        "missing grant",
         check=False,
     )
     assert missing_permit.returncode == 1
-    assert "fresh valid REASON-* access" in missing_permit.stdout
+    assert "fresh valid GRANT-*" in missing_permit.stdout
 
     permit_result = run_cli(
         context,
@@ -5086,8 +5086,8 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
         str(chain),
         "--emit-permit",
     )
-    assert "## Reason Authorization" in permit_result.stdout
-    assert "## Chain Permit" in permit_result.stdout
+    assert "## Reason Grant" in permit_result.stdout
+    assert "## Chain Permit" not in permit_result.stdout
     assert "## Signed Chain" in permit_result.stdout
     assert "chain_hash" in permit_result.stdout
     assert f"- fact `{claim_id}`: \"Bounded edit is supported by runtime evidence.\"" in permit_result.stdout
@@ -5114,14 +5114,14 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
     assert only_record_id(context, "action").startswith("ACT-")
 
 
-def test_chain_permit_requires_current_task_node_and_uses_configured_ttl(tmp_path: Path) -> None:
+def test_grant_requires_current_task_node_and_uses_configured_ttl(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
     run_cli(
         context,
         "record-source",
-        "--scope",
-        "demo.chain-permit",
+            "--scope",
+            "demo.grant",
         "--source-kind",
         "runtime",
         "--critique-status",
@@ -5129,18 +5129,18 @@ def test_chain_permit_requires_current_task_node_and_uses_configured_ttl(tmp_pat
         "--origin-kind",
         "command",
         "--origin-ref",
-        "pytest chain permit",
+            "pytest grant",
         "--quote",
         "validated reasoning supports a bounded action",
         "--note",
-        "chain permit source",
+            "grant source",
     )
     source_id = only_record_id(context, "source")
     run_cli(
         context,
         "record-claim",
-        "--scope",
-        "demo.chain-permit",
+            "--scope",
+            "demo.grant",
         "--plane",
         "runtime",
         "--status",
@@ -5150,14 +5150,14 @@ def test_chain_permit_requires_current_task_node_and_uses_configured_ttl(tmp_pat
         "--source",
         source_id,
         "--note",
-        "chain permit claim",
+            "grant claim",
     )
     claim_id = only_record_id(context, "claim")
     fact_only_chain = context.parent / "fact-only-chain.json"
     fact_only_chain.write_text(
         json.dumps(
                 {
-                    "task": "chain permit without task node",
+                    "task": "grant without task node",
                     "nodes": [{"role": "fact", "ref": claim_id, "quote": "Validated reasoning supports a bounded action."}],
                     "edges": [{"from": claim_id, "to": claim_id, "relation": "supports-decision"}],
                 }
@@ -5178,19 +5178,19 @@ def test_chain_permit_requires_current_task_node_and_uses_configured_ttl(tmp_pat
         check=False,
     )
     assert no_task.returncode == 1
-    assert "chain permits require an active TASK-*" in no_task.stdout
+    assert "reason steps require an active TASK-*" in no_task.stdout
 
     run_cli(
         context,
         "start-task",
         "--scope",
-        "demo.chain-permit",
+        "demo.grant",
         "--title",
-        "Bounded chain-permit task",
+        "Bounded grant task",
         "--related-claim",
         claim_id,
         "--note",
-        "active task for chain permit",
+        "active task for grant",
     )
     task_id = only_record_id(context, "task")
 
@@ -5213,10 +5213,10 @@ def test_chain_permit_requires_current_task_node_and_uses_configured_ttl(tmp_pat
     task_chain.write_text(
         json.dumps(
             {
-                "task": "chain permit with task node",
+                "task": "grant with task node",
                 "nodes": [
                     {"role": "fact", "ref": claim_id, "quote": "Validated reasoning supports a bounded action."},
-                    {"role": "task", "ref": task_id, "quote": "Bounded chain-permit task"},
+                    {"role": "task", "ref": task_id, "quote": "Bounded grant task"},
                 ],
                 "edges": [{"from": claim_id, "to": task_id, "relation": "supports bounded task"}],
             }
@@ -5225,7 +5225,7 @@ def test_chain_permit_requires_current_task_node_and_uses_configured_ttl(tmp_pat
     )
     configured = run_cli(context, "configure-runtime", "--chain-permit", "ttl_seconds=60")
     assert "chain_permits.ttl_seconds=60" in configured.stdout
-    permit_payload = json.loads(
+    grant_payload = json.loads(
         run_cli(
             context,
             "validate-decision",
@@ -5242,13 +5242,14 @@ def test_chain_permit_requires_current_task_node_and_uses_configured_ttl(tmp_pat
             "json",
         ).stdout
     )
-    permit = permit_payload["permit"]
-    assert permit["task_ref"] == task_id
-    assert permit["mode"] == "edit"
-    assert permit["action_kind"] == "write"
-    assert permit["signed_chain"]["node_count"] == 2
-    issued = datetime.fromisoformat(permit["issued_at"])
-    expires = datetime.fromisoformat(permit["expires_at"])
+    grant = grant_payload["grant"]
+    assert grant["task_ref"] == task_id
+    assert grant["mode"] == "edit"
+    assert grant["action_kind"] == "write"
+    assert grant["reason_ref"] == grant_payload["reason"]["id"]
+    assert grant_payload["reason"]["signed_chain"]["node_count"] == 2
+    issued = datetime.fromisoformat(grant["issued_at"])
+    expires = datetime.fromisoformat(grant["expires_at"])
     assert 30 <= (expires - issued).total_seconds() <= 60
 
 
@@ -5337,7 +5338,7 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
         "--emit-permit",
     )
     reason_match = re.search(r"reason: `(REASON-\d{8}-[0-9a-f]{8})`", decision.stdout)
-    access_match = re.search(r"auth: `(AUTH-\d{8}-[0-9a-f]{8})`", decision.stdout)
+    access_match = re.search(r"grant: `(GRANT-\d{8}-[0-9a-f]{8})`", decision.stdout)
     assert reason_match, decision.stdout
     assert access_match, decision.stdout
     reason_id = reason_match.group(1)
@@ -5346,17 +5347,31 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
     assert reason_id in current.stdout
     assert access_id in current.stdout
 
-    used = run_cli(context, "reason-use-access", "--mode", "edit", "--kind", "write", "--used-by", "RUN-20260422-abcdef12")
-    assert f"Consumed reason access {access_id}" in used.stdout
+    run_cli(
+        context,
+        "record-run",
+        "--command",
+        "echo reasoned",
+        "--exit-code",
+        "0",
+        "--action-kind",
+        "write",
+        "--grant-ref",
+        access_id,
+        "--note",
+        "first run consumes the grant by linkage",
+    )
     reused = run_cli(
         context,
-        "reason-use-access",
+        "reason-check-grant",
         "--mode",
         "edit",
         "--kind",
         "write",
-        "--used-by",
-        "RUN-20260422-abcdef13",
+        "--command",
+        "echo reasoned",
+        "--cwd",
+        str(context.parent),
         check=False,
     )
     assert reused.returncode == 1
@@ -5369,7 +5384,7 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
     assert "tampered" in tampered.stdout
 
 
-def test_evidence_authorized_model_and_flow_require_chain_permits(tmp_path: Path) -> None:
+def test_evidence_authorized_model_and_flow_require_grants(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     claim_id = user_confirmed_theory_claim(
         context,

@@ -15,7 +15,7 @@ from .tasks import validate_task_decomposition_payload
 
 NEXT_STEP_INTENTS = {"auto", "answer", "plan", "edit", "test", "persist", "permission", "debug", "after-mutation"}
 VALID_HYDRATION_STATUSES = {"hydrated", "hydrated-with-conflicts"}
-CHAIN_PERMIT_REQUIRED_FREEDOMS = {"evidence-authorized", "implementation-choice"}
+GRANT_REQUIRED_FREEDOMS = {"evidence-authorized", "implementation-choice"}
 
 
 def _record_summary(records: dict[str, dict], record_ref: str, key_field: str) -> dict:
@@ -75,7 +75,7 @@ def _route_graph(intent: str) -> dict:
             {"if": "current task is parent/invalid", "then": "switch to leaf task|decompose-task"},
             {"if": "guidelines missing", "then": "guidelines-for"},
             {"if": "proof gap", "then": "build/validate evidence chain"},
-            {"if": "reason access missing", "then": "reason-step|reason-review --grant"},
+            {"if": "grant missing", "then": "reason-step|reason-review --grant"},
             {"if": "blocked by policy", "then": "permission|debug"},
             {"if": "edited", "then": "after-mutation"},
         ],
@@ -151,7 +151,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
 
     route_label, route_steps = _intent_route(intent, task)
     route_steps = list(route_steps)
-    permit_status = {
+    grant_status = {
         "required": False,
         "mode": "",
         "action_kind": "",
@@ -159,20 +159,20 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         "reason": "",
         "command": "",
     }
-    if intent == "edit" and str(settings.get("allowed_freedom", "proof-only")) in CHAIN_PERMIT_REQUIRED_FREEDOMS:
-        permit_check = validate_reason_access(root, mode="edit", action_kind=None)
-        permit_status = {
+    if intent == "edit" and str(settings.get("allowed_freedom", "proof-only")) in GRANT_REQUIRED_FREEDOMS:
+        grant_check = validate_reason_access(root, mode="edit", action_kind=None)
+        grant_status = {
             "required": True,
             "mode": "edit",
             "action_kind": "<action-kind>",
-            "ok": bool(permit_check.get("ok")),
-            "reason": str(permit_check.get("reason") or ""),
+            "ok": bool(grant_check.get("ok")),
+            "reason": str(grant_check.get("reason") or ""),
             "command": "reason-review --reason REASON-* --mode edit --kind <action-kind> --grant",
         }
-        permit_step = permit_status["command"]
-        if permit_step not in route_steps:
+        grant_step = grant_status["command"]
+        if grant_step not in route_steps:
             insert_at = max(0, len(route_steps) - 1)
-            route_steps.insert(insert_at, permit_step)
+            route_steps.insert(insert_at, grant_step)
     return {
         "intent": intent,
         "route_label": route_label,
@@ -191,14 +191,14 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         "forced_first": forced,
         "route_steps": route_steps,
         "route_graph": _route_graph(intent),
-        "chain_permit": permit_status,
+        "grant": grant_status,
         "api_contract": {
             "contract_version": 1,
             "normal_entrypoint": "lookup",
             "route_graph_required": True,
             "drill_down_tools": ["brief-context", "search-records", "claim-graph", "record-detail", "linked-records"],
             "proof_rule": "Navigation output is not proof; cite canonical records with quotes before decisions.",
-            "permit_rule": "Mutating protected actions in evidence-authorized or implementation-choice require a fresh one-shot REASON-* access bound to current workspace/project/task/fingerprint.",
+            "grant_rule": "Mutating protected actions in evidence-authorized or implementation-choice require a fresh one-shot GRANT-* bound to current workspace/project/task/fingerprint.",
             "write_rule": "Use record-support/record-evidence so FILE/RUN/SRC/CLM links are built mechanically; low-level record-source/record-claim are for plugin-dev or migration.",
             "task_rule": "Mutating work belongs on a valid atomic leaf TASK-*; parent tasks are orchestration only.",
         },
@@ -240,10 +240,10 @@ def next_step_text_lines(payload: dict, icon: str, detail: str = "compact") -> l
             if isinstance(branch, dict)
         ]
         lines.append("- graph: " + " | ".join(compact_branches))
-    permit = payload.get("chain_permit") or {}
-    if permit.get("required"):
-        state = "ok" if permit.get("ok") else f"missing ({permit.get('reason')})"
-        lines.append(f"- reason-access: {state}; run `{permit.get('command')}`")
+    grant = payload.get("grant") or {}
+    if grant.get("required"):
+        state = "ok" if grant.get("ok") else f"missing ({grant.get('reason')})"
+        lines.append(f"- grant: {state}; run `{grant.get('command')}`")
     decomposition = payload.get("task_decomposition") or {}
     if decomposition:
         lines.append(

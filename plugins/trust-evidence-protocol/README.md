@@ -189,7 +189,7 @@ comparison, logic, migration, or source-only staging.
 - repo-local Codex hook modes
 - `hooks.run_capture = off|mutating|all` for automatic PostToolUse `RUN-*` capture
 - `context_budget` preferences for compact/normal/debug output
-- `chain_permits.ttl_seconds` for signed reasoning-chain permit lifetime
+- `chain_permits.ttl_seconds` for `GRANT-*` lifetime
 - `input_capture` policy for prompt/session capture
 - `artifact_policy` for when referenced files are copied or only linked
 - `cleanup` staging and retention thresholds
@@ -451,7 +451,7 @@ Commands:
   - shows or updates `hooks.verbosity`
   - shows or updates `hooks.run_capture`
   - shows or updates `context_budget`
-  - shows or updates `chain_permits.ttl_seconds`
+  - shows or updates `chain_permits.ttl_seconds` grant TTL
   - shows or updates optional `analysis` backend policy
   - shows or updates optional external backend registry policy
   - useful examples:
@@ -862,10 +862,10 @@ Commands:
   - blocks `hypothesis` and `exploration_context` nodes as decisive proof for permission, edit, model, flow, and final decisions
   - requires `requested_permission` nodes for permission-mode chains
   - returns `valid_for`, `invalid_for`, hypothesis refs, blockers, warnings, and recommended follow-up commands
-  - with `--emit-permit`, compatibility mode creates a `REASON-*` step, one-shot `REASON-*` access, and a legacy `CHSIG-*`
-  - protected actions use the reviewed `REASON-*` access, not the loose chain file itself
-  - emitted access requires exactly one current `TASK-*` node in the chain and binds to one mode, optional action kind, current workspace/project/task, chain hash, and context fingerprint
-  - access TTL defaults to `settings.chain_permits.ttl_seconds = 300`; `--ttl-seconds` may request a shorter window but cannot exceed settings
+  - with `--emit-permit`, creates a `REASON-*` step and a one-shot `GRANT-*`
+  - protected actions use the reviewed `GRANT-*`, not the loose chain file itself
+  - emitted grants require exactly one current `TASK-*` node in the chain and bind to one mode, optional action kind, current workspace/project/task, chain hash, and context fingerprint
+  - grant TTL defaults to `settings.chain_permits.ttl_seconds = 300`; `--ttl-seconds` may request a shorter window but cannot exceed settings
 
 Reasoning checkpoint disclosure:
 

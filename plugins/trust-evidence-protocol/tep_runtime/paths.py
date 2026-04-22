@@ -15,10 +15,6 @@ def hydration_state_path(root: Path) -> Path:
     return runtime_dir(root) / "hydration.json"
 
 
-def chain_permits_dir(root: Path) -> Path:
-    return runtime_dir(root) / "chain_permits"
-
-
 def reasoning_runtime_dir(root: Path) -> Path:
     return runtime_dir(root) / "reasoning"
 

@@ -549,9 +549,9 @@ def test_autonomous_task_stop_guard_requires_terminal_outcome(tmp_path: Path) ->
         "--deliverable",
         "Autonomous completion guard final response is controlled.",
         "--done",
-        "Final stop requires a valid chain permit.",
+        "Final stop requires a valid grant.",
         "--verify",
-        "Stop guard and final preflight pass with permit.",
+        "Stop guard and final preflight pass with grant.",
         "--boundary",
         "Only autonomous final gating.",
         "--blocker-policy",
@@ -596,8 +596,7 @@ def test_autonomous_task_stop_guard_requires_terminal_outcome(tmp_path: Path) ->
 
     telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
     assert telemetry["reason_access_missing_count"] >= 1
-    assert telemetry["permit_issued_count"] >= 1
-    assert telemetry["reason_access_authorized_count"] >= 1
+    assert telemetry["reason_grant_authorized_count"] >= 1
 
     codex_payload = hook_json(
         HOOK_DIR / "stop_guard.py",
@@ -1596,7 +1595,7 @@ def test_pre_and_post_tool_hooks_track_mutating_bash_commands(tmp_path: Path) ->
     run_id = record_ids(context, "run")[0]
     run_payload = json.loads((context / "records" / "run" / f"{run_id}.json").read_text(encoding="utf-8"))
     assert run_payload["command"] == "rm -rf /tmp/example"
-    assert run_payload["reason_use_ref"].startswith("USE-")
+    assert run_payload["grant_ref"].startswith("GRANT-")
 
     stale = run_runtime(context, "show-hydration", check=False)
     assert stale.returncode == 1
@@ -1755,7 +1754,7 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         HOOK_DIR / "pre_tool_use_guard.py",
         hook_payload(context, "echo hi > /tmp/example"),
     )
-    assert "requires a fresh valid REASON-* access" in permit_block.stdout
+    assert "requires a fresh valid GRANT-*" in permit_block.stdout
 
     chain = tmp_path / "edit-chain.json"
     chain.write_text(
@@ -1787,14 +1786,29 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         ).stdout
     )
     assert permit["decision_valid"] is True
-    assert permit["permit"]["mode"] == "edit"
-    assert permit["permit"]["action_kind"] == "write"
-    assert permit["reason_access"]["mode"] == "edit"
-    assert permit["reason_access"]["action_kind"] == "write"
-    assert permit["permit"]["signed_chain"]["node_count"] == 2
-    assert permit["permit"]["signed_chain"]["nodes"][0]["ref"] == claim_id
-    assert permit["permit"]["signed_chain"]["nodes"][0]["quote"] == "Bounded hook mutation is supported."
-    run_cli(context, "reason-use-access", "--mode", "edit", "--kind", "write", "--used-by", "RUN-20260422-abcdef12")
+    assert permit["grant"]["mode"] == "edit"
+    assert permit["grant"]["action_kind"] == "write"
+    assert permit["reason"]["signed_chain"]["node_count"] == 2
+    assert permit["reason"]["signed_chain"]["nodes"][0]["ref"] == claim_id
+    assert permit["reason"]["signed_chain"]["nodes"][0]["quote"] == "Bounded hook mutation is supported."
+    run_cli(
+        context,
+        "record-run",
+        "--command",
+        "echo hi > /tmp/example",
+        "--cwd",
+        str(tmp_path),
+        "--exit-code",
+        "0",
+        "--action-kind",
+        "write",
+        "--grant-ref",
+        permit["grant"]["id"],
+        "--note",
+        "linked RUN consumes the grant",
+    )
+    run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "hook test focus confirmed after grant consumption")
 
     used_result = run_script(
         HOOK_DIR / "pre_tool_use_guard.py",

@@ -27,7 +27,8 @@ Normal graph direction:
 INP/FILE/ART/RUN -> SRC -> CLM -> MODEL/FLOW
 TASK/PLAN        -> scope and decomposition
 REASON           -> task-scoped reasoning step
-AUTH/USE         -> command-bound authorization and append-only use reservation
+GRANT            -> one-shot authorization bound to REASON/task/action/window
+RUN              -> factual execution trace; using a grant means linking RUN.grant_ref
 CIX              -> code navigation only
 PRP              -> constructive agent proposal
 ```
@@ -41,7 +42,7 @@ They should rank above scattered claims, but they must come from supported or us
 2. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason.
 3. If the route says task decomposition is missing, use `validate-task-decomposition`, `confirm-atomic-task`, or `decompose-task`.
 4. If making or relying on a claim, use the support-capture API and then validate or augment the chain.
-5. Before protected edits, model/flow updates, final autonomous completion, or permission-sensitive writes, create or reuse a `REASON-*` step and get it reviewed. Bash mutations need a command-bound `AUTH-*`; the hook reserves it as `USE-*` before execution.
+5. Before protected edits, model/flow updates, final autonomous completion, or permission-sensitive writes, create or reuse a `REASON-*` step and get it reviewed into a `GRANT-*`. Bash mutations need a command-bound `GRANT-*`.
 
 Do not browse raw records as the normal path.
 Use lookup, record detail, linked records, graph/map views, and chain tools.
@@ -87,8 +88,9 @@ fact: CLM-* "quote" -> observation: SRC/RUN/INP/ART "quote" -> decision
 Then run chain validation when the decision matters.
 If the chain does not validate, do not treat the conclusion as proved.
 Protected actions need a reviewed `REASON-*` ledger step, not just a loose chain file.
-Bash authorization is append-only: `REASON-* -> AUTH-* -> USE-* -> RUN-*`.
-Do not rely on mutable `used=true` state.
+Bash authorization is append-only: `REASON-* -> GRANT-* -> RUN-*`.
+`GRANT-*` is valid only for its task, mode, action kind, optional exact command, current context fingerprint, and configured time window.
+Do not rely on mutable `used=true` state; a grant is considered consumed when a linked `RUN-*` or protected record exists.
 Fork or roll back the reasoning ledger when observations change direction.
 
 Hypotheses are allowed for exploration.

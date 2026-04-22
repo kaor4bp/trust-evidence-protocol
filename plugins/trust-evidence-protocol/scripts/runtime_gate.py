@@ -75,7 +75,7 @@ def raw_runtime_command(argv: list[str]) -> str | None:
 
 
 VALID_HYDRATION_STATUSES = {"hydrated", "hydrated-with-conflicts"}
-CHAIN_PERMIT_REQUIRED_FREEDOMS = {"evidence-authorized", "implementation-choice"}
+GRANT_REQUIRED_FREEDOMS = {"evidence-authorized", "implementation-choice"}
 TEP_ICON = "🛡️"
 
 
@@ -319,7 +319,7 @@ def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bo
             )
             if not permit.get("ok"):
                 print(
-                    "Autonomous TASK-* cannot be marked done without a fresh valid REASON-* access "
+                    "Autonomous TASK-* cannot be marked done without a fresh valid GRANT-* "
                     f"for mode=final: {permit.get('reason')}"
                 )
                 print("Run: context_cli.py reason-review --reason REASON-* --mode final --grant")
@@ -583,7 +583,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
             )
             if not permit.get("ok"):
                 print(
-                    "Final response for an autonomous TASK-* requires a fresh valid REASON-* access "
+                    "Final response for an autonomous TASK-* requires a fresh valid GRANT-* "
                     f"for mode=final: {permit.get('reason')}"
                 )
                 print("Run: context_cli.py reason-review --reason REASON-* --mode final --grant")
@@ -605,7 +605,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
     if action_kind and is_mutating_action_kind(action_kind) and strictness == "proof-only":
         print(f"Mutating action kind {action_kind!r} requires implementation-choice strictness")
         return 1
-    if action_kind and is_mutating_action_kind(action_kind) and strictness in CHAIN_PERMIT_REQUIRED_FREEDOMS:
+    if action_kind and is_mutating_action_kind(action_kind) and strictness in GRANT_REQUIRED_FREEDOMS:
         if not isinstance(current_task, dict) or not current_task.get("id"):
             print(f"Mutating action in {strictness} mode requires an active TASK-*")
             return 1
@@ -638,7 +638,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
         )
         if not permit.get("ok"):
             print(
-                f"Mutating action in {strictness} mode requires a fresh valid REASON-* access "
+                f"Mutating action in {strictness} mode requires a fresh valid GRANT-* "
                 f"for mode=edit kind={action_kind!r}: {permit.get('reason')}"
             )
             print(
@@ -647,7 +647,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
             )
             return 1
         access_id = permit.get("access", {}).get("id", "")
-        print(f"{strictness} preflight passed with reason access {access_id}.")
+        print(f"{strictness} preflight passed with grant {access_id}.")
 
     if status == "hydrated-with-conflicts":
         print(f"Preflight passed with conflicts present for {mode}; proceed only with conflict-aware reasoning.")

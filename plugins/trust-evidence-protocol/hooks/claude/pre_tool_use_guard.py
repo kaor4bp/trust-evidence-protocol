@@ -85,10 +85,10 @@ def main() -> int:
         cwd=cwd,
     )
     if result.returncode == 0:
-        reserve = run_context_cli(
+        grant_check = run_context_cli(
             "--context",
             str(context_root),
-            "reason-reserve-access",
+            "reason-check-grant",
             "--mode",
             "edit",
             "--kind",
@@ -101,14 +101,14 @@ def main() -> int:
             "json",
             cwd=cwd,
         )
-        if reserve.returncode != 0:
-            message = (reserve.stdout or reserve.stderr or "").strip()
+        if grant_check.returncode != 0:
+            message = (grant_check.stdout or grant_check.stderr or "").strip()
             if not message:
-                message = "Protected Bash command requires command-bound AUTH-* reservation."
+                message = "Protected Bash command requires a command-bound GRANT-*."
             emit_denial(
                 message.splitlines()[0],
                 permission_context=(
-                    "Create a command-bound authorization first: "
+                    "Create a command-bound grant first: "
                     "reason-review --reason REASON-* --mode edit "
                     f"--kind {action_kind} --grant --command <exact-command> --cwd <cwd>"
                 ),

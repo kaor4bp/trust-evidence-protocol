@@ -429,7 +429,7 @@ def protected_reasoning_write_violation(context_root: Path, command: str, *, cwd
         if any(is_under_path(resolved, root) for root in protected_roots):
             return (
                 "Direct TEP reasoning runtime writes are blocked; use reason-step, "
-                "reason-review, reason-use-access, or validate-decision --emit-permit."
+                "reason-review or validate-decision --emit-permit."
             )
     return None
 
