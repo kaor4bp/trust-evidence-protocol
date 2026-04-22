@@ -50,6 +50,7 @@ TASK_TYPES = {
     "investigation",
     "implementation",
     "review",
+    "knowledge-curation",
     "debugging",
     "refactor",
     "migration",
@@ -57,7 +58,9 @@ TASK_TYPES = {
     "release",
 }
 WORKING_CONTEXT_STATUSES = {"active", "closed", "superseded", "archived"}
-WORKING_CONTEXT_KINDS = {"general", "investigation", "planning", "edit", "review", "permission", "handoff"}
+WORKING_CONTEXT_KINDS = {"general", "investigation", "planning", "edit", "review", "permission", "handoff", "curation"}
+CURATOR_POOL_STATUSES = {"active", "closed", "stale"}
+CURATOR_POOL_KINDS = {"health", "duplicates", "conflicts", "modeling", "flow", "staleness"}
 PLAN_STATUSES = {"proposed", "active", "blocked", "completed", "abandoned"}
 DEBT_STATUSES = {"open", "accepted", "scheduled", "resolved", "invalid", "wont-fix"}
 MODEL_KNOWLEDGE_CLASSES = {"domain", "investigation"}
@@ -109,6 +112,9 @@ REF_KEYS = {
     "promoted_from_refs",
     "accepted_deviation_refs",
     "resolved_by_claim_refs",
+    "candidate_record_refs",
+    "existing_model_refs",
+    "existing_flow_refs",
 }
 
 
@@ -693,6 +699,52 @@ def validate_record(record_id: str, data: dict) -> list[str]:
                 if "support_refs" in assumption and not isinstance(assumption.get("support_refs"), list):
                     errors.append(f"assumption {index} support_refs must be a list")
 
+    elif record_type == "curator_pool":
+        if not str(data.get("title", "")).strip():
+            errors.append("title is required")
+        if str(data.get("status", "")).strip() not in CURATOR_POOL_STATUSES:
+            errors.append("invalid curator_pool status")
+        if str(data.get("review_kind", "")).strip() not in CURATOR_POOL_KINDS:
+            errors.append("invalid curator_pool review_kind")
+        if not str(data.get("snapshot_at", "")).strip():
+            errors.append("snapshot_at is required")
+        if not str(data.get("created_at", "")).strip():
+            errors.append("created_at is required")
+        if not str(data.get("updated_at", "")).strip():
+            errors.append("updated_at is required")
+        if not str(data.get("workspace_ref", "")).strip():
+            errors.append("workspace_ref is required")
+        for key in (
+            "workspace_refs",
+            "project_refs",
+            "task_refs",
+            "candidate_record_refs",
+            "candidate_records",
+            "candidate_edges",
+            "record_fingerprints",
+            "source_quotes",
+            "existing_model_refs",
+            "existing_models",
+            "existing_flow_refs",
+            "existing_flows",
+            "recommended_questions",
+            "allowed_curator_actions",
+            "forbidden_actions",
+        ):
+            if key in data:
+                try:
+                    ensure_list(data, key)
+                except ValueError as exc:
+                    errors.append(str(exc))
+        if data.get("pool_is_proof") is not False:
+            errors.append("curator_pool.pool_is_proof must be false")
+        selection = data.get("selection", {})
+        if selection is not None and not isinstance(selection, dict):
+            errors.append("curator_pool.selection must be an object")
+        categories = data.get("categories", {})
+        if categories is not None and not isinstance(categories, dict):
+            errors.append("curator_pool.categories must be an object")
+
     elif record_type == "plan":
         if not str(data.get("title", "")).strip():
             errors.append("title is required")
@@ -910,9 +962,18 @@ def validate_refs(records: dict[str, dict]) -> list[ValidationError]:
         for ref in safe_list(data, "workspace_refs"):
             if ref in records and records[ref].get("record_type") != "workspace":
                 errors.append(ValidationError(path, f"workspace ref {ref} must reference a workspace record"))
+        workspace_ref = str(data.get("workspace_ref", "")).strip()
+        if workspace_ref and workspace_ref in records and records[workspace_ref].get("record_type") != "workspace":
+            errors.append(ValidationError(path, f"workspace_ref {workspace_ref} must reference a workspace record"))
         for ref in safe_list(data, "task_refs"):
             if ref in records and records[ref].get("record_type") != "task":
                 errors.append(ValidationError(path, f"task ref {ref} must reference a task record"))
+        task_ref = str(data.get("task_ref", "")).strip()
+        if task_ref and task_ref in records and records[task_ref].get("record_type") != "task":
+            errors.append(ValidationError(path, f"task_ref {task_ref} must reference a task record"))
+        project_ref = str(data.get("project_ref", "")).strip()
+        if project_ref and project_ref in records and records[project_ref].get("record_type") != "project":
+            errors.append(ValidationError(path, f"project_ref {project_ref} must reference a project record"))
         for ref in safe_list(data, "restriction_refs"):
             if ref in records and records[ref].get("record_type") != "restriction":
                 errors.append(ValidationError(path, f"restriction ref {ref} must reference a restriction record"))

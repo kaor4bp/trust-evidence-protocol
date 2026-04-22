@@ -36,6 +36,7 @@ def record_search_text(data: dict) -> str:
         "note",
         "status",
         "knowledge_class",
+        "review_kind",
     )
     parts = [str(data.get(key, "")) for key in fields]
     parts.extend(str(item) for item in data.get("tags", []) if item)
@@ -171,6 +172,8 @@ def record_summary(data: dict) -> str:
         return concise(str(data.get("summary", "")), 180)
     if record_type == "open_question":
         return concise(str(data.get("question", "")), 180)
+    if record_type == "curator_pool":
+        return concise(str(data.get("title", "")) or str(data.get("review_kind", "")), 180)
     return concise(str(data.get("title", "")) or str(data.get("scope", "")) or str(data.get("note", "")), 180)
 
 

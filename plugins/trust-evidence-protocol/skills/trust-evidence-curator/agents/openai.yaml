@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trust Evidence Curator"
+  short_description: "Curate bounded TEP record pools"
+  default_prompt: "Use $trust-evidence-curator with an explicit CURP-* pool to compare facts, find duplicates or conflicts, and propose MODEL/FLOW updates."

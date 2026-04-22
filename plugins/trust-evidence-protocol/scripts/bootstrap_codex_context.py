@@ -29,6 +29,7 @@ REQUIRED_DIRS = (
     "records/action",
     "records/task",
     "records/working_context",
+    "records/curator_pool",
     "records/plan",
     "records/debt",
     "records/model",

@@ -91,6 +91,7 @@ MUTATING_TOPIC_INDEX_COMMANDS = {"build"}
 MUTATING_ATTENTION_INDEX_COMMANDS = {"build"}
 MUTATING_LOGIC_INDEX_COMMANDS = {"build"}
 MUTATING_WORKING_CONTEXT_COMMANDS = {"create", "fork", "close"}
+MUTATING_CURATOR_POOL_COMMANDS = {"build"}
 
 
 def print_errors(errors) -> None:
@@ -243,5 +244,7 @@ def command_requires_write_lock(args) -> bool:
     if args.command == "topic-index" and args.topic_index_command in MUTATING_TOPIC_INDEX_COMMANDS:
         return True
     if args.command == "logic-index" and args.logic_index_command in MUTATING_LOGIC_INDEX_COMMANDS:
+        return True
+    if args.command == "curator-pool" and args.curator_pool_command in MUTATING_CURATOR_POOL_COMMANDS:
         return True
     return args.command == "working-context" and args.working_context_command in MUTATING_WORKING_CONTEXT_COMMANDS

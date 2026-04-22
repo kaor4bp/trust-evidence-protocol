@@ -17,6 +17,7 @@ Responsibilities:
 - keep constructive `PRP-*` agent proposals with cited context, options, risks, and stop conditions
 - keep agent plugin feedback as `SRC-*` plus `DEBT-*` through `record-feedback`
 - keep `WCTX-*` working-context snapshots for focus, handoff, assumptions, and retrospective
+- keep bounded `CURP-*` curator pools so parallel curator agents can compare facts, find duplicates/conflicts, and draft MODEL/FLOW updates without inheriting the current `.tep` focus or browsing raw records
 - build generated lexical `topic_index/` data for search prefiltering and candidate review
 - build generated predicate `logic_index/` data from `CLM.logic` for symbol, atom, rule, and conflict-candidate checks
 - capture `INP-*` user-prompt provenance through the UserPromptSubmit hook when enabled by `input_capture`
@@ -41,6 +42,7 @@ Current implementation:
 - `mcp/tep_server.py` exposes bounded context lookup tools over MCP stdio
 - `.mcp.json` declares the local MCP server for clients that support plugin MCP discovery
 - `skills/trust-evidence-protocol/SKILL.md` contains the short agent mental model
+- `skills/trust-evidence-curator/SKILL.md` contains the bounded knowledge-curator role for `CURP-*` pools
 - `skills/trust-evidence-protocol/workflows/` contains compact task-specific operating procedures
 - `docs/reference/plugin-commands.md` contains the full CLI command reference; it is not part of the normal skill route
 

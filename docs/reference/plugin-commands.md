@@ -78,6 +78,8 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context brief-context --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context brief-context --task "..." --detail full
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context lookup --query "..." --reason orientation --kind auto --format json
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context curator-pool build --workspace WSP-* --project PRJ-* --kind health --query "..." --limit 12
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context curator-pool show --pool CURP-* --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context next-step --intent plan --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context next-step --intent plan --task "..." --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context task-outcome-check --task TASK-* --outcome done --format json

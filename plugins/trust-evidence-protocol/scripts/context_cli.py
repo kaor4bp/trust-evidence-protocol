@@ -109,6 +109,7 @@ from context_lib import (
     build_claim_payload,
     build_comparison_payload,
     build_context_brief_payload,
+    build_curator_pool_payload,
     build_next_step_payload,
     build_flow_oracle,
     build_flow_payload,
@@ -163,6 +164,8 @@ from context_lib import (
     collect_link_edges,
     context_write_lock,
     context_brief_text_lines,
+    CURATOR_POOL_KINDS,
+    curator_pool_text_lines,
     next_step_text_lines,
     code_index_entries_root,
     code_index_entry_path,
@@ -2199,6 +2202,79 @@ def cmd_working_context_close(root: Path, context_ref: str, status: str, note: s
     return persist_mutated_records(root, merged_records, [context_ref], f"Closed working_context {context_ref} as {status}")
 
 
+def cmd_curator_pool_build(
+    root: Path,
+    workspace_ref: str,
+    project_ref: str | None,
+    task_ref: str | None,
+    review_kind: str,
+    query: str,
+    limit: int,
+    note: str,
+) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    workspace = records.get(workspace_ref)
+    if not workspace or workspace.get("record_type") != "workspace":
+        print(f"{workspace_ref} must reference a workspace record")
+        return 1
+    if project_ref:
+        project = records.get(project_ref)
+        if not project or project.get("record_type") != "project":
+            print(f"{project_ref} must reference a project record")
+            return 1
+        workspace_projects = safe_list(workspace, "project_refs")
+        if workspace_projects and project_ref not in workspace_projects:
+            print(f"{project_ref} is not listed in {workspace_ref}.project_refs")
+            return 1
+    if task_ref:
+        task = records.get(task_ref)
+        if not task or task.get("record_type") != "task":
+            print(f"{task_ref} must reference a task record")
+            return 1
+        task_workspaces = safe_list(task, "workspace_refs")
+        if task_workspaces and workspace_ref not in task_workspaces:
+            print(f"{task_ref} is not scoped to {workspace_ref}")
+            return 1
+        task_projects = safe_list(task, "project_refs")
+        if project_ref and task_projects and project_ref not in task_projects:
+            print(f"{task_ref} is not scoped to {project_ref}")
+            return 1
+    access_events, access_errors = load_access_events(root)
+    for error in access_errors:
+        print(f"telemetry warning: {error}")
+    payload = build_curator_pool_payload(
+        records=records,
+        access_events=access_events,
+        record_id=next_record_id(records, "CURP-"),
+        timestamp=now_timestamp(),
+        workspace_ref=workspace_ref,
+        project_ref=project_ref,
+        task_ref=task_ref,
+        review_kind=review_kind,
+        query=query,
+        limit=limit,
+        note=note,
+    )
+    return persist_candidate(root, records, payload, "curator_pool")
+
+
+def cmd_curator_pool_show(root: Path, pool_ref: str, output_format: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    pool = records.get(pool_ref)
+    if not pool or pool.get("record_type") != "curator_pool":
+        print(f"missing curator_pool record {pool_ref}")
+        return 1
+    if output_format == "json":
+        print(json.dumps(public_record_payload(pool), indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(curator_pool_text_lines(pool)))
+    return 0
+
+
 def cmd_validate_evidence_chain(root: Path, chain_file: Path) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
@@ -2712,6 +2788,7 @@ def cmd_help(topic: str) -> int:
             "precedent review: inspect previous TASK-* records of the same task_type before repeating work",
             "evidence chain: validate agent-supplied proof chains and keep context/proof separate",
             "working context: pin WCTX-* focus/context snapshots for retrospective and handoff",
+            "curator pool: create bounded CURP-* record pools for parallel knowledge-curation agents",
             "workspace admission: check unknown repos before attaching them to the current workspace/project",
             "topic index: generated lexical prefilter for navigation and candidate review",
             "attention index: generated tap-aware map, cold zones, and curiosity probes",
@@ -2735,6 +2812,7 @@ def cmd_help(topic: str) -> int:
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|model|flow|proposal|final --chain evidence-chain.json",
             "record-input ... | record-run --command ... | record-support --thought ... --kind file-line|command-output|user-confirmation | classify-input --input INP-* --derived-record REF",
+            "curator-pool build --workspace WSP-* [--project PRJ-*] [--task TASK-*] --kind health|duplicates|conflicts|modeling|flow|staleness --query ... | curator-pool show --pool CURP-* [--format json]",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
             "start-task --type investigation --scope ... --title ... --note ...",
             "validate-task-decomposition --task TASK-* | confirm-atomic-task --task TASK-* ... | decompose-task --task TASK-* --subtask scope|title|deliverable|done|verify|boundary",
@@ -8251,6 +8329,25 @@ def parse_args() -> argparse.Namespace:
     lookup.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     lookup.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     lookup.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    curator_pool = subparsers.add_parser(
+        "curator-pool",
+        help="Build/show bounded CURP-* record pools for knowledge-curation agents.",
+    )
+    curator_pool_subparsers = curator_pool.add_subparsers(dest="curator_pool_command", required=True)
+    curator_pool_build = curator_pool_subparsers.add_parser(
+        "build",
+        help="Create a bounded CURP-* snapshot from an explicit workspace/project/task scope.",
+    )
+    curator_pool_build.add_argument("--workspace", dest="workspace_ref", required=True)
+    curator_pool_build.add_argument("--project", dest="project_ref")
+    curator_pool_build.add_argument("--task", dest="task_ref")
+    curator_pool_build.add_argument("--kind", dest="review_kind", choices=sorted(CURATOR_POOL_KINDS), default="health")
+    curator_pool_build.add_argument("--query", default="")
+    curator_pool_build.add_argument("--limit", type=int, default=12)
+    curator_pool_build.add_argument("--note", default="")
+    curator_pool_show = curator_pool_subparsers.add_parser("show", help="Show one CURP-* curator pool.")
+    curator_pool_show.add_argument("--pool", dest="pool_ref", required=True)
+    curator_pool_show.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     search_records = subparsers.add_parser(
         "search-records",
         help="Search canonical records by keyword before expanding links.",
@@ -9717,6 +9814,22 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 output_format=args.output_format,
             )
         )
+    if args.command == "curator-pool":
+        if args.curator_pool_command == "build":
+            raise SystemExit(
+                cmd_curator_pool_build(
+                    root,
+                    workspace_ref=args.workspace_ref,
+                    project_ref=args.project_ref,
+                    task_ref=args.task_ref,
+                    review_kind=args.review_kind,
+                    query=args.query,
+                    limit=args.limit,
+                    note=args.note,
+                )
+            )
+        if args.curator_pool_command == "show":
+            raise SystemExit(cmd_curator_pool_show(root, pool_ref=args.pool_ref, output_format=args.output_format))
     if args.command == "search-records":
         raise SystemExit(
             cmd_search_records(

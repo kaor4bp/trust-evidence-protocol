@@ -554,6 +554,8 @@ def build_index(root: Path, records: dict[str, dict]) -> None:
             )
         elif record_type == "open_question":
             summary = f"{data.get('status', '')} | {data.get('question', '')}"
+        elif record_type == "curator_pool":
+            summary = f"{data.get('status', '')} | {data.get('review_kind', '')} | {data.get('title', '')}"
         groups[record_type].append((record_id, str(data.get("scope", "")), summary))
 
     settings = load_effective_settings(root)
@@ -599,6 +601,7 @@ def build_index(root: Path, records: dict[str, dict]) -> None:
         "model",
         "flow",
         "open_question",
+        "curator_pool",
     ):
         lines.append(f"- `{record_type}`: {counts[record_type]}\n")
     entries, _ = load_hypotheses_index(root)
@@ -620,6 +623,7 @@ def build_index(root: Path, records: dict[str, dict]) -> None:
         "model",
         "flow",
         "open_question",
+        "curator_pool",
     ):
         lines.append(f"## {record_type.title()} Records\n\n")
         if not groups[record_type]:

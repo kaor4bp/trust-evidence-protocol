@@ -12,6 +12,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "trust-evidence-protocol"
 SKILL_ROOT = PLUGIN_ROOT / "skills" / "trust-evidence-protocol"
+CURATOR_SKILL_ROOT = PLUGIN_ROOT / "skills" / "trust-evidence-curator"
 BOOTSTRAP = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "bootstrap_codex_context.py"
 CLI = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "context_cli.py"
 INSTALL_LOCAL_PLUGIN = REPO_ROOT / "scripts" / "install-local-plugin.sh"
@@ -654,6 +655,14 @@ def test_skill_package_is_core_plus_workflows_without_legacy_identity_artifacts(
     )
     for forbidden in ("identity_pool", "identity_events", "review_events", "trust_state"):
         assert forbidden not in package_text
+
+    curator_skill = (CURATOR_SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    assert len(curator_skill.splitlines()) <= 90
+    assert "explicit `CURP-*` curator pool" in curator_skill
+    assert "Do not use current `.tep` focus as authority." in curator_skill
+    assert "run-runtime-commands" in curator_skill
+    curator_ui = (CURATOR_SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
+    assert "Trust Evidence Curator" in curator_ui
 
 
 def test_new_record_ids_use_random_suffix_and_legacy_ids_remain_valid(tmp_path: Path) -> None:
@@ -1415,6 +1424,7 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert "export-rdf --format turtle|jsonld [--output path]" in commands_help
     assert "configure-runtime --backend-preset minimal|recommended" in commands_help
     assert "working-context create|fork|show|close|check-drift" in commands_help
+    assert "curator-pool build --workspace WSP-*" in commands_help
     assert "workspace-admission check --repo path [--format json]" in commands_help
 
     configured = run_cli(
@@ -2920,6 +2930,160 @@ def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> 
     run_cli(context, "working-context", "close", "--context", fork_id, "--note", "done")
     assert load_record(context, "working_context", fork_id)["status"] == "closed"
     assert run_cli(context, "review-context").returncode == 0
+
+
+def test_curator_pool_builds_explicit_workspace_snapshot_without_current_focus(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "curator-source-workspace",
+            "--title",
+            "Curator Source Workspace",
+            "--root-ref",
+            "/tmp/curator-source",
+            "--note",
+            "workspace to curate",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    project_id = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "curator-project",
+            "--title",
+            "Curator Project",
+            "--root-ref",
+            "/tmp/curator-project",
+            "--note",
+            "project to curate",
+        ),
+        "project",
+    )
+    run_cli(context, "set-current-project", "--project", project_id)
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "curator.demo",
+            "--source-kind",
+            "theory",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "user",
+            "--origin-ref",
+            "curator test",
+            "--quote",
+            "Products reach Facility storage before Program marketplace listing configuration.",
+            "--note",
+            "curator source",
+        ),
+        "source",
+    )
+    first_claim = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "curator.demo",
+            "--plane",
+            "theory",
+            "--status",
+            "supported",
+            "--statement",
+            "Products reach Facility storage before Program marketplace listing configuration.",
+            "--source",
+            source_id,
+            "--note",
+            "curator claim",
+        ),
+        "claim",
+    )
+    second_claim = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "curator.demo",
+            "--plane",
+            "theory",
+            "--status",
+            "supported",
+            "--statement",
+            "Products reach Facility storage before Program marketplace listing configuration.",
+            "--source",
+            source_id,
+            "--note",
+            "duplicate curator claim",
+        ),
+        "claim",
+    )
+
+    other_workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "current-but-not-curated",
+            "--title",
+            "Current But Not Curated",
+            "--root-ref",
+            "/tmp/current-but-not-curated",
+            "--note",
+            "current focus should not control curator pool",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", other_workspace_id)
+
+    pool_id = recorded_id(
+        run_cli(
+            context,
+            "curator-pool",
+            "build",
+            "--workspace",
+            workspace_id,
+            "--project",
+            project_id,
+            "--kind",
+            "duplicates",
+            "--query",
+            "Facility Program products marketplace",
+            "--limit",
+            "5",
+            "--note",
+            "bounded curator pool",
+        ),
+        "curator_pool",
+    )
+    pool = load_record(context, "curator_pool", pool_id)
+    assert pool["workspace_ref"] == workspace_id
+    assert pool["project_ref"] == project_id
+    assert pool["task_ref"] == ""
+    assert pool["workspace_refs"] == [workspace_id]
+    assert pool["project_refs"] == [project_id]
+    assert pool["task_refs"] == []
+    assert pool["pool_is_proof"] is False
+    assert pool["selection"]["pool_is_proof"] is False
+    assert "run-runtime-commands" in pool["forbidden_actions"]
+    assert {first_claim, second_claim}.issubset(set(pool["candidate_record_refs"]))
+    assert any(set(group["record_refs"]) == {first_claim, second_claim} for group in pool["categories"]["duplicate_candidates"])
+    assert all(item["sha256"] for item in pool["record_fingerprints"])
+    assert all(item["quote_is_proof"] is False for item in pool["source_quotes"])
+
+    shown = json.loads(run_cli(context, "curator-pool", "show", "--pool", pool_id, "--format", "json").stdout)
+    assert shown["id"] == pool_id
+    shown_text = run_cli(context, "curator-pool", "show", "--pool", pool_id).stdout
+    assert "# Curator Pool" in shown_text
+    assert "## Forbidden Actions" in shown_text
+    assert "run-runtime-commands" in shown_text
 
 
 def test_workspace_admission_requires_decision_for_unknown_repo(tmp_path: Path) -> None:

@@ -1568,6 +1568,8 @@ def test_cli_common_core_handles_small_payload_and_mutation_helpers() -> None:
     assert command_requires_write_lock(SimpleNamespace(command="topic-index", topic_index_command="build"))
     assert command_requires_write_lock(SimpleNamespace(command="logic-index", logic_index_command="build"))
     assert command_requires_write_lock(SimpleNamespace(command="working-context", working_context_command="close"))
+    assert command_requires_write_lock(SimpleNamespace(command="curator-pool", curator_pool_command="build"))
+    assert not command_requires_write_lock(SimpleNamespace(command="curator-pool", curator_pool_command="show"))
     assert command_requires_write_lock(SimpleNamespace(command="cleanup-archive", apply=True))
     assert not command_requires_write_lock(SimpleNamespace(command="cleanup-archive", apply=False))
     assert command_requires_write_lock(SimpleNamespace(command="cleanup-restore", apply=True))
