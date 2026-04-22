@@ -2215,6 +2215,17 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert lookup_facts["route_graph"]["entrypoint"] == "lookup"
     assert lookup_facts["next_allowed_commands"] == lookup_facts["route"]
     assert any(command.startswith("claim-graph") for command in lookup_facts["route"])
+    chain_starter = lookup_facts["chain_starter"]
+    assert chain_starter["chain_starter_is_proof"] is False
+    assert chain_starter["decision_mode"] == "curiosity"
+    assert chain_starter["validation_preview"]["ok"] is True
+    assert any(node["ref"] == facility_claim_id and node["role"] == "fact" for node in chain_starter["nodes"])
+    assert any(node["ref"] == program_claim_id and node["role"] == "fact" for node in chain_starter["nodes"])
+    assert any(command.startswith("augment-chain") for command in chain_starter["next_commands"])
+    assert any(command.startswith("validate-decision --mode curiosity") for command in chain_starter["next_commands"])
+    lookup_text = run_cli(context, "lookup", "--query", "Facility Program relationship", "--reason", "curiosity", "--kind", "facts").stdout
+    assert "## Chain Starter" in lookup_text
+    assert "validate-decision --mode curiosity" in lookup_text
     lookup_code = json.loads(
         run_cli(
             context,
@@ -2237,6 +2248,7 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert lookup_code["mode"] == "code"
     assert lookup_code["primary_tool"] == "code-search"
     assert any("code-search" in command for command in lookup_code["route"])
+    assert all(not node["ref"].startswith("CIX-") for node in lookup_code["chain_starter"]["nodes"])
     lookup_telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
     assert lookup_telemetry["by_reason"]["curiosity"] >= 1
     assert lookup_telemetry["by_reason"]["orientation"] >= 1

@@ -518,6 +518,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert "Path to TEP context root" in tools_payload
     assert "nearest .tep context_root" in tools_payload
     assert "Read a task-oriented TEP context brief" in tools_payload
+    assert "chain_starter" in tools_payload
     assert "Path to .codex_context. Defaults to ./.codex_context." not in tools_payload
     context_schemas = {
         json.dumps(tool["inputSchema"]["properties"]["context"], sort_keys=True)
@@ -710,6 +711,10 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert lookup_payload["primary_tool"] == "code-search"
     assert lookup_payload["api_contract_version"] == 1
     assert lookup_payload["output_contract"]["if_chain_needed"].startswith("draft ids/quotes")
+    assert lookup_payload["chain_starter"]["chain_starter_is_proof"] is False
+    assert lookup_payload["chain_starter"]["decision_mode"] == "planning"
+    assert any(node["ref"] == claim_id and node["role"] == "fact" for node in lookup_payload["chain_starter"]["nodes"])
+    assert any(command.startswith("augment-chain") for command in lookup_payload["chain_starter"]["next_commands"])
 
     next_step = by_id[21]["result"]
     assert next_step["isError"] is False

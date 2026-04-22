@@ -537,7 +537,8 @@ Commands:
   - one front door for normal lookup routing
   - `--reason` is mandatory and is written into telemetry
   - ensures a `WCTX-*` operational context exists when a workspace is known; auto-created WCTX is not proof and not authorization
-  - returns the primary tool, ordered route commands, `next_allowed_commands`, `route_graph`, `evidence_profile`, and `output_contract`
+  - returns the primary tool, ordered route commands, `next_allowed_commands`, `route_graph`, `evidence_profile`, `output_contract`, and a compact `chain_starter`
+  - `chain_starter` is a mechanical draft with candidate ids, quotes, edges, validation preview, and next `augment-chain` / `validate-decision` commands; it is not proof until validated
   - `facts` routes to `claim-graph`, `search-records`, `record-detail`, and `linked-records`
   - `code` routes to `code-search`, `code-feedback`, `code-info`, and a `curiosity-map --mode code`
   - `theory` routes to `claim-graph`, model/flow/proposal search, `curiosity-map --mode theory`, and `probe-pack`

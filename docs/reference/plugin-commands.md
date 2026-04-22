@@ -16,7 +16,8 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `brief_context`: equivalent to compact `brief-context --task "..."`; pass `detail=full` only when the expanded brief is needed
 - `next_step`: equivalent to `next-step --intent ...`; use it as the first route branch when unsure what to do next, follow its compact action graph before re-reading the protocol, and request `format=json` when a tool needs structured `route_graph` data
 - `lookup`: equivalent to `lookup --query "..." --reason ...`; reason is mandatory, lookup may auto-create a lightweight `WCTX-*`, and output is navigation only
-- `lookup` returns `next_allowed_commands`, `route_graph`, `evidence_profile`, and `output_contract`; follow these fields before broadening the search
+- `lookup` returns `next_allowed_commands`, `route_graph`, `evidence_profile`, `output_contract`, and `chain_starter`; follow these fields before broadening the search
+- `chain_starter` is a compact draft of ids, quotes, and candidate edges; write it to a chain file, run `augment-chain`, then run `validate-decision` for the intended mode before using it as proof or authorization
 - `search_records`: equivalent to `search-records --query "..."`; drill-down after `lookup` in normal work
 - `claim_graph`: equivalent to `claim-graph --query "..."`; drill-down after `lookup`, returns current matching `CLM-*` anchors plus compact linked records/edges without reading raw claim JSON
 - `record_detail`: equivalent to `record-detail --record ID`; use before citing proof

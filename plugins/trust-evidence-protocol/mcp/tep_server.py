@@ -104,7 +104,8 @@ TOOLS: list[JsonObject] = [
         "name": "lookup",
         "description": (
             "One front door for deciding whether to search facts, code, theory/model context, broad research context, "
-            "or policy/guideline context. Navigation only; follow returned route with proof-bearing tools before citing."
+            "or policy/guideline context. Returns route data plus a compact chain_starter draft. "
+            "Navigation only; run augment-chain/validate-decision before citing or authorizing from the draft."
         ),
         "inputSchema": schema(
             {

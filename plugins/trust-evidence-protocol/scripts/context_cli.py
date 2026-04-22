@@ -2780,6 +2780,22 @@ LOOKUP_REASON_CONTEXT_KIND = {
     "curiosity": "investigation",
     "debugging": "investigation",
 }
+LOOKUP_CHAIN_RECORD_TYPES_BY_KIND = {
+    "facts": ["claim", "model", "flow", "open_question", "proposal"],
+    "code": ["claim", "model", "flow", "guideline", "proposal", "open_question"],
+    "theory": ["model", "flow", "claim", "open_question", "proposal"],
+    "research": ["model", "flow", "claim", "open_question", "proposal"],
+    "policy": ["guideline", "permission", "restriction", "proposal", "claim"],
+}
+LOOKUP_CHAIN_DECISION_MODE_BY_REASON = {
+    "answering": "final",
+    "curiosity": "curiosity",
+    "debugging": "debugging",
+    "editing": "edit",
+    "permission": "permission",
+    "planning": "planning",
+    "retrospective": "planning",
+}
 
 
 def infer_lookup_kind(query: str, requested_kind: str) -> str:
@@ -2850,7 +2866,173 @@ def ensure_lookup_working_context(root: Path, records: dict[str, dict], query: s
     return str(payload["id"]), payload, None
 
 
-def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str, reason: str, wctx_ref: str, auto_wctx: dict | None) -> dict:
+def lookup_chain_record_role(record: dict) -> str:
+    record_type = str(record.get("record_type", "")).strip()
+    if record_type == "claim":
+        status = str(record.get("status", "")).strip()
+        if status in {"supported", "corroborated"} and not claim_is_fallback(record):
+            return "fact"
+        if status == "tentative" and not claim_is_fallback(record):
+            return "exploration_context"
+        return ""
+    return {
+        "flow": "flow",
+        "guideline": "guideline",
+        "model": "model",
+        "open_question": "open_question",
+        "permission": "permission",
+        "project": "project",
+        "proposal": "proposal",
+        "restriction": "restriction",
+        "task": "task",
+        "working_context": "working_context",
+    }.get(record_type, "")
+
+
+def lookup_chain_record_quote(record: dict) -> str:
+    for key in ("statement", "summary", "question", "position", "title", "subject", "rule", "note"):
+        value = str(record.get(key, "")).strip()
+        if value:
+            return value
+    return record_summary(record)
+
+
+def append_lookup_chain_node(nodes: list[dict], records: dict[str, dict], record_ref: str) -> None:
+    if record_ref not in records or any(node.get("ref") == record_ref for node in nodes):
+        return
+    record = records[record_ref]
+    role = lookup_chain_record_role(record)
+    if not role:
+        return
+    quote = lookup_chain_record_quote(record)
+    if not quote:
+        return
+    nodes.append({"role": role, "ref": record_ref, "quote": quote})
+
+
+def append_lookup_chain_support_nodes(nodes: list[dict], records: dict[str, dict], record: dict, limit: int) -> None:
+    support_refs = [str(ref) for ref in record.get("claim_refs", []) if str(ref)]
+    for model_ref in record.get("model_refs", []):
+        model = records.get(str(model_ref), {})
+        support_refs.extend(str(ref) for ref in model.get("claim_refs", []) if str(ref))
+    for support_ref in support_refs:
+        if len(nodes) >= limit:
+            return
+        support = records.get(support_ref)
+        if not support or lookup_chain_record_role(support) != "fact":
+            continue
+        append_lookup_chain_node(nodes, records, support_ref)
+
+
+def build_lookup_chain_starter(
+    root: Path,
+    records: dict[str, dict],
+    query: str,
+    selected_kind: str,
+    reason: str,
+    selected_mode: str,
+    scope: str,
+    wctx_ref: str,
+) -> dict:
+    terms = task_terms(query)
+    decision_mode = LOOKUP_CHAIN_DECISION_MODE_BY_REASON.get(reason, "planning")
+    if not terms:
+        return {
+            "chain_starter_is_proof": False,
+            "task": query,
+            "reason": reason,
+            "scope": scope,
+            "mode": selected_mode,
+            "decision_mode": decision_mode,
+            "working_context_ref": wctx_ref,
+            "nodes": [],
+            "edges": [],
+            "validation_preview": {"ok": False, "blockers": ["lookup query has no searchable terms"], "warnings": []},
+            "next_commands": [],
+            "notes": [
+                "Lookup chain starters are mechanical drafts, not proof.",
+                "Provide a more specific query before validating a decision chain.",
+            ],
+        }
+
+    record_types = LOOKUP_CHAIN_RECORD_TYPES_BY_KIND.get(selected_kind, LOOKUP_CHAIN_RECORD_TYPES_BY_KIND["facts"])
+    ranked = ranked_record_search(
+        records,
+        terms,
+        8,
+        record_types,
+        current_project_ref(root) or None,
+        current_task_ref(root) or None,
+        include_fallback=False,
+        include_archived=False,
+    )
+    nodes: list[dict] = []
+    for item in ranked:
+        if len(nodes) >= 5:
+            break
+        record = item["record"]
+        append_lookup_chain_node(nodes, records, str(record.get("id") or ""))
+        append_lookup_chain_support_nodes(nodes, records, record, limit=6)
+
+    fact_refs = [str(node["ref"]) for node in nodes if node.get("role") == "fact"]
+    edges: list[dict] = []
+    if fact_refs and nodes:
+        anchor = fact_refs[0]
+        for node in nodes:
+            target = str(node.get("ref") or "")
+            if target == anchor:
+                continue
+            edges.append({"from": anchor, "to": target, "relation": "lookup_candidate_support"})
+        if not edges:
+            edges.append({"from": anchor, "to": anchor, "relation": "single_fact_anchor"})
+
+    chain = {
+        "chain_starter_is_proof": False,
+        "task": query,
+        "reason": reason,
+        "scope": scope,
+        "mode": selected_mode,
+        "decision_mode": decision_mode,
+        "working_context_ref": wctx_ref,
+        "nodes": nodes,
+        "edges": edges,
+    }
+    validation = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain, decision_mode)
+    validation_details = validation.get("validation", {}) if isinstance(validation.get("validation"), dict) else {}
+    chain["validation_preview"] = {
+        "ok": bool(validation.get("decision_valid")),
+        "chain_ok": bool(validation_details.get("ok")),
+        "blockers": validation.get("blockers", []),
+        "errors": validation_details.get("errors", []),
+        "warnings": validation.get("warnings", []),
+    }
+    chain["write_hint"] = "write the chain_starter object to evidence-chain.json"
+    chain["next_commands"] = [
+        "augment-chain --file evidence-chain.json --format json",
+        f"validate-decision --mode {decision_mode} --chain evidence-chain.json --format json",
+    ]
+    chain["notes"] = [
+        "Lookup chain starters are mechanical drafts, not proof.",
+        "CIX/backend/map candidates are intentionally omitted because they are navigation, not proof.",
+        "Use augment-chain before presenting the chain to the user or requesting permission.",
+    ]
+    if not fact_refs:
+        chain["notes"].append("No supported/corroborated CLM fact matched; open record-detail/claim-graph before relying on this draft.")
+    return chain
+
+
+def lookup_payload(
+    root: Path,
+    records: dict[str, dict],
+    query: str,
+    kind: str,
+    root_path: str,
+    scope: str,
+    mode: str,
+    reason: str,
+    wctx_ref: str,
+    auto_wctx: dict | None,
+) -> dict:
     selected_kind = infer_lookup_kind(query, kind)
     query_arg = shlex.quote(query)
     root_arg = shlex.quote(root_path)
@@ -2894,6 +3076,16 @@ def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str,
     }[selected_kind]
     inferred_mode = {"code": "code", "theory": "theory", "research": "research"}.get(selected_kind, "general")
     selected_mode = mode if mode in ATTENTION_MODES and mode != "general" else inferred_mode
+    chain_starter = build_lookup_chain_starter(
+        root=root,
+        records=records,
+        query=query,
+        selected_kind=selected_kind,
+        reason=reason,
+        selected_mode=selected_mode,
+        scope=scope,
+        wctx_ref=wctx_ref,
+    )
     evidence_profile = {
         "lookup_is_proof": False,
         "raw_claim_reads": "blocked-in-normal-mode",
@@ -2956,6 +3148,7 @@ def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str,
         },
         "evidence_profile": evidence_profile,
         "output_contract": output_contract,
+        "chain_starter": chain_starter,
         "rules": [
             "Use lookup first when unsure where to search.",
             "Treat lookup and generated maps as navigation only, not proof.",
@@ -2981,6 +3174,22 @@ def lookup_text_lines(payload: dict) -> list[str]:
     lines.extend(["", "## Fallback"])
     for command in payload.get("fallback_route", []):
         lines.append(f"- `{command}`")
+    chain_starter = payload.get("chain_starter") or {}
+    if chain_starter:
+        validation = chain_starter.get("validation_preview") or {}
+        lines.extend(["", "## Chain Starter"])
+        lines.append(
+            f"- nodes: `{len(chain_starter.get('nodes', []))}` edges: `{len(chain_starter.get('edges', []))}` "
+            f"decision_mode: `{chain_starter.get('decision_mode')}` validation_ok: `{validation.get('ok')}`"
+        )
+        if chain_starter.get("write_hint"):
+            lines.append(f"- write: {chain_starter.get('write_hint')}")
+        for node in chain_starter.get("nodes", [])[:4]:
+            lines.append(
+                f"- `{node.get('ref')}` role=`{node.get('role')}` quote=\"{concise(str(node.get('quote', '')), 140)}\""
+            )
+        for command in chain_starter.get("next_commands", [])[:3]:
+            lines.append(f"- next: `{command}`")
     lines.extend(["", "## Rules"])
     for rule in payload.get("rules", []):
         lines.append(f"- {rule}")
@@ -3007,6 +3216,8 @@ def cmd_lookup(root: Path, query: str, kind: str, root_path: str | None, scope: 
         print(error)
         return 1
     payload = lookup_payload(
+        root=root,
+        records=records,
         query=query,
         kind=kind,
         root_path=str(root_path or Path.cwd()),
