@@ -70,6 +70,16 @@ from tep_runtime.chain_permits import (
     create_chain_permit,
     validate_chain_permit,
 )
+from tep_runtime.reason_ledger import (
+    chain_payload_hash,
+    consume_reason_access,
+    create_reason_step,
+    grant_reason_access,
+    reason_access_text_lines,
+    reason_current_text_lines,
+    validate_reason_access,
+    validate_reason_ledger,
+)
 from tep_runtime.code_backends import (
     cocoindex_index_payload,
     cocoindex_index_text_lines,
@@ -362,6 +372,7 @@ from tep_runtime.records import (
 from tep_runtime.runs import RUN_STATUSES, build_run_payload
 from tep_runtime.reports import rel_display, write_report, write_validation_report
 from tep_runtime.reasoning import (
+    DECISION_MODES,
     EvidenceChainValidation,
     augment_evidence_chain_payload,
     augmented_evidence_chain_text_lines,

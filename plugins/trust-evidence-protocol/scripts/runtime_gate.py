@@ -25,7 +25,7 @@ from context_lib import (
     task_outcome_from_message,
     task_decomposition_text_lines,
     validate_task_decomposition_payload,
-    validate_chain_permit,
+    validate_reason_access,
     unclassified_input_items,
     write_backlog,
     write_conflicts_report,
@@ -310,7 +310,7 @@ def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bo
             print("\n".join(task_outcome_check_text_lines(outcome_payload)))
             return 1
         if outcome == "done":
-            permit = validate_chain_permit(
+            permit = validate_reason_access(
                 root,
                 mode="final",
                 action_kind=None,
@@ -319,10 +319,10 @@ def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bo
             )
             if not permit.get("ok"):
                 print(
-                    "Autonomous TASK-* cannot be marked done without a fresh valid chain permit "
+                    "Autonomous TASK-* cannot be marked done without a fresh valid REASON-* access "
                     f"for mode=final: {permit.get('reason')}"
                 )
-                print("Run: context_cli.py validate-decision --mode final --chain <evidence-chain.json> --emit-permit")
+                print("Run: context_cli.py reason-review --reason REASON-* --mode final --grant")
                 return 1
         print(f"Autonomous task stop accepted: {outcome}")
         return 0
@@ -574,7 +574,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
             and str(current_task.get("status", "")).strip() == "active"
             and str(current_task.get("execution_mode", "manual")).strip() == "autonomous"
         ):
-            permit = validate_chain_permit(
+            permit = validate_reason_access(
                 root,
                 mode="final",
                 action_kind=None,
@@ -583,10 +583,10 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
             )
             if not permit.get("ok"):
                 print(
-                    "Final response for an autonomous TASK-* requires a fresh valid chain permit "
+                    "Final response for an autonomous TASK-* requires a fresh valid REASON-* access "
                     f"for mode=final: {permit.get('reason')}"
                 )
-                print("Run: context_cli.py validate-decision --mode final --chain <evidence-chain.json> --emit-permit")
+                print("Run: context_cli.py reason-review --reason REASON-* --mode final --grant")
                 return 1
 
     if status == "hydrated-with-conflicts" and mode == "planning":
@@ -629,7 +629,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
                 + ", ".join(str(item.get("id", "")) for item in hard_restrictions)
             )
             return 1
-        permit = validate_chain_permit(
+        permit = validate_reason_access(
             root,
             mode="edit",
             action_kind=action_kind,
@@ -638,16 +638,16 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
         )
         if not permit.get("ok"):
             print(
-                f"Mutating action in {strictness} mode requires a fresh valid chain permit "
+                f"Mutating action in {strictness} mode requires a fresh valid REASON-* access "
                 f"for mode=edit kind={action_kind!r}: {permit.get('reason')}"
             )
             print(
-                "Run: context_cli.py validate-decision --mode edit "
-                f"--kind {action_kind} --chain <evidence-chain.json> --emit-permit"
+                "Run: context_cli.py reason-review --reason REASON-* "
+                f"--mode edit --kind {action_kind} --grant"
             )
             return 1
-        permit_id = permit.get("permit", {}).get("id", "")
-        print(f"{strictness} preflight passed with chain permit {permit_id}.")
+        access_id = permit.get("access", {}).get("id", "")
+        print(f"{strictness} preflight passed with reason access {access_id}.")
 
     if status == "hydrated-with-conflicts":
         print(f"Preflight passed with conflicts present for {mode}; proceed only with conflict-aware reasoning.")

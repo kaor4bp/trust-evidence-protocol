@@ -595,9 +595,9 @@ def test_autonomous_task_stop_guard_requires_terminal_outcome(tmp_path: Path) ->
     assert "Autonomous task stop accepted: done" in accepted.stdout
 
     telemetry = json.loads(run_cli(context, "telemetry-report", "--format", "json").stdout)
-    assert telemetry["permit_missing_count"] >= 1
+    assert telemetry["reason_access_missing_count"] >= 1
     assert telemetry["permit_issued_count"] >= 1
-    assert telemetry["permit_used_count"] >= 1
+    assert telemetry["reason_access_used_count"] >= 1
 
     codex_payload = hook_json(
         HOOK_DIR / "stop_guard.py",
@@ -1735,7 +1735,7 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         HOOK_DIR / "pre_tool_use_guard.py",
         hook_payload(context, "echo hi > /tmp/example"),
     )
-    assert "requires a fresh valid chain permit" in permit_block.stdout
+    assert "requires a fresh valid REASON-* access" in permit_block.stdout
 
     chain = tmp_path / "edit-chain.json"
     chain.write_text(
@@ -1769,19 +1769,18 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
     assert permit["decision_valid"] is True
     assert permit["permit"]["mode"] == "edit"
     assert permit["permit"]["action_kind"] == "write"
+    assert permit["reason_access"]["mode"] == "edit"
+    assert permit["reason_access"]["action_kind"] == "write"
     assert permit["permit"]["signed_chain"]["node_count"] == 2
     assert permit["permit"]["signed_chain"]["nodes"][0]["ref"] == claim_id
     assert permit["permit"]["signed_chain"]["nodes"][0]["quote"] == "Bounded hook mutation is supported."
-    permit_path = context / "runtime" / "chain_permits" / f"{permit['permit']['id']}.json"
-    expired_payload = json.loads(permit_path.read_text(encoding="utf-8"))
-    expired_payload["expires_at"] = "2000-01-01T00:00:00+00:00"
-    permit_path.write_text(json.dumps(expired_payload), encoding="utf-8")
+    run_cli(context, "reason-use-access", "--mode", "edit", "--kind", "write", "--used-by", "RUN-20260422-abcdef12")
 
-    expired_result = run_script(
+    used_result = run_script(
         HOOK_DIR / "pre_tool_use_guard.py",
         hook_payload(context, "echo hi > /tmp/example"),
     )
-    assert "expired" in expired_result.stdout
+    assert "used" in used_result.stdout or "no matching" in used_result.stdout
 
     run_cli(
         context,
@@ -1800,6 +1799,18 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         hook_payload(context, "echo hi > /tmp/example"),
     )
     assert allow_result.stdout.strip() == ""
+
+
+def test_pre_tool_hook_blocks_direct_reason_ledger_writes(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    run_runtime(context, "hydrate-context")
+
+    blocked = hook_json(
+        HOOK_DIR / "pre_tool_use_guard.py",
+        hook_payload(context, "echo '{}' >> .codex_context/runtime/reasoning/reasons.jsonl"),
+    )
+    assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "Direct TEP reasoning runtime writes are blocked" in blocked["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def test_pre_tool_hook_does_not_block_read_only_shell_checks_with_stderr_redirect(tmp_path: Path) -> None:

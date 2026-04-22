@@ -42,6 +42,7 @@ REQUIRED_DIRS = (
     "review",
     "runtime",
     "runtime/chain_permits",
+    "runtime/reasoning",
 )
 
 
@@ -94,6 +95,7 @@ Generated navigation layers:
 
 Runtime state:
 - `runtime/hydration.json`
+- `runtime/reasoning/reasons.jsonl` append-only REASON-* reasoning ledger
 - current workspace pointer lives in `settings.json.current_workspace_ref`
 - current project pointer lives in `settings.json.current_project_ref`
 - current task pointer lives in `settings.json.current_task_ref`

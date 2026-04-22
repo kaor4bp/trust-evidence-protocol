@@ -184,8 +184,12 @@ from context_lib import (
     CHAIN_PERMIT_TTL_MAX_SECONDS,
     CHAIN_PERMIT_TTL_MIN_SECONDS,
     DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
+    DECISION_MODES,
     chain_hash,
     chain_permit_text_lines,
+    chain_payload_hash,
+    consume_reason_access,
+    create_reason_step,
     create_chain_permit,
     current_project_ref,
     current_task_ref,
@@ -273,6 +277,8 @@ from context_lib import (
     precedent_review_text_lines,
     resume_task_payload,
     reasoning_case_text_lines,
+    reason_access_text_lines,
+    reason_current_text_lines,
     score_record,
     select_precedent_tasks,
     validate_evidence_chain_payload,
@@ -281,6 +287,9 @@ from context_lib import (
     validate_records_state,
     validate_candidate_record,
     validate_chain_permit,
+    grant_reason_access,
+    validate_reason_access,
+    validate_reason_ledger,
     remove_hypothesis_entries,
     reopen_hypothesis_entry,
     sync_hypothesis_entries,
@@ -2327,16 +2336,157 @@ def cmd_validate_decision(
             decision.setdefault("blockers", []).append(error)
             decision["decision_valid"] = False
         elif permit:
+            reason, reason_error = create_reason_step(
+                root,
+                chain_payload=payload,
+                decision_payload=decision,
+                intent=mode,
+                mode=mode,
+                action_kind=action_kind,
+                why=f"Validated decision chain for mode={mode} kind={(action_kind or '').strip() or 'none'}",
+                parent_refs=[],
+            )
+            if reason_error:
+                decision = dict(decision)
+                decision.setdefault("blockers", []).append(reason_error)
+                decision["decision_valid"] = False
+            else:
+                access, access_error = grant_reason_access(
+                    root,
+                    reason_ref=str(reason.get("id", "")),
+                    mode=mode,
+                    action_kind=action_kind,
+                    ttl_seconds=ttl_seconds,
+                )
+                if access_error:
+                    decision = dict(decision)
+                    decision.setdefault("blockers", []).append(access_error)
+                    decision["decision_valid"] = False
+                else:
+                    permit = dict(permit)
+                    permit["reason_ref"] = reason.get("id")
+                    permit["reason_access_ref"] = access.get("id")
+                    decision = dict(decision)
+                    decision["reason"] = reason
+                    decision["reason_access"] = access
             decision = dict(decision)
             decision["permit"] = permit
     if output_format == "json":
         print(json.dumps(decision, indent=2, ensure_ascii=False))
     else:
         lines = decision_validation_text_lines(decision, TEP_ICON)
+        if decision.get("reason_access"):
+            lines.extend(["", *reason_access_text_lines(decision["reason_access"])])
         if decision.get("permit"):
             lines.extend(["", *chain_permit_text_lines(decision["permit"])])
         print("\n".join(lines))
     return 0 if decision["decision_valid"] else 1
+
+
+def cmd_reason_step(
+    root: Path,
+    chain_file: Path,
+    intent: str,
+    mode: str,
+    action_kind: str | None,
+    why: str,
+    parent_refs: list[str],
+    branch: str,
+    output_format: str,
+) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    try:
+        payload = json.loads(chain_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"{chain_file}: {exc}")
+        return 1
+    hypothesis_entries = active_hypothesis_entry_by_claim(root, records)
+    validation = validate_evidence_chain_payload(records, hypothesis_entries, payload)
+    if validation.errors:
+        for line in evidence_chain_report_lines(validation, payload, TEP_ICON):
+            print(line)
+        return 1
+    decision = decision_validation_payload(records, hypothesis_entries, payload, mode)
+    reason, error = create_reason_step(
+        root,
+        chain_payload=payload,
+        decision_payload=decision,
+        intent=intent,
+        mode=mode,
+        action_kind=action_kind,
+        why=why,
+        parent_refs=parent_refs,
+        branch=branch,
+    )
+    if error:
+        print(error)
+        return 1
+    if output_format == "json":
+        print(json.dumps(reason, indent=2, ensure_ascii=False))
+    else:
+        print(f"Recorded reason {reason['id']} status={reason.get('status')} mode={mode} kind={(action_kind or '') or 'none'}")
+    return 0
+
+
+def cmd_reason_review(
+    root: Path,
+    reason_ref: str,
+    mode: str,
+    action_kind: str | None,
+    grant: bool,
+    ttl_seconds: int | None,
+    output_format: str,
+) -> int:
+    validation = validate_reason_ledger(root)
+    if not validation["ok"]:
+        print("Reason ledger tampered or invalid:")
+        for error in validation["errors"]:
+            print(f"- {error}")
+        return 1
+    entries = validation["entries"]
+    reason = next((entry for entry in entries if str(entry.get("id", "")).strip() == reason_ref), None)
+    if not reason:
+        print(f"missing reason {reason_ref}")
+        return 1
+    if not grant:
+        if output_format == "json":
+            print(json.dumps(reason, indent=2, ensure_ascii=False))
+        else:
+            print(f"Reason {reason_ref} reviewed; grant=false")
+        return 0
+    access, error = grant_reason_access(
+        root,
+        reason_ref=reason_ref,
+        mode=mode,
+        action_kind=action_kind,
+        ttl_seconds=ttl_seconds,
+    )
+    if error:
+        print(error)
+        return 1
+    if output_format == "json":
+        print(json.dumps({"reason": reason, "access": access}, indent=2, ensure_ascii=False))
+    else:
+        print(f"Granted reason access {access['id']} for reason {reason_ref}")
+        print("\n".join(reason_access_text_lines(access)))
+    return 0
+
+
+def cmd_reason_current(root: Path) -> int:
+    lines, exit_code = reason_current_text_lines(root)
+    print("\n".join(lines))
+    return exit_code
+
+
+def cmd_reason_use_access(root: Path, mode: str, action_kind: str | None, used_by_ref: str) -> int:
+    used, error = consume_reason_access(root, mode=mode, action_kind=action_kind, used_by_ref=used_by_ref)
+    if error:
+        print(error)
+        return 1
+    print(f"Consumed reason access {used.get('access_ref')} with {used_by_ref}")
+    return 0
 
 
 def cmd_augment_chain(root: Path, chain_file: Path, output_format: str) -> int:
@@ -2860,6 +3010,7 @@ def cmd_help(topic: str) -> int:
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|model|flow|proposal|final --chain evidence-chain.json",
+            "reason-step --mode edit --kind write --chain evidence-chain.json --why ... | reason-review --reason REASON-* --mode edit --kind write --grant | reason-current",
             "record-input ... | record-run --command ... | record-support --thought ... --kind file-line|command-output|user-confirmation | classify-input --input INP-* --derived-record REF",
             "curator-pool build --workspace WSP-* [--project PRJ-*] [--task TASK-*] --kind health|duplicates|conflicts|modeling|flow|staleness --query ... | curator-pool show --pool CURP-* [--format json]",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
@@ -8035,7 +8186,7 @@ def cmd_record_action(
         except (OSError, json.JSONDecodeError) as exc:
             print(f"{evidence_chain}: {exc}")
             return 1
-        permit = validate_chain_permit(
+        permit = validate_reason_access(
             root,
             mode="edit",
             action_kind=kind,
@@ -8044,12 +8195,12 @@ def cmd_record_action(
         )
         if not permit.get("ok"):
             print(
-                f"{strictness} mutating actions require a fresh valid chain permit "
+                f"{strictness} mutating actions require a fresh valid REASON-* access "
                 f"for mode=edit kind={kind!r}: {permit.get('reason')}"
             )
             print(
-                "Run: validate-decision --mode edit "
-                f"--kind {kind} --chain {evidence_chain} --emit-permit"
+                "Run: reason-review --reason REASON-* "
+                f"--mode edit --kind {kind} --grant"
             )
             return 1
 
@@ -8069,7 +8220,10 @@ def cmd_record_action(
         tags=tags,
         note=note,
     )
-    return persist_candidate(root, records, payload, "action")
+    result = persist_candidate(root, records, payload, "action")
+    if result == 0 and strictness in CHAIN_PERMIT_REQUIRED_FREEDOMS and is_mutating_action_kind(kind):
+        consume_reason_access(root, mode="edit", action_kind=kind, used_by_ref=payload["id"])
+    return result
 
 
 def cmd_record_model(
@@ -8101,7 +8255,7 @@ def cmd_record_model(
         return 1
     strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
     if strictness in CHAIN_PERMIT_REQUIRED_FREEDOMS and status in {"working", "stable", "contested"}:
-        permit = validate_chain_permit(
+        permit = validate_reason_access(
             root,
             mode="model",
             action_kind=None,
@@ -8109,10 +8263,10 @@ def cmd_record_model(
         )
         if not permit.get("ok"):
             print(
-                f"{strictness} model updates require a fresh valid chain permit "
+                f"{strictness} model updates require a fresh valid REASON-* access "
                 f"for mode=model: {permit.get('reason')}"
             )
-            print("Run: validate-decision --mode model --chain <evidence-chain.json> --emit-permit")
+            print("Run: reason-review --reason REASON-* --mode model --grant")
             return 1
 
     payload = build_model_payload(
@@ -8135,7 +8289,10 @@ def cmd_record_model(
         task_refs=task_refs,
         note=note,
     )
-    return persist_candidate(root, records, payload, "model")
+    result = persist_candidate(root, records, payload, "model")
+    if result == 0 and strictness in CHAIN_PERMIT_REQUIRED_FREEDOMS and status in {"working", "stable", "contested"}:
+        consume_reason_access(root, mode="model", action_kind=None, used_by_ref=payload["id"])
+    return result
 
 
 def model_authority_errors(
@@ -8252,7 +8409,7 @@ def cmd_record_flow(
         return 1
     strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
     if strictness in CHAIN_PERMIT_REQUIRED_FREEDOMS and status in {"working", "stable", "contested"}:
-        permit = validate_chain_permit(
+        permit = validate_reason_access(
             root,
             mode="flow",
             action_kind=None,
@@ -8260,10 +8417,10 @@ def cmd_record_flow(
         )
         if not permit.get("ok"):
             print(
-                f"{strictness} flow updates require a fresh valid chain permit "
+                f"{strictness} flow updates require a fresh valid REASON-* access "
                 f"for mode=flow: {permit.get('reason')}"
             )
-            print("Run: validate-decision --mode flow --chain <evidence-chain.json> --emit-permit")
+            print("Run: reason-review --reason REASON-* --mode flow --grant")
             return 1
 
     payload = build_flow_payload(
@@ -8286,7 +8443,10 @@ def cmd_record_flow(
         task_refs=task_refs,
         note=note,
     )
-    return persist_candidate(root, records, payload, "flow")
+    result = persist_candidate(root, records, payload, "flow")
+    if result == 0 and strictness in CHAIN_PERMIT_REQUIRED_FREEDOMS and status in {"working", "stable", "contested"}:
+        consume_reason_access(root, mode="flow", action_kind=None, used_by_ref=payload["id"])
+    return result
 
 
 def cmd_record_open_question(
@@ -8855,6 +9015,33 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help=f"Request a shorter permit TTL; capped by settings chain_permits.ttl_seconds (default {DEFAULT_CHAIN_PERMIT_TTL_SECONDS}).",
     )
+    reason_step = subparsers.add_parser(
+        "reason-step",
+        help="Append a REASON-* step to the task-scoped reasoning ledger.",
+    )
+    reason_step.add_argument("--chain", type=Path, required=True)
+    reason_step.add_argument("--intent", default="planning")
+    reason_step.add_argument("--mode", choices=sorted(DECISION_MODES), default="planning")
+    reason_step.add_argument("--kind", dest="action_kind")
+    reason_step.add_argument("--why", required=True)
+    reason_step.add_argument("--parent", dest="parent_refs", action="append", default=[])
+    reason_step.add_argument("--branch", default="main")
+    reason_step.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    reason_review = subparsers.add_parser(
+        "reason-review",
+        help="Review a REASON-* step and optionally grant one-shot access.",
+    )
+    reason_review.add_argument("--reason", required=True)
+    reason_review.add_argument("--mode", choices=sorted(DECISION_MODES), default="planning")
+    reason_review.add_argument("--kind", dest="action_kind")
+    reason_review.add_argument("--grant", action="store_true")
+    reason_review.add_argument("--ttl-seconds", type=int)
+    reason_review.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    subparsers.add_parser("reason-current", help="Show current REASON-* step and recent access grants.")
+    reason_use = subparsers.add_parser("reason-use-access", help="Consume one active reason access grant.")
+    reason_use.add_argument("--mode", choices=sorted(DECISION_MODES), required=True)
+    reason_use.add_argument("--kind", dest="action_kind")
+    reason_use.add_argument("--used-by", required=True)
     augment_chain = subparsers.add_parser(
         "augment-chain",
         help="Read-only enrichment of an evidence chain with record metadata, quotes, sources, and validation.",
@@ -10311,6 +10498,43 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 emit_permit=args.emit_permit,
                 action_kind=args.action_kind,
                 ttl_seconds=args.ttl_seconds,
+            )
+        )
+    if args.command == "reason-step":
+        raise SystemExit(
+            cmd_reason_step(
+                root,
+                chain_file=Path(args.chain).expanduser().resolve(),
+                intent=args.intent,
+                mode=args.mode,
+                action_kind=args.action_kind,
+                why=args.why,
+                parent_refs=args.parent_refs,
+                branch=args.branch,
+                output_format=args.output_format,
+            )
+        )
+    if args.command == "reason-review":
+        raise SystemExit(
+            cmd_reason_review(
+                root,
+                reason_ref=args.reason,
+                mode=args.mode,
+                action_kind=args.action_kind,
+                grant=args.grant,
+                ttl_seconds=args.ttl_seconds,
+                output_format=args.output_format,
+            )
+        )
+    if args.command == "reason-current":
+        raise SystemExit(cmd_reason_current(root))
+    if args.command == "reason-use-access":
+        raise SystemExit(
+            cmd_reason_use_access(
+                root,
+                mode=args.mode,
+                action_kind=args.action_kind,
+                used_by_ref=args.used_by,
             )
         )
     if args.command == "augment-chain":

@@ -19,6 +19,18 @@ def chain_permits_dir(root: Path) -> Path:
     return runtime_dir(root) / "chain_permits"
 
 
+def reasoning_runtime_dir(root: Path) -> Path:
+    return runtime_dir(root) / "reasoning"
+
+
+def reasons_ledger_path(root: Path) -> Path:
+    return reasoning_runtime_dir(root) / "reasons.jsonl"
+
+
+def reasoning_seal_path(root: Path) -> Path:
+    return reasoning_runtime_dir(root) / "seal.json"
+
+
 def hypotheses_index_path(root: Path) -> Path:
     return root / "hypotheses.jsonl"
 

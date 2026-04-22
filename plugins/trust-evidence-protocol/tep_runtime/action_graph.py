@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .chain_permits import validate_chain_permit
 from .hydration import compute_context_fingerprint, load_hydration_state
+from .reason_ledger import validate_reason_access
 from .retrieval import active_guidelines_for
 from .scopes import active_restrictions_for, current_project_ref, current_task_ref, current_workspace_ref
 from .search import concise
@@ -75,7 +75,7 @@ def _route_graph(intent: str) -> dict:
             {"if": "current task is parent/invalid", "then": "switch to leaf task|decompose-task"},
             {"if": "guidelines missing", "then": "guidelines-for"},
             {"if": "proof gap", "then": "build/validate evidence chain"},
-            {"if": "chain permit missing", "then": "validate-decision --emit-permit"},
+            {"if": "reason access missing", "then": "reason-step|reason-review --grant"},
             {"if": "blocked by policy", "then": "permission|debug"},
             {"if": "edited", "then": "after-mutation"},
         ],
@@ -160,14 +160,14 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         "command": "",
     }
     if intent == "edit" and str(settings.get("allowed_freedom", "proof-only")) in CHAIN_PERMIT_REQUIRED_FREEDOMS:
-        permit_check = validate_chain_permit(root, mode="edit", action_kind=None)
+        permit_check = validate_reason_access(root, mode="edit", action_kind=None)
         permit_status = {
             "required": True,
             "mode": "edit",
             "action_kind": "<action-kind>",
             "ok": bool(permit_check.get("ok")),
             "reason": str(permit_check.get("reason") or ""),
-            "command": "validate-decision --mode edit --kind <action-kind> --chain evidence-chain.json --emit-permit",
+            "command": "reason-review --reason REASON-* --mode edit --kind <action-kind> --grant",
         }
         permit_step = permit_status["command"]
         if permit_step not in route_steps:
@@ -198,7 +198,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
             "route_graph_required": True,
             "drill_down_tools": ["brief-context", "search-records", "claim-graph", "record-detail", "linked-records"],
             "proof_rule": "Navigation output is not proof; cite canonical records with quotes before decisions.",
-            "permit_rule": "Mutating protected actions in evidence-authorized or implementation-choice require a fresh validate-decision --emit-permit result bound to current workspace/project/task/fingerprint.",
+            "permit_rule": "Mutating protected actions in evidence-authorized or implementation-choice require a fresh one-shot REASON-* access bound to current workspace/project/task/fingerprint.",
             "write_rule": "Use record-support/record-evidence so FILE/RUN/SRC/CLM links are built mechanically; low-level record-source/record-claim are for plugin-dev or migration.",
             "task_rule": "Mutating work belongs on a valid atomic leaf TASK-*; parent tasks are orchestration only.",
         },
@@ -243,7 +243,7 @@ def next_step_text_lines(payload: dict, icon: str, detail: str = "compact") -> l
     permit = payload.get("chain_permit") or {}
     if permit.get("required"):
         state = "ok" if permit.get("ok") else f"missing ({permit.get('reason')})"
-        lines.append(f"- chain-permit: {state}; run `{permit.get('command')}`")
+        lines.append(f"- reason-access: {state}; run `{permit.get('command')}`")
     decomposition = payload.get("task_decomposition") or {}
     if decomposition:
         lines.append(

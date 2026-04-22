@@ -15,7 +15,7 @@ This skill only defines the mental model and the few obligations that remain on 
 The agent may think freely, but durable work must pass through the graph API.
 
 ```text
-route / next_step -> lookup -> support capture -> chain validation -> action/final
+route / next_step -> lookup -> support capture -> REASON step/review -> action/final
 ```
 
 Navigation output is not proof.
@@ -26,6 +26,7 @@ Normal graph direction:
 ```text
 INP/FILE/ART/RUN -> SRC -> CLM -> MODEL/FLOW
 TASK/PLAN        -> scope and decomposition
+REASON           -> task-scoped reasoning ledger and one-shot protected access
 CIX              -> code navigation only
 PRP              -> constructive agent proposal
 ```
@@ -39,7 +40,7 @@ They should rank above scattered claims, but they must come from supported or us
 2. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason.
 3. If the route says task decomposition is missing, use `validate-task-decomposition`, `confirm-atomic-task`, or `decompose-task`.
 4. If making or relying on a claim, use the support-capture API and then validate or augment the chain.
-5. If editing, testing, persisting, asking permission, or finishing, follow the route graph and preflight result.
+5. Before protected edits, model/flow updates, final autonomous completion, or permission-sensitive writes, create or reuse a `REASON-*` step and get it reviewed for one-shot access.
 
 Do not browse raw records as the normal path.
 Use lookup, record detail, linked records, graph/map views, and chain tools.
@@ -84,6 +85,8 @@ fact: CLM-* "quote" -> observation: SRC/RUN/INP/ART "quote" -> decision
 
 Then run chain validation when the decision matters.
 If the chain does not validate, do not treat the conclusion as proved.
+Protected actions need a reviewed `REASON-*` ledger step, not just a loose chain file.
+Fork or roll back the reasoning ledger when observations change direction.
 
 Hypotheses are allowed for exploration.
 They must not become proof until supported.

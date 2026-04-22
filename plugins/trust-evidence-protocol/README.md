@@ -25,6 +25,7 @@ Responsibilities:
 - provide one `lookup` front door that routes agents to fact, code, theory, research, or policy lookup instead of making them guess between overlapping tools
 - return an API contract from lookup routes (`next_allowed_commands`, `route_graph`, `evidence_profile`, and `output_contract`) so agents choose from a mechanical path instead of reconstructing protocol prose
 - provide `record-support` / `record-evidence` as the default mechanical support-capture path so agents can preserve quotes, command output, file lines, artifacts, and user confirmations without hand-authoring `FILE/RUN/SRC/CLM` records
+- keep append-only `REASON-*` reasoning ledger entries for task-scoped reasoning steps, reviewed access, and one-shot protected action grants
 - push agents to preserve reusable discoveries, rules, actions, plans, debt, questions, models, flows, and proposals as records
 
 Non-responsibilities:
@@ -147,6 +148,9 @@ Additional transient index:
 `backlog.md` is a generated working view, not a source of truth.
 
 `runtime/` is generated runtime bookkeeping, not a source of truth.
+`runtime/reasoning/reasons.jsonl` is an append-only sealed `REASON-*` reasoning ledger.
+It is not truth storage, but protected actions use reviewed `REASON-*` access grants as their authority.
+Direct writes to the ledger or seal are blocked by hooks and detected by ledger validation.
 
 Agents must not read raw `records/claim/*.json` as the normal discovery path.
 Use MCP `claim_graph` or CLI `claim-graph --query "..."` to get matching
@@ -858,9 +862,10 @@ Commands:
   - blocks `hypothesis` and `exploration_context` nodes as decisive proof for permission, edit, model, flow, and final decisions
   - requires `requested_permission` nodes for permission-mode chains
   - returns `valid_for`, `invalid_for`, hypothesis refs, blockers, warnings, and recommended follow-up commands
-  - with `--emit-permit`, prints and stores a compact `Signed Chain` summary with node ids and quotes beside the time-limited `CHSIG-*`
-  - emitted permits require exactly one current `TASK-*` node in the chain and bind to one mode, optional action kind, current workspace/project/task, chain hash, and context fingerprint
-  - permit TTL defaults to `settings.chain_permits.ttl_seconds = 300`; `--ttl-seconds` may request a shorter window but cannot exceed settings
+  - with `--emit-permit`, compatibility mode creates a `REASON-*` step, one-shot `REASON-*` access, and a legacy `CHSIG-*`
+  - protected actions use the reviewed `REASON-*` access, not the loose chain file itself
+  - emitted access requires exactly one current `TASK-*` node in the chain and binds to one mode, optional action kind, current workspace/project/task, chain hash, and context fingerprint
+  - access TTL defaults to `settings.chain_permits.ttl_seconds = 300`; `--ttl-seconds` may request a shorter window but cannot exceed settings
 
 Reasoning checkpoint disclosure:
 

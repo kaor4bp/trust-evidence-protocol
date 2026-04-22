@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from hook_common import (
     TEP_ICON,
@@ -53,6 +54,7 @@ def main() -> int:
 
     command = str(payload.get("tool_input", {}).get("command", "")).strip()
     action_kind = infer_action_kind(command, context_root)
+    run_id = ""
     capture_mode = hook_mode(context_root, "run_capture")
     if command and (capture_mode == "all" or (capture_mode == "mutating" and action_kind)):
         exit_code = payload.get("tool_response", {}).get("exit_code")
@@ -69,9 +71,25 @@ def main() -> int:
         ]
         if isinstance(exit_code, int):
             run_args.extend(["--exit-code", str(exit_code)])
-        run_context_cli(*run_args, cwd=cwd)
+        run_result = run_context_cli(*run_args, cwd=cwd)
+        match = re.search(r"Recorded run (RUN-\d{8}-[0-9a-f]{8})", run_result.stdout)
+        if match:
+            run_id = match.group(1)
     if not action_kind:
         return 0
+    if run_id:
+        run_context_cli(
+            "--context",
+            str(context_root),
+            "reason-use-access",
+            "--mode",
+            "edit",
+            "--kind",
+            action_kind,
+            "--used-by",
+            run_id,
+            cwd=cwd,
+        )
 
     if mode == "notify":
         emit_warning(

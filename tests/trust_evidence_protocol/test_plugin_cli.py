@@ -620,7 +620,7 @@ def strictness_approval(context: Path, value: str, permission_id: str | None = N
 def test_skill_package_is_core_plus_workflows_without_legacy_identity_artifacts() -> None:
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     assert len(skill.splitlines()) <= 160
-    assert "route / next_step -> lookup -> support capture -> chain validation -> action/final" in skill
+    assert "route / next_step -> lookup -> support capture -> REASON step/review -> action/final" in skill
     assert "Command details belong in the plugin README, runtime help, and developer docs." in skill
     assert "workflows/plugin-commands.md" not in skill
 
@@ -5073,7 +5073,7 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
         check=False,
     )
     assert missing_permit.returncode == 1
-    assert "fresh valid chain permit" in missing_permit.stdout
+    assert "fresh valid REASON-* access" in missing_permit.stdout
 
     permit_result = run_cli(
         context,
@@ -5086,6 +5086,7 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
         str(chain),
         "--emit-permit",
     )
+    assert "## Reason Access" in permit_result.stdout
     assert "## Chain Permit" in permit_result.stdout
     assert "## Signed Chain" in permit_result.stdout
     assert "chain_hash" in permit_result.stdout
@@ -5249,6 +5250,123 @@ def test_chain_permit_requires_current_task_node_and_uses_configured_ttl(tmp_pat
     issued = datetime.fromisoformat(permit["issued_at"])
     expires = datetime.fromisoformat(permit["expires_at"])
     assert 30 <= (expires - issued).total_seconds() <= 60
+
+
+def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.reason",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest reason",
+            "--quote",
+            "reasoned action is supported",
+            "--note",
+            "reason source",
+        ),
+        "source",
+    )
+    claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.reason",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Reasoned action is supported.",
+            "--source",
+            source_id,
+            "--note",
+            "reason claim",
+        ),
+        "claim",
+    )
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "demo.reason",
+            "--title",
+            "Execute a reasoned action",
+            "--related-claim",
+            claim_id,
+            "--note",
+            "active task for reason ledger",
+        ),
+        "task",
+    )
+    chain = context.parent / "reason-chain.json"
+    chain.write_text(
+        json.dumps(
+            {
+                "task": "execute a reasoned action",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Reasoned action is supported."},
+                    {"role": "task", "ref": task_id, "quote": "Execute a reasoned action"},
+                ],
+                "edges": [{"from": claim_id, "to": task_id, "relation": "supports bounded task"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    decision = run_cli(
+        context,
+        "validate-decision",
+        "--mode",
+        "edit",
+        "--kind",
+        "write",
+        "--chain",
+        str(chain),
+        "--emit-permit",
+    )
+    reason_match = re.search(r"reason: `(REASON-\d{8}-[0-9a-f]{8})`", decision.stdout)
+    access_match = re.search(r"access: `(REASON-\d{8}-[0-9a-f]{8})`", decision.stdout)
+    assert reason_match, decision.stdout
+    assert access_match, decision.stdout
+    reason_id = reason_match.group(1)
+    access_id = access_match.group(1)
+    current = run_cli(context, "reason-current")
+    assert reason_id in current.stdout
+    assert access_id in current.stdout
+
+    used = run_cli(context, "reason-use-access", "--mode", "edit", "--kind", "write", "--used-by", "RUN-20260422-abcdef12")
+    assert f"Consumed reason access {access_id}" in used.stdout
+    reused = run_cli(
+        context,
+        "reason-use-access",
+        "--mode",
+        "edit",
+        "--kind",
+        "write",
+        "--used-by",
+        "RUN-20260422-abcdef13",
+        check=False,
+    )
+    assert reused.returncode == 1
+    assert "used" in reused.stdout or "no matching" in reused.stdout
+
+    ledger = context / "runtime" / "reasoning" / "reasons.jsonl"
+    ledger.write_text(ledger.read_text(encoding="utf-8").replace("execute a reasoned action", "tampered action", 1), encoding="utf-8")
+    tampered = run_cli(context, "reason-current", check=False)
+    assert tampered.returncode == 1
+    assert "tampered" in tampered.stdout
 
 
 def test_evidence_authorized_model_and_flow_require_chain_permits(tmp_path: Path) -> None:

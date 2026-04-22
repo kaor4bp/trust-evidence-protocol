@@ -1293,10 +1293,10 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     evidence_payload = build_next_step_payload(records, root, intent="edit", task="change action graph")
     assert evidence_payload["chain_permit"]["required"] is True
     assert evidence_payload["chain_permit"]["ok"] is False
-    assert "validate-decision --mode edit" in evidence_payload["chain_permit"]["command"]
-    assert any("validate-decision --mode edit" in step for step in evidence_payload["route_steps"])
+    assert "reason-review --reason REASON-*" in evidence_payload["chain_permit"]["command"]
+    assert any("reason-review --reason REASON-*" in step for step in evidence_payload["route_steps"])
     evidence_lines = next_step_text_lines(evidence_payload, "TEP", detail="compact")
-    assert any(line.startswith("- chain-permit: missing") for line in evidence_lines)
+    assert any(line.startswith("- reason-access: missing") for line in evidence_lines)
 
     write_settings(
         root,

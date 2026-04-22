@@ -14,6 +14,7 @@ from hook_common import (
     infer_action_kind,
     load_payload,
     locate_context,
+    protected_reasoning_write_violation,
     raw_claim_read_allowed,
     run_runtime_gate,
     TEP_ICON,
@@ -49,6 +50,10 @@ def main() -> int:
         return 0
 
     command = str(payload.get("tool_input", {}).get("command", "")).strip()
+    reason_violation = protected_reasoning_write_violation(context_root, command, cwd=cwd)
+    if reason_violation:
+        emit_denial(reason_violation)
+        return 0
     if command_reads_raw_claims(command):
         allowed_mode = raw_claim_read_allowed(command)
         if not allowed_mode:
