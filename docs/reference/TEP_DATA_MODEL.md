@@ -198,9 +198,10 @@ Required semantics:
 
 Important fields:
 
-- `plane`: `theory`, `code`, or `runtime`
+- `plane`: `theory`, `code`, `runtime`, or `meta`
 - `status`: truth state
 - `claim_kind`: factual/implied/statistical/opinion/prediction/unfalsifiable
+  or a plugin-generated `meta_*` kind
 - `confidence`: high/moderate/low
 - `statement`: human-readable assertion
 - `source_refs`: accepted source support
@@ -208,6 +209,7 @@ Important fields:
 - `contradiction_refs`: known conflicting claims
 - `comparison`: optional structured comparable fact
 - `logic`: optional typed predicate projection
+- `meta`: optional plugin-generated corpus summary block when `plane=meta`
 - `lifecycle`: retrieval/attention state
 
 Truth statuses:
@@ -226,6 +228,56 @@ Lifecycle states:
 - `archived`: explicit-reference/audit/rollback only
 
 Do not conflate `status` and `lifecycle.state`.
+
+## Meta Claims
+
+`CLM-* plane=meta` records are plugin-generated claims about the TEP corpus.
+They do not assert product behavior directly. They assert that the TEP context
+contains a distribution, conflict, gap, or other corpus-level signal over
+underlying records.
+
+Required 0.4.0 meta claim kinds:
+
+- `meta_aggregate`: summarizes a related set of claims/runs/sources and their
+  distribution.
+- `meta_conflict`: records that the corpus contains conflicting or tensioned
+  claims under comparable scope.
+- `meta_gap`: records a missing relation, support path, or confirmed fact that
+  matters for reasoning.
+
+Planned future meta claim kinds:
+
+- `meta_duplicate`
+- `meta_staleness`
+- `meta_evidence_quality`
+- `meta_hotspot`
+- `meta_regression_candidate`
+- `meta_cluster`
+- `meta_coverage`
+
+The `meta` block should include:
+
+- `source_query`
+- `source_record_count`
+- `source_record_refs_sample`
+- `representative_refs`
+- `outlier_refs`
+- `source_set_fingerprint`
+- `generated_by`
+- `generated_at`
+- `stale_policy`
+
+Rules:
+
+- Agents request meta claims through runtime/curator routes instead of writing
+  them by hand.
+- Meta claims can be `supported` when their corpus aggregation is mechanically
+  reproducible.
+- Meta claims are compact lookup entry points and chain summaries.
+- Meta claims prove only corpus-level statements unless the chain also cites
+  underlying object-level `CLM-*`/`SRC-*`/`RUN-*`.
+- Meta claims are superseded or marked stale when the source set fingerprint
+  changes; they are not silently rewritten.
 
 ## Comparison Blocks
 

@@ -112,7 +112,7 @@ Required output:
   "ranked_context": [
     {
       "ref": "MODEL-*|FLOW-*|CLM-*|CIX-*|GLD-*",
-      "role": "integrated_picture|fact|hypothesis|code_navigation|policy",
+      "role": "integrated_picture|fact|hypothesis|meta_summary|code_navigation|policy",
       "status": "active|tentative|resolved|stale",
       "summary": "...",
       "quote": "...",
@@ -137,6 +137,8 @@ Rules:
 
 - Lookup is navigation, not proof.
 - Lookup should prefer `MODEL-*`/`FLOW-*` for compact integrated context.
+- Lookup may return `CLM-* plane=meta` as compact summaries over many records,
+  but these summaries are not object-level proof without drill-down.
 - Runtime-only observations rank below supported/user-confirmed theory.
 - Resolved/stale claims are fallback unless regression suspicion is detected.
 - If a current `REASON-*` exists, lookup defaults to chain-extension mode and
@@ -188,7 +190,8 @@ The agent supplies a draft chain:
   "mode": "planning|proof|permission|final|debug|proposal",
   "nodes": [
     {"ref": "CLM-*", "role": "fact", "quote": "..."},
-    {"ref": "CLM-*", "role": "hypothesis", "quote": "..."}
+    {"ref": "CLM-*", "role": "hypothesis", "quote": "..."},
+    {"ref": "CLM-*", "role": "observation_summary", "quote": "..."}
   ],
   "edges": [
     {"from": "CLM-*", "to": "CLM-*", "relation": "supports|constrains|contrasts"}
@@ -219,6 +222,8 @@ Rules:
   known facts.
 - Proof/final/action modes reject unsupported hypotheses.
 - Hypothesis-on-hypothesis is invalid for proof paths.
+- Summary roles over meta claims require underlying object-level support for
+  decisive proof.
 - If the chain is incomplete, the API should suggest open questions, competing
   hypotheses, or lookup extension candidates.
 

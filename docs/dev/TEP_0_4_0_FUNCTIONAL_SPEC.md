@@ -105,12 +105,14 @@ Highest to lowest normal lookup priority:
    corroborated user-confirmed/theory CLM.
 2. `confirmed_theory_claim`: current supported/corroborated theory CLM with
    user confirmation or accepted source support.
-3. `code_claim`: current supported/corroborated code-plane CLM from FILE/SRC
+3. `meta_corpus_claim`: current plugin-generated meta CLM that summarizes the
+   TEP corpus, such as aggregate/conflict/gap claims.
+4. `code_claim`: current supported/corroborated code-plane CLM from FILE/SRC
    evidence.
-4. `runtime_observation`: current runtime CLM with transitive RUN provenance.
-5. `tentative_hypothesis`: tentative CLM compatible with known facts.
-6. `resolved_or_historical`: resolved/historical CLM, fallback only.
-7. `navigation_hit`: CIX/backend/map/topic result, never proof.
+5. `runtime_observation`: current runtime CLM with transitive RUN provenance.
+6. `tentative_hypothesis`: tentative CLM compatible with known facts.
+7. `resolved_or_historical`: resolved/historical CLM, fallback only.
+8. `navigation_hit`: CIX/backend/map/topic result, never proof.
 
 Rules:
 
@@ -120,14 +122,85 @@ Rules:
   theory claim for MODEL/FLOW promotion.
 - Multiple independent runtime observations may increase retrieval relevance,
   but not promotion authority.
+- Meta corpus claims can rank above scattered object-level runtime claims as
+  compact entry points, but they prove only facts about the TEP corpus unless
+  the chain drills down into underlying object-level support.
 
-### 3.2 MODEL/FLOW Promotion Gate
+### 3.2 Plugin-Generated Meta Claims
+
+`CLM-* plane=meta` records are plugin-generated claims about the TEP corpus.
+They do not assert product behavior directly. They assert that the TEP context
+contains a cluster, distribution, conflict, gap, or quality signal over
+underlying records.
+
+Required fields:
+
+```json
+{
+  "plane": "meta",
+  "claim_kind": "meta_aggregate|meta_conflict|meta_gap|...",
+  "statement": "...",
+  "meta": {
+    "source_query": "...",
+    "source_record_count": 0,
+    "source_record_refs_sample": [],
+    "representative_refs": [],
+    "outlier_refs": [],
+    "source_set_fingerprint": "...",
+    "generated_by": "lookup|curator|aggregate-records|review-context",
+    "generated_at": "...",
+    "stale_policy": "source_set_changed|time_window_expired|manual"
+  }
+}
+```
+
+Rules:
+
+- Agents should not hand-write meta claims; they request a runtime/curator
+  route that creates them.
+- Meta claims may be `supported` when the aggregation over the corpus is
+  mechanically reproducible.
+- Meta claims are high-value lookup entry points and chain summaries.
+- Meta claims are not decisive proof of object-level truth without underlying
+  `CLM-*`/`SRC-*`/`RUN-*` drill-down.
+- Meta claims are not silently updated. If the source set changes, the old
+  claim becomes `stale_candidate` or is superseded by a new meta claim.
+- High link count alone must not make a stale or broad meta claim dominate
+  lookup.
+
+Required 0.4.0 meta claim kinds:
+
+- `meta_aggregate`: summarizes a related set of claims/runs/sources and their
+  distribution, for example pass/fail counts for repeated test runs.
+- `meta_conflict`: records that the corpus contains conflicting or tensioned
+  claims under comparable scope.
+- `meta_gap`: records a missing relation, missing support, or missing confirmed
+  fact that matters for reasoning.
+
+Planned future meta claim kinds:
+
+- `meta_duplicate`: likely duplicate claims that should be merged, superseded,
+  or de-ranked.
+- `meta_staleness`: lifecycle suspicion that a claim/model/flow is stale.
+- `meta_evidence_quality`: summary of support independence, plane mix, and
+  source quality.
+- `meta_hotspot`: repeated access or token-pressure hotspot that should be
+  promoted into MODEL/FLOW or another compact structure.
+- `meta_regression_candidate`: similarity between new symptoms and resolved or
+  historical claims without assuming same-bug identity.
+- `meta_cluster`: durable summary of a topic/graph cluster when generated maps
+  are insufficient.
+- `meta_coverage`: summary of which parts of a domain/task have enough facts
+  and which remain under-covered.
+
+### 3.3 MODEL/FLOW Promotion Gate
 
 MODEL/FLOW creation or update requires:
 
 - at least one supported/corroborated theory CLM
 - no tentative hypothesis in decisive support
 - no runtime-only decisive support
+- no meta-only decisive support for object-level theory
 - no unresolved contradiction unless explicitly modeled as a known conflict
 - workspace/project/domain scope
 - source quote coverage through linked CLM/SRC
@@ -137,9 +210,10 @@ Rejected promotion must return repair routes:
 - ask user to confirm theory
 - record missing source evidence
 - split runtime observation from theory claim
+- drill down from meta claim into object-level support
 - mark as PRP/proposal instead of MODEL/FLOW
 
-### 3.3 Historical And Resolved Ranking
+### 3.4 Historical And Resolved Ranking
 
 Resolved/historical claims are not forgotten.
 
@@ -275,6 +349,7 @@ Base weights:
 
 - current MODEL/FLOW: `100`
 - current confirmed/theory CLM: `80`
+- current meta corpus CLM: `75`
 - current code CLM: `70`
 - current runtime CLM with RUN: `55`
 - tentative compatible CLM: `35`
@@ -295,6 +370,8 @@ Adjustments:
 Constraints:
 
 - CIX/backend/map hits cannot outrank proof-capable records in fact lookup.
+- Meta claims can outrank many scattered runtime observations for orientation,
+  but cannot satisfy object-level proof without drill-down.
 - Runtime CLM cannot outrank confirmed theory for theory/model lookup.
 - Resolved/historical cannot appear before active records unless regression
   route applies.
@@ -377,6 +454,10 @@ Allowed node roles:
 - `exploration_context`
 - `permission`
 - `requested_permission`
+- `observation_summary`
+- `conflict_summary`
+- `gap_summary`
+- `quality_summary`
 - `restriction`
 - `guideline`
 - `proposal`
@@ -403,6 +484,17 @@ state that the answer is exploratory.
 `debug`: runtime observations and hypotheses allowed, but durable conclusions
 must remain tentative.
 
+Meta chain roles:
+
+- `observation_summary` may cite `meta_aggregate`.
+- `conflict_summary` may cite `meta_conflict`.
+- `gap_summary` may cite `meta_gap`.
+- `quality_summary` may cite future `meta_evidence_quality`.
+- Summary roles are valid for orientation, planning, debugging, proposal, and
+  permission context.
+- Summary roles do not satisfy object-level proof unless the chain also cites
+  representative underlying `CLM-*`/`SRC-*`/`RUN-*` records.
+
 ### 7.3 Validation Error Taxonomy
 
 Errors:
@@ -416,6 +508,7 @@ Errors:
 - `hypothesis_on_hypothesis`
 - `runtime_without_run`
 - `model_flow_authority_violation`
+- `meta_claim_used_as_object_proof`
 - `workspace_scope_mismatch`
 - `task_scope_mismatch`
 - `contradiction_unhandled`
@@ -733,6 +826,9 @@ Deterministic tests:
 - new SRC without provenance surface rejected
 - runtime CLM without RUN rejected
 - MODEL/FLOW from tentative/runtime-only rejected
+- MODEL/FLOW from meta-only decisive support rejected
+- meta claim used as object-level proof rejected unless underlying support is
+  present
 - hypothesis-on-hypothesis rejected in proof mode
 - same-branch duplicate REASON rejected
 - protected mutation without GRANT rejected
