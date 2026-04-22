@@ -26,7 +26,7 @@ JsonObject = dict[str, Any]
 
 CONTEXT_ROOT_DESCRIPTION = (
     "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep context_root, "
-    "~/.tep_context, or legacy ./.codex_context."
+    "or ~/.tep_context. Legacy .codex_context requires explicit migration/debug tooling."
 )
 
 

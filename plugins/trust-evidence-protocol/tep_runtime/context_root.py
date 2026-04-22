@@ -1,4 +1,4 @@
-"""Context-root discovery for global TEP memory with legacy fallback."""
+"""Context-root discovery for the TEP runtime."""
 
 from __future__ import annotations
 
@@ -52,7 +52,15 @@ def resolve_context_root(
     start: str | Path | None = None,
     stop: Path | None = None,
     require_exists: bool = False,
+    include_legacy: bool = False,
 ) -> Path | None:
+    """Resolve the active TEP context root.
+
+    Normal 0.4 runtime resolution never falls back to `.codex_context`.
+    Migration and forensics callers may opt into legacy discovery explicitly
+    with `include_legacy=True` or call `find_legacy_context_root()` directly.
+    """
+
     candidates: list[Path] = []
 
     if explicit:
@@ -71,9 +79,10 @@ def resolve_context_root(
         if global_root.is_dir():
             candidates.append(global_root)
 
-        legacy_root = find_legacy_context_root(start, stop=stop)
-        if legacy_root is not None:
-            candidates.append(legacy_root)
+        if include_legacy:
+            legacy_root = find_legacy_context_root(start, stop=stop)
+            if legacy_root is not None:
+                candidates.append(legacy_root)
 
         candidates.append(global_root)
 

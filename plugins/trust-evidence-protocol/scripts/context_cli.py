@@ -8588,7 +8588,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--context",
         default=None,
-        help="Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, ~/.tep_context, or legacy ./.codex_context.",
+        help=(
+            "Path to TEP context root. Defaults to TEP_CONTEXT_ROOT, nearest .tep "
+            "context_root, or ~/.tep_context."
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

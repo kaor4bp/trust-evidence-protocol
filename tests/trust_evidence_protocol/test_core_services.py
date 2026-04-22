@@ -4212,7 +4212,9 @@ def test_atomic_json_io_and_write_lock(tmp_path: Path) -> None:
         assert (tmp_path / ".codex_context" / "runtime" / "write.lock").exists()
 
 
-def test_context_root_resolver_prefers_explicit_env_global_then_legacy(tmp_path: Path, monkeypatch) -> None:
+def test_context_root_resolver_prefers_explicit_env_global_and_requires_explicit_legacy(
+    tmp_path: Path, monkeypatch
+) -> None:
     explicit = tmp_path / "explicit-context"
     assert resolve_context_root(str(explicit), start=tmp_path) == explicit.resolve()
 
@@ -4232,7 +4234,8 @@ def test_context_root_resolver_prefers_explicit_env_global_then_legacy(tmp_path:
 
     global_root.rmdir()
     assert find_legacy_context_root(legacy.parent) == legacy.resolve()
-    assert resolve_context_root(start=legacy.parent) == legacy.resolve()
+    assert resolve_context_root(start=legacy.parent) == global_root.resolve()
+    assert resolve_context_root(start=legacy.parent, include_legacy=True) == legacy.resolve()
 
     legacy.rmdir()
     assert resolve_context_root(start=tmp_path) == global_root.resolve()
