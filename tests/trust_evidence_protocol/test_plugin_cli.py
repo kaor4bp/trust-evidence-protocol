@@ -5384,6 +5384,187 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
     assert "tampered" in tampered.stdout
 
 
+def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.reason-ledger",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest reason ledger",
+            "--quote",
+            "reasoning can be recorded as a validated ledger step",
+            "--note",
+            "reason ledger source",
+        ),
+        "source",
+    )
+    claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.reason-ledger",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Reasoning can be recorded as a validated ledger step.",
+            "--source",
+            source_id,
+            "--note",
+            "reason ledger claim",
+        ),
+        "claim",
+    )
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "demo.reason-ledger",
+            "--title",
+            "Record reason ledger branches",
+            "--related-claim",
+            claim_id,
+            "--note",
+            "active task for reason ledger branches",
+        ),
+        "task",
+    )
+    chain = context.parent / "ledger-chain.json"
+    chain.write_text(
+        json.dumps(
+            {
+                "task": "record reason ledger branches",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Reasoning can be recorded as a validated ledger step."},
+                    {"role": "task", "ref": task_id, "quote": "Record reason ledger branches"},
+                ],
+                "edges": [{"from": claim_id, "to": task_id, "relation": "supports reasoning ledger work"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    first = json.loads(
+        run_cli(
+            context,
+            "reason-step",
+            "--mode",
+            "planning",
+            "--chain",
+            str(chain),
+            "--why",
+            "establish the first reasoning checkpoint",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert first["parent_refs"] == []
+    assert first["branch"] == "main"
+    assert first["signed_chain"]["nodes"][0]["ref"] == claim_id
+
+    second = json.loads(
+        run_cli(
+            context,
+            "reason-step",
+            "--mode",
+            "planning",
+            "--chain",
+            str(chain),
+            "--why",
+            "continue from the previous checkpoint",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert second["parent_refs"] == [first["id"]]
+
+    fork = json.loads(
+        run_cli(
+            context,
+            "reason-step",
+            "--mode",
+            "planning",
+            "--chain",
+            str(chain),
+            "--parent",
+            first["id"],
+            "--branch",
+            "alternative",
+            "--why",
+            "fork an alternative interpretation",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert fork["parent_refs"] == [first["id"]]
+    assert fork["branch"] == "alternative"
+
+    current = run_cli(context, "reason-current").stdout
+    assert "## Recent Reason Steps" in current
+    assert f"reason `{first['id']}` branch=`main` parents=`none`" in current
+    assert f"reason `{second['id']}` branch=`main` parents=`{first['id']}`" in current
+    assert f"reason `{fork['id']}` branch=`alternative` parents=`{first['id']}`" in current
+
+    run_cli(context, "pause-task", "--note", "switch to another task for parent-scope validation")
+    other_task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "demo.reason-ledger.other",
+            "--title",
+            "Other reason task",
+            "--related-claim",
+            claim_id,
+            "--note",
+            "separate active task",
+        ),
+        "task",
+    )
+    other_chain = context.parent / "other-ledger-chain.json"
+    other_chain.write_text(
+        json.dumps(
+            {
+                "task": "other reason task",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Reasoning can be recorded as a validated ledger step."},
+                    {"role": "task", "ref": other_task_id, "quote": "Other reason task"},
+                ],
+                "edges": [{"from": claim_id, "to": other_task_id, "relation": "supports separate task"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    cross_task_parent = run_cli(
+        context,
+        "reason-step",
+        "--mode",
+        "planning",
+        "--chain",
+        str(other_chain),
+        "--parent",
+        first["id"],
+        "--why",
+        "try to reuse a parent from another task",
+        check=False,
+    )
+    assert cross_task_parent.returncode == 1
+    assert f"parent reason {first['id']} belongs to another TASK-*" in cross_task_parent.stdout
+
+
 def test_evidence_authorized_model_and_flow_require_grants(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     claim_id = user_confirmed_theory_claim(

@@ -799,6 +799,20 @@ def reason_current_text_lines(root: Path) -> tuple[list[str], int]:
         )
     else:
         lines.append("- current_reason: `none`")
+    recent_steps = [
+        entry
+        for entry in entries
+        if str(entry.get("entry_type", "")).strip() == "step"
+        and (not task_ref or str(entry.get("task_ref", "")).strip() == task_ref)
+    ]
+    if recent_steps:
+        lines.append("## Recent Reason Steps")
+        for reason in recent_steps[-5:]:
+            parents = ",".join(str(ref).strip() for ref in reason.get("parent_refs", []) if str(ref).strip()) or "none"
+            lines.append(
+                f"- reason `{reason.get('id')}` branch=`{reason.get('branch') or 'main'}` parents=`{parents}` "
+                f"status=`{reason.get('status')}` mode=`{reason.get('mode')}` kind=`{reason.get('action_kind') or 'none'}` why={reason.get('why')}"
+            )
     for access in accesses[-5:]:
         grant_ref = str(access.get("id", "")).strip()
         use_count = grant_use_count(root, grant_ref)

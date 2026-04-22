@@ -91,6 +91,8 @@ Protected actions need a reviewed `REASON-*` ledger step, not just a loose chain
 Bash authorization is append-only: `REASON-* -> GRANT-* -> RUN-*`.
 `GRANT-*` is valid only for its task, mode, action kind, optional exact command, current context fingerprint, and configured time window.
 Do not rely on mutable `used=true` state; a grant is considered consumed when a linked `RUN-*` or protected record exists.
+Use `REASON-*` as the task-local ledger of justified reasoning, not just as a grant prelude.
+When your interpretation changes, append a new reason step with a parent and `why`; when exploring an alternative, fork with an explicit parent and branch.
 Fork or roll back the reasoning ledger when observations change direction.
 
 Hypotheses are allowed for exploration.

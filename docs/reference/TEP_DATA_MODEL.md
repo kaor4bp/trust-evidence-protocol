@@ -462,15 +462,22 @@ A probe result is navigation metadata until backed by canonical records.
 
 ## Reason Authorization Ledger
 
-`runtime/reasoning/reasons.jsonl` is an append-only runtime ledger for protected
-agent actions.
+`runtime/reasoning/reasons.jsonl` is an append-only runtime ledger for justified
+agent reasoning. Protected actions are one consumer of that ledger, not the
+ledger's only purpose.
 
 Ledger entries are not canonical truth records. They are runtime control
 evidence:
 
-- `REASON-*`: task-scoped reasoning step with the validated chain snapshot.
+- `REASON-*`: task-scoped reasoning step with the validated chain snapshot,
+  parent links, branch label, intent, mode, action kind, and the agent's `why`.
 - `GRANT-*`: reviewed one-shot authorization bound to mode, action kind, task
   scope, context fingerprint, expiry, and optionally exact command hash plus cwd.
+
+`REASON-*` entries form a task-local DAG. A new step without explicit parents
+continues from the latest step for the current task; explicit `parent_refs` and
+`branch` create forks for alternative interpretations or rollback paths. A
+reason step cannot parent across another `TASK-*`.
 
 For protected Bash, the intended path is:
 
