@@ -169,35 +169,36 @@ Use `workspace-admission check` before attaching or analyzing an unknown checkou
 
 ## Mechanical Evidence Writes
 
-Use `record-evidence` as the default write API when new support should become a durable source-backed claim.
-It creates `SRC-*`, optionally creates `CLM-*`, and links any supplied `INP-*` through `derived_record_refs`.
+Use `record-support` as the default write API when new support should become a durable source-backed claim.
+It creates the needed graph records mechanically: `FILE-*` for file metadata, `RUN-*` for command executions, `SRC-*` for source support, optional `CLM-*` for the thought, and `INP-*` back-links through `derived_record_refs`.
+`record-evidence` is the compatibility form with the same graph-v2 behavior and more knobs.
 
 ```bash
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-evidence \
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-support \
   --scope smartpick.cache \
   --kind user-confirmation \
   --input INP-* \
   --quote "User confirmed SmartPick cache refresh happens only at startup." \
-  --claim "SmartPick cache refresh happens only at application startup." \
+  --thought "SmartPick cache refresh happens only at application startup." \
   --claim-status supported \
   --note "classified captured user input into source-backed theory claim"
 
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-evidence \
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-support \
   --scope tests.cache \
   --kind command-output \
   --command "uv run pytest tests/unit/test_cache.py -q" \
   --quote "1 passed" \
-  --claim "The focused cache unit test passed." \
+  --thought "The focused cache unit test passed." \
   --claim-status supported \
   --note "focused test evidence"
 
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-evidence \
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-support \
   --scope code.cache \
   --kind file-line \
   --path src/cache.py \
   --line 42 \
   --quote "def refresh_cache():" \
-  --claim "src/cache.py defines refresh_cache." \
+  --thought "src/cache.py defines refresh_cache." \
   --claim-status supported \
   --note "file-line code evidence"
 ```
@@ -210,7 +211,7 @@ Use separate `record-source` and `record-claim` only for advanced comparison, lo
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --show
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend-preset minimal
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --backend-preset recommended
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --hook-verbosity quiet --context-budget hydration=compact
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --hook-verbosity quiet --hook-run-capture mutating --context-budget hydration=compact
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --input-capture user_prompts=metadata-only --input-capture session_linking=false
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis logic_solver.backend=z3 --analysis logic_solver.install_policy=ask
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context configure-runtime --analysis topic_prefilter.backend=nmf --analysis topic_prefilter.missing_dependency=warn
@@ -220,6 +221,7 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 ```
 
 Use `hooks.verbosity=quiet` to reduce routine hook chatter while preserving stale/conflict/blocking messages.
+Use `hooks.run_capture=off|mutating|all` to control automatic PostToolUse `RUN-*` capture; default `mutating` avoids turning every read-only `rg/ls/sed` into canonical context churn.
 Use `context_budget` as policy for compact/normal/debug output; do not treat compact output as permission to omit decisive ids.
 Use `input_capture` as policy for prompt provenance; `INP-*` records are not proof until classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
 Do not call an `INP-*` a remembered fact/rule. Use `review/inputs.md` to find unclassified inputs, then create/link the derived canonical records before final response.
@@ -373,8 +375,8 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context classify-input --input INP-* --derived-record SRC-* --note "classified prompt"
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context input-triage report --task TASK-*
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context input-triage link-operational --task TASK-* --input INP-* --note "operational prompt"
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-source --scope "..." --source-kind runtime --critique-status accepted --origin-kind command --origin-ref "..." --quote "..." --note "..."
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-claim --scope "..." --statement "..." --plane runtime --status tentative --source SRC-* --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-support --scope "..." --kind command-output --command "..." --quote "..." --thought "..." --claim-status tentative --note "..."
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-run --command "uv run pytest -q" --exit-code 0 --stdout-quote "passed" --note "hook/API captured run"
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context record-claim --scope "..." --statement "Alice studies algebra." --plane runtime --status supported --source SRC-* --logic-symbol "person:alice|entity" --logic-symbol "subject:algebra|concept" --logic-atom "Studies|person:alice,subject:algebra|affirmed" --note "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context show-claim-lifecycle --claim CLM-*
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context resolve-claim --claim CLM-* --resolved-by-claim CLM-* --note "..."

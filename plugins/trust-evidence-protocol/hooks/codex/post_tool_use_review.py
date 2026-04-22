@@ -12,6 +12,7 @@ from hook_common import (
     infer_action_kind,
     load_payload,
     locate_context,
+    run_context_cli,
     run_runtime_gate,
 )
 
@@ -52,6 +53,23 @@ def main() -> int:
 
     command = str(payload.get("tool_input", {}).get("command", "")).strip()
     action_kind = infer_action_kind(command, context_root)
+    capture_mode = hook_mode(context_root, "run_capture")
+    if command and (capture_mode == "all" or (capture_mode == "mutating" and action_kind)):
+        exit_code = payload.get("tool_response", {}).get("exit_code")
+        run_args = [
+            "--context",
+            str(context_root),
+            "record-run",
+            "--command",
+            command,
+            "--cwd",
+            str(cwd or ""),
+            "--note",
+            "Bash execution captured by PostToolUse hook",
+        ]
+        if isinstance(exit_code, int):
+            run_args.extend(["--exit-code", str(exit_code)])
+        run_context_cli(*run_args, cwd=cwd)
     if not action_kind:
         return 0
 

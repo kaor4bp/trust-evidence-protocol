@@ -29,6 +29,8 @@ def dependency_refs_for_record(data: dict) -> set[str]:
     refs.update(_safe_list(data, "restriction_refs"))
     refs.update(_safe_list(data, "related_project_refs"))
     refs.update(_safe_list(data, "input_refs"))
+    refs.update(_safe_list(data, "file_refs"))
+    refs.update(_safe_list(data, "run_refs"))
 
     if record_type == "input":
         refs.update(_safe_list(data, "derived_record_refs"))

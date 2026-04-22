@@ -102,6 +102,10 @@ from context_lib import (
     map_brief_payload,
     map_brief_text_lines,
     build_action_payload,
+    apply_atomic_plan_decomposition,
+    apply_atomic_task_decomposition,
+    apply_decomposed_plan_decomposition,
+    apply_decomposed_task_decomposition,
     build_claim_payload,
     build_comparison_payload,
     build_context_brief_payload,
@@ -184,6 +188,7 @@ from context_lib import (
     evidence_chain_report_lines,
     effective_logic_solver,
     export_rdf_text,
+    file_metadata,
     guideline_detail_lines,
     guideline_summary_line,
     invalidate_hydration_state,
@@ -225,7 +230,9 @@ from context_lib import (
     assign_project_payload,
     assign_workspace_payload,
     assign_task_payload,
+    build_file_payload,
     build_hypothesis_entry,
+    build_run_payload,
     close_hypothesis_entries,
     record_belongs_to_project,
     record_belongs_to_task,
@@ -240,12 +247,14 @@ from context_lib import (
     select_fallback_claims,
     select_backend_status,
     select_records,
+    safe_list,
     stale_knowledge_target_ids,
     logic_solver_settings,
     structural_logic_check_payload,
     structural_logic_check_text_lines,
     finish_task_payload,
     fork_working_context_payload,
+    infer_file_kind,
     strictness_request_allows_change,
     task_refs_for_write,
     workspace_refs_for_write,
@@ -295,12 +304,16 @@ from context_lib import (
     load_anchor,
     write_hypotheses_index,
     task_drift_text_lines,
+    task_decomposition_text_lines,
     task_identity_text,
     task_outcome_check_payload,
     task_outcome_check_text_lines,
     task_related_counts,
     task_summary_line,
+    plan_decomposition_text_lines,
     unclassified_input_items,
+    validate_plan_decomposition_payload,
+    validate_task_decomposition_payload,
 )
 from logic_z3 import analyze_logic_payload_with_z3
 from tep_runtime.cli_common import (
@@ -1458,6 +1471,252 @@ def cmd_show_task(root: Path, show_all: bool) -> int:
     return 0
 
 
+def cmd_validate_task_decomposition(root: Path, task_ref: str, output_format: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload = validate_task_decomposition_payload(records, task_ref)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(task_decomposition_text_lines(payload)))
+    return 0 if payload.get("accepted") else 1
+
+
+def cmd_confirm_atomic_task(
+    root: Path,
+    task_ref: str,
+    deliverable: str,
+    done_criteria: list[str],
+    verification: list[str],
+    scope_boundary: str,
+    blocker_policy: str,
+    no_verification_needed: str | None,
+    note: str | None,
+) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    task = records.get(task_ref)
+    if not task or task.get("record_type") != "task":
+        print(f"missing task record {task_ref}")
+        return 1
+    timestamp = now_timestamp()
+    payload = apply_atomic_task_decomposition(
+        public_record_payload(task),
+        timestamp=timestamp,
+        deliverable=deliverable,
+        done_criteria=done_criteria,
+        verification=verification,
+        scope_boundary=scope_boundary,
+        blocker_policy=blocker_policy,
+        no_verification_needed=no_verification_needed,
+        note=note,
+    )
+    merged_records, errors = validate_mutated_records(root, records, {task_ref: payload})
+    if errors:
+        print_errors(errors)
+        return 1
+    return persist_mutated_records(root, merged_records, [task_ref], f"Confirmed atomic task {task_ref}")
+
+
+def parse_subtask_spec(spec: str) -> dict:
+    parts = [part.strip() for part in spec.split("|")]
+    if len(parts) < 6:
+        raise ValueError("subtask must be shaped as scope|title|deliverable|done|verify|boundary[|blocker_policy]")
+    scope, title, deliverable, done, verify, boundary = parts[:6]
+    blocker_policy = parts[6] if len(parts) > 6 else "Record OPEN-* for blockers or user decisions."
+    if not all((scope, title, deliverable, done, boundary)):
+        raise ValueError("subtask scope, title, deliverable, done, and boundary must be non-empty")
+    return {
+        "scope": scope,
+        "title": title,
+        "deliverable": deliverable,
+        "done_criteria": [done],
+        "verification": [verify] if verify else [],
+        "scope_boundary": boundary,
+        "blocker_policy": blocker_policy,
+    }
+
+
+def cmd_decompose_task(root: Path, task_ref: str, subtask_specs: list[str], note: str | None) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    parent = records.get(task_ref)
+    if not parent or parent.get("record_type") != "task":
+        print(f"missing task record {task_ref}")
+        return 1
+    specs: list[dict] = []
+    for spec in subtask_specs:
+        try:
+            specs.append(parse_subtask_spec(spec))
+        except ValueError as exc:
+            print(exc)
+            return 1
+    timestamp = now_timestamp()
+    updates: dict[str, dict] = {}
+    child_refs: list[str] = []
+    id_pool = dict(records)
+    for spec in specs:
+        child_id = next_record_id(id_pool, "TASK-")
+        id_pool[child_id] = {"id": child_id}
+        child_refs.append(child_id)
+        updates[child_id] = build_task_payload(
+            record_id=child_id,
+            timestamp=timestamp,
+            scope=spec["scope"],
+            title=spec["title"],
+            task_type=str(parent.get("task_type", "general")).strip() or "general",
+            execution_mode=str(parent.get("execution_mode", "manual")).strip() or "manual",
+            description=f"Subtask of {task_ref}",
+            related_claim_refs=safe_list(parent, "related_claim_refs"),
+            related_model_refs=safe_list(parent, "related_model_refs"),
+            related_flow_refs=safe_list(parent, "related_flow_refs"),
+            open_question_refs=[],
+            plan_refs=[],
+            debt_refs=[],
+            action_refs=[],
+            project_refs=safe_list(parent, "project_refs"),
+            tags=safe_list(parent, "tags"),
+            note=f"Subtask of {task_ref}",
+            parent_task_refs=[task_ref],
+            decomposition={
+                "status": "atomic",
+                "one_pass": True,
+                "deliverable": spec["deliverable"],
+                "done_criteria": spec["done_criteria"],
+                "verification": spec["verification"],
+                "scope_boundary": spec["scope_boundary"],
+                "blocker_policy": spec["blocker_policy"],
+            },
+        )
+    existing_children = safe_list(parent.get("decomposition", {}), "subtask_refs") if isinstance(parent.get("decomposition"), dict) else []
+    parent_payload = apply_decomposed_task_decomposition(
+        public_record_payload(parent),
+        timestamp=timestamp,
+        subtask_refs=[*existing_children, *child_refs],
+        note=note,
+    )
+    updates[task_ref] = parent_payload
+    merged_records, errors = validate_mutated_records(root, records, updates)
+    if errors:
+        print_errors(errors)
+        return 1
+    return persist_mutated_records(root, merged_records, [*child_refs, task_ref], f"Decomposed task {task_ref}; Started task {child_refs[0]}: {updates[child_refs[0]]['title']}")
+
+
+def cmd_validate_plan_decomposition(root: Path, plan_ref: str, output_format: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload = validate_plan_decomposition_payload(records, plan_ref)
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(plan_decomposition_text_lines(payload)))
+    return 0 if payload.get("accepted") else 1
+
+
+def cmd_confirm_atomic_plan(root: Path, plan_ref: str, task_ref: str | None, note: str | None) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    plan = records.get(plan_ref)
+    if not plan or plan.get("record_type") != "plan":
+        print(f"missing plan record {plan_ref}")
+        return 1
+    timestamp = now_timestamp()
+    payload = apply_atomic_plan_decomposition(
+        public_record_payload(plan),
+        timestamp=timestamp,
+        task_ref=task_ref,
+        note=note,
+    )
+    merged_records, errors = validate_mutated_records(root, records, {plan_ref: payload})
+    if errors:
+        print_errors(errors)
+        return 1
+    return persist_mutated_records(root, merged_records, [plan_ref], f"Confirmed atomic plan {plan_ref}")
+
+
+def parse_subplan_spec(spec: str) -> dict:
+    parts = [part.strip() for part in spec.split("|")]
+    if len(parts) < 5:
+        raise ValueError("subplan must be shaped as scope|title|step|success|justified_by[,justified_by...]")
+    scope, title, step, success, justified = parts[:5]
+    if not all((scope, title, step, success, justified)):
+        raise ValueError("subplan scope, title, step, success, and justified_by must be non-empty")
+    return {
+        "scope": scope,
+        "title": title,
+        "steps": [step],
+        "success_criteria": [success],
+        "justified_by": parse_csv_refs(justified),
+    }
+
+
+def cmd_decompose_plan(root: Path, plan_ref: str, subplan_specs: list[str], note: str | None) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return 1
+    parent = records.get(plan_ref)
+    if not parent or parent.get("record_type") != "plan":
+        print(f"missing plan record {plan_ref}")
+        return 1
+    specs: list[dict] = []
+    for spec in subplan_specs:
+        try:
+            specs.append(parse_subplan_spec(spec))
+        except ValueError as exc:
+            print(exc)
+            return 1
+    timestamp = now_timestamp()
+    updates: dict[str, dict] = {}
+    child_refs: list[str] = []
+    id_pool = dict(records)
+    for spec in specs:
+        child_id = next_record_id(id_pool, "PLN-")
+        id_pool[child_id] = {"id": child_id}
+        child_refs.append(child_id)
+        updates[child_id] = build_plan_payload(
+            record_id=child_id,
+            timestamp=timestamp,
+            scope=spec["scope"],
+            title=spec["title"],
+            priority=str(parent.get("priority", "medium")).strip() or "medium",
+            status="proposed",
+            justified_by=spec["justified_by"],
+            steps=spec["steps"],
+            success_criteria=spec["success_criteria"],
+            blocked_by=[],
+            project_refs=safe_list(parent, "project_refs"),
+            task_refs=safe_list(parent, "task_refs"),
+            tags=safe_list(parent, "tags"),
+            note=f"Subplan of {plan_ref}",
+            decomposition={
+                "status": "atomic",
+                "one_pass": True,
+                "task_ref": "",
+            },
+            parent_plan_refs=[plan_ref],
+        )
+    existing_children = safe_list(parent.get("decomposition", {}), "subplan_refs") if isinstance(parent.get("decomposition"), dict) else []
+    parent_payload = apply_decomposed_plan_decomposition(
+        public_record_payload(parent),
+        timestamp=timestamp,
+        subplan_refs=[*existing_children, *child_refs],
+        task_refs=safe_list(parent, "task_refs"),
+        note=note,
+    )
+    updates[plan_ref] = parent_payload
+    merged_records, errors = validate_mutated_records(root, records, updates)
+    if errors:
+        print_errors(errors)
+        return 1
+    return persist_mutated_records(root, merged_records, [*child_refs, plan_ref], f"Decomposed plan {plan_ref}; Recorded plan {child_refs[0]} at {record_path(root, 'plan', child_refs[0])}")
+
+
 def cmd_finish_task(root: Path, task_ref: str | None, final_status: str, note: str | None) -> int:
     records, exit_code = load_clean_context(root)
     if exit_code:
@@ -2222,6 +2481,7 @@ def backend_preset_payload(name: str) -> dict:
 def cmd_configure_runtime(
     root: Path,
     hook_verbosity: str | None,
+    hook_run_capture: str | None,
     backend_preset: str | None,
     budget_items: list[str],
     input_capture_items: list[str],
@@ -2241,6 +2501,9 @@ def cmd_configure_runtime(
         changed = True
     if hook_verbosity:
         hooks["verbosity"] = hook_verbosity
+        changed = True
+    if hook_run_capture:
+        hooks["run_capture"] = hook_run_capture
         changed = True
     for item in budget_items:
         if "=" not in item:
@@ -2277,6 +2540,7 @@ def cmd_configure_runtime(
     if show or changed:
         print(f"# {TEP_ICON} Runtime Configuration")
         print(f"hooks.verbosity={settings.get('hooks', {}).get('verbosity', 'normal')}")
+        print(f"hooks.run_capture={settings.get('hooks', {}).get('run_capture', 'mutating')}")
         for key, value in sorted(settings.get("context_budget", {}).items()):
             print(f"context_budget.{key}={value}")
         for key, value in sorted(settings.get("input_capture", {}).items()):
@@ -2409,9 +2673,11 @@ def cmd_help(topic: str) -> int:
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|model|flow|proposal|final --chain evidence-chain.json",
-            "record-input ... | record-evidence --kind file-line|command-output|user-confirmation --quote ... [--claim ...] | classify-input --input INP-* --derived-record REF",
+            "record-input ... | record-run --command ... | record-support --thought ... --kind file-line|command-output|user-confirmation | classify-input --input INP-* --derived-record REF",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
             "start-task --type investigation --scope ... --title ... --note ...",
+            "validate-task-decomposition --task TASK-* | confirm-atomic-task --task TASK-* ... | decompose-task --task TASK-* --subtask scope|title|deliverable|done|verify|boundary",
+            "validate-plan-decomposition --plan PLN-* | confirm-atomic-plan --plan PLN-* | decompose-plan --plan PLN-* --subplan scope|title|step|success|claim1,claim2",
             "task-outcome-check --task TASK-* --outcome done|blocked|user-question [--format json]",
             "pause-task | resume-task --task TASK-* | switch-task --task TASK-*",
             "review-precedents --task-type investigation --query ...",
@@ -2427,10 +2693,12 @@ def cmd_help(topic: str) -> int:
             "validate-facts --backend rdf_shacl [--format json]",
             "export-rdf --format turtle|jsonld [--output path]",
             "configure-runtime --backend-preset minimal|recommended",
-            "configure-runtime --hook-verbosity quiet --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3 --backend derivation.backend=datalog",
+            "configure-runtime --hook-verbosity quiet --hook-run-capture mutating --context-budget hydration=compact --input-capture user_prompts=metadata-only --analysis logic_solver.backend=z3 --backend derivation.backend=datalog",
         ],
         "records": [
             "INP-* preserves prompt/input provenance; it is not proof until classified into source-backed records",
+            "FILE-* preserves file metadata and optional ART-* snapshots for file-line support",
+            "RUN-* preserves Bash/tool execution metadata; runtime CLM-* in graph-v2 must trace through RUN-*",
             "CLM-* is the only truth record; fact/evidence/hypothesis are claim roles",
             "SRC-* carries raw information or artifacts that support claims",
             "PRM-*/RST-*/GLD-* authorize, constrain, or guide action but do not prove truth",
@@ -2612,7 +2880,7 @@ def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str,
         "contract_version": 1,
         "agent_role": "choose and justify a route; API validates proof boundaries and allowed writes",
         "if_answering": "open record-detail or linked-records before citing a record as proof",
-        "if_new_support_found": "use record-evidence so SRC-* and optional CLM-* are created mechanically",
+        "if_new_support_found": "use record-support/record-evidence so FILE/RUN/SRC/CLM links are created mechanically",
         "if_chain_needed": "draft ids/quotes, run augment-chain, then validate-evidence-chain or validate-decision",
         "if_theory_should_rank_high": "promote supported/user-confirmed theory into MODEL/FLOW through validated write paths",
         "if_uncertain": "record a tentative CLM, OPEN-*, or PRP-* instead of silently relying on a guess",
@@ -2647,7 +2915,7 @@ def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str,
             "entrypoint": "lookup",
             "branches": [
                 {"if": "candidate record found", "then": "record-detail|linked-records"},
-                {"if": "new source support found", "then": "record-evidence"},
+                {"if": "new source support found", "then": "record-support|record-evidence"},
                 {"if": "chain needed", "then": "augment-chain|validate-evidence-chain"},
                 {"if": "integrated theory needed", "then": "record-model|record-flow after user-confirmed theory support"},
                 {"if": "route underdetermined", "then": "record-open-question|record-proposal"},
@@ -2659,7 +2927,7 @@ def lookup_payload(query: str, kind: str, root_path: str, scope: str, mode: str,
             "Use lookup first when unsure where to search.",
             "Treat lookup and generated maps as navigation only, not proof.",
             "Open record-detail or linked-records before citing a canonical record.",
-            "When new support is found, prefer record-evidence over separate manual record-source/record-claim calls.",
+            "When new support is found, prefer record-support or record-evidence over separate manual record-source/record-claim calls.",
             "Use code-search through TEP; do not call external code backends directly in normal work.",
         ],
     }
@@ -5015,14 +5283,7 @@ def cmd_restore_claim(root: Path, claim_ref: str, note: str) -> int:
     return mutate_claim_lifecycle(root, claim_ref, state="active", attention="normal", note=note)
 
 
-def cmd_record_artifact(root: Path, path: Path) -> int:
-    if not path.exists():
-        print(f"missing artifact source file: {path}")
-        return 1
-    if not path.is_file():
-        print(f"artifact source must be a file: {path}")
-        return 1
-
+def copy_artifact_file(root: Path, path: Path) -> tuple[str, str]:
     target_root = root / "artifacts"
     target_root.mkdir(parents=True, exist_ok=True)
     artifact_id = next_artifact_id(root)
@@ -5038,8 +5299,19 @@ def cmd_record_artifact(root: Path, path: Path) -> int:
         tmp_path = Path(handle.name)
     shutil.copy2(path, tmp_path)
     os.replace(tmp_path, target)
+    return artifact_id, f"artifacts/{target.name}"
+
+
+def cmd_record_artifact(root: Path, path: Path) -> int:
+    if not path.exists():
+        print(f"missing artifact source file: {path}")
+        return 1
+    if not path.is_file():
+        print(f"artifact source must be a file: {path}")
+        return 1
+
+    artifact_id, artifact_ref = copy_artifact_file(root, path)
     invalidate_hydration_state(root, f"recorded artifact {artifact_id}")
-    artifact_ref = f"artifacts/{target.name}"
     print(f"Recorded artifact {artifact_id} at {artifact_ref}")
     return 0
 
@@ -6582,6 +6854,124 @@ EVIDENCE_KIND_DEFAULTS = {
 }
 
 
+MAX_AUTO_FILE_ARTIFACT_BYTES = 1024 * 1024
+
+
+def resolve_evidence_file_path(path_value: str | None) -> Path | None:
+    if not path_value or not path_value.strip():
+        return None
+    path = Path(path_value).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return path.resolve()
+
+
+def cix_refs_for_path(root: Path, resolved_path: Path | None) -> list[str]:
+    if resolved_path is None:
+        return []
+    entries, _ = load_code_index_entries(root)
+    records, _ = load_records(root)
+    refs: list[str] = []
+    for entry_id, entry in entries.items():
+        target = entry.get("target", {})
+        if not isinstance(target, dict) or target.get("kind") != "file":
+            continue
+        target_path = str(target.get("path", "")).strip()
+        if not target_path:
+            continue
+        candidates = [Path(target_path)]
+        project_ref = str(entry.get("project_ref", "")).strip()
+        project = records.get(project_ref) if project_ref else None
+        if project and isinstance(project.get("root_refs"), list):
+            for root_ref in project.get("root_refs", []):
+                root_path = Path(str(root_ref)).expanduser()
+                candidates.append(root_path / target_path)
+        for candidate in candidates:
+            try:
+                if candidate.expanduser().resolve() == resolved_path:
+                    refs.append(entry_id)
+                    break
+            except OSError:
+                continue
+    return sorted(set(refs))
+
+
+def build_file_support_record(
+    root: Path,
+    records: dict[str, dict],
+    scope: str,
+    path_value: str,
+    timestamp: str,
+    artifact_refs: list[str],
+    project_refs: list[str],
+    task_refs: list[str],
+    workspace_refs: list[str],
+    tags: list[str],
+    note: str,
+) -> tuple[dict, list[str]]:
+    resolved_path = resolve_evidence_file_path(path_value)
+    metadata = file_metadata(resolved_path)
+    auto_artifacts = list(artifact_refs)
+    if resolved_path and metadata.get("exists") and int(metadata.get("size_bytes") or 0) <= MAX_AUTO_FILE_ARTIFACT_BYTES:
+        _, artifact_ref = copy_artifact_file(root, resolved_path)
+        auto_artifacts.append(artifact_ref)
+    cix_refs = cix_refs_for_path(root, resolved_path)
+    payload = build_file_payload(
+        record_id=next_record_id(records, "FILE-"),
+        scope=scope,
+        captured_at=timestamp,
+        original_ref=path_value,
+        resolved_path=str(resolved_path or ""),
+        file_kind=infer_file_kind(resolved_path, auto_artifacts),
+        metadata=metadata,
+        artifact_refs=sorted(set(auto_artifacts)),
+        cix_refs=cix_refs,
+        workspace_refs=workspace_refs,
+        project_refs=project_refs,
+        task_refs=task_refs,
+        tags=[*tags, "graph-v2"],
+        note=note or "file support metadata",
+    )
+    return payload, auto_artifacts
+
+
+def build_run_support_record(
+    records: dict[str, dict],
+    scope: str,
+    command: str,
+    timestamp: str,
+    cwd: str,
+    exit_code: int | None,
+    stdout_quote: str,
+    stderr_quote: str,
+    action_kind: str | None,
+    artifact_refs: list[str],
+    project_refs: list[str],
+    task_refs: list[str],
+    workspace_refs: list[str],
+    tags: list[str],
+    note: str,
+) -> dict:
+    return build_run_payload(
+        record_id=next_record_id(records, "RUN-"),
+        scope=scope,
+        captured_at=timestamp,
+        tool="bash",
+        command=command,
+        cwd=cwd,
+        exit_code=exit_code,
+        stdout_quote=stdout_quote,
+        stderr_quote=stderr_quote,
+        action_kind=action_kind,
+        artifact_refs=artifact_refs,
+        workspace_refs=workspace_refs,
+        project_refs=project_refs,
+        task_refs=task_refs,
+        tags=[*tags, "graph-v2"],
+        note=note or "bash run support metadata",
+    )
+
+
 def resolve_record_evidence_origin(
     kind: str,
     path_value: str | None,
@@ -6644,6 +7034,11 @@ def cmd_record_evidence(
     line: int | None,
     end_line: int | None,
     command: str | None,
+    cwd: str | None,
+    exit_code: int | None,
+    stdout_quote: str | None,
+    stderr_quote: str | None,
+    action_kind: str | None,
     input_refs: list[str],
     artifact_refs: list[str],
     origin_ref: str | None,
@@ -6693,6 +7088,53 @@ def cmd_record_evidence(
     resolved_project_refs = project_refs_for_write(root, project_refs)
     resolved_task_refs = task_refs_for_write(root, task_refs)
     resolved_workspace_refs = workspace_refs_for_write(root, [])
+    updates: dict[str, dict] = {}
+    changed_ids: list[str] = []
+    resolved_artifact_refs = list(dict.fromkeys(ref.strip() for ref in artifact_refs if ref.strip()))
+    file_ref = ""
+    run_ref = ""
+
+    if kind == "file-line" and path_value:
+        file_payload, auto_artifacts = build_file_support_record(
+            root,
+            records,
+            scope,
+            path_value,
+            timestamp,
+            resolved_artifact_refs,
+            resolved_project_refs,
+            resolved_task_refs,
+            resolved_workspace_refs,
+            tags,
+            "file evidence support",
+        )
+        file_ref = str(file_payload["id"])
+        resolved_artifact_refs = sorted(set(auto_artifacts))
+        updates[file_ref] = file_payload
+        changed_ids.append(file_ref)
+
+    if kind == "command-output" and command:
+        run_payload = build_run_support_record(
+            {**records, **updates},
+            scope,
+            command,
+            timestamp,
+            cwd or str(Path.cwd()),
+            exit_code,
+            stdout_quote if stdout_quote is not None else quote,
+            stderr_quote or "",
+            action_kind,
+            resolved_artifact_refs,
+            resolved_project_refs,
+            resolved_task_refs,
+            resolved_workspace_refs,
+            tags,
+            "command-output evidence support",
+        )
+        run_ref = str(run_payload["id"])
+        updates[run_ref] = run_payload
+        changed_ids.append(run_ref)
+
     source_id = next_record_id(records, "SRC-")
     source_payload = build_source_payload(
         record_id=source_id,
@@ -6702,7 +7144,7 @@ def cmd_record_evidence(
         origin_kind=origin_kind,
         origin_ref=resolved_origin_ref,
         quote=quote,
-        artifact_refs=artifact_refs,
+        artifact_refs=resolved_artifact_refs,
         confidence=confidence,
         independence_group=None,
         captured_at=None,
@@ -6710,7 +7152,7 @@ def cmd_record_evidence(
         independence_timestamp=timestamp,
         project_refs=resolved_project_refs,
         task_refs=resolved_task_refs,
-        tags=[*tags, f"evidence-kind:{kind}"],
+        tags=[*tags, "graph-v2", f"evidence-kind:{kind}"],
         red_flags=red_flags,
         note=note.strip() or f"record-evidence source from {kind}",
     )
@@ -6718,9 +7160,16 @@ def cmd_record_evidence(
         source_payload["input_refs"] = resolved_input_refs
     if resolved_workspace_refs:
         source_payload["workspace_refs"] = resolved_workspace_refs
+    if file_ref:
+        source_payload["file_refs"] = [file_ref]
+        cix_refs = safe_list(updates[file_ref], "cix_refs")
+        if cix_refs:
+            source_payload["cix_refs"] = cix_refs
+    if run_ref:
+        source_payload["run_refs"] = [run_ref]
 
-    updates: dict[str, dict] = {source_id: source_payload}
-    changed_ids = [source_id]
+    updates[source_id] = source_payload
+    changed_ids.append(source_id)
     claim_id = ""
     if claim_statement and claim_statement.strip():
         resolved_claim_plane = claim_plane or {
@@ -6748,7 +7197,7 @@ def cmd_record_evidence(
             recorded_at=recorded_at,
             project_refs=resolved_project_refs,
             task_refs=resolved_task_refs,
-            tags=[*tags, f"evidence-kind:{kind}"],
+            tags=[*tags, "graph-v2", f"evidence-kind:{kind}"],
             red_flags=red_flags,
             note=note.strip() or f"record-evidence claim from {kind}",
         )
@@ -6756,6 +7205,10 @@ def cmd_record_evidence(
             claim_payload["input_refs"] = resolved_input_refs
         if resolved_workspace_refs:
             claim_payload["workspace_refs"] = resolved_workspace_refs
+        if file_ref:
+            claim_payload["file_refs"] = [file_ref]
+        if run_ref:
+            claim_payload["run_refs"] = [run_ref]
         updates[claim_id] = claim_payload
         changed_ids.append(claim_id)
 
@@ -6831,6 +7284,48 @@ def cmd_record_input(
         note=note,
     )
     return persist_candidate(root, records, payload, "input")
+
+
+def cmd_record_run(
+    root: Path,
+    scope: str,
+    command: str,
+    cwd: str | None,
+    exit_code: int | None,
+    stdout_quote: str | None,
+    stderr_quote: str | None,
+    action_kind: str | None,
+    artifact_refs: list[str],
+    project_refs: list[str],
+    task_refs: list[str],
+    tags: list[str],
+    note: str,
+) -> int:
+    records, exit_code_load = load_clean_context(root)
+    if exit_code_load:
+        return 1
+    if not command.strip():
+        print("record-run requires --command")
+        return 1
+    timestamp = now_timestamp()
+    payload = build_run_support_record(
+        records,
+        scope,
+        command,
+        timestamp,
+        cwd or str(Path.cwd()),
+        exit_code,
+        stdout_quote or "",
+        stderr_quote or "",
+        action_kind,
+        [ref.strip() for ref in artifact_refs if ref.strip()],
+        project_refs_for_write(root, project_refs),
+        task_refs_for_write(root, task_refs),
+        workspace_refs_for_write(root, []),
+        tags,
+        note or "bash run captured by hook/API",
+    )
+    return persist_candidate(root, records, payload, "run")
 
 
 def cmd_classify_input(root: Path, input_ref: str, derived_record_refs: list[str], note: str | None) -> int:
@@ -8097,6 +8592,7 @@ def parse_args() -> argparse.Namespace:
         help="Show or update runtime verbosity, context budget, input capture, and analysis settings.",
     )
     configure_runtime.add_argument("--hook-verbosity", choices=["quiet", "normal", "debug"])
+    configure_runtime.add_argument("--hook-run-capture", choices=["off", "mutating", "all"])
     configure_runtime.add_argument(
         "--backend-preset",
         choices=["minimal", "recommended"],
@@ -8189,6 +8685,34 @@ def parse_args() -> argparse.Namespace:
         help="Show the current TASK-* focus, or all task records with --all.",
     )
     show_task.add_argument("--all", action="store_true", dest="show_all")
+
+    validate_task_decomposition = subparsers.add_parser(
+        "validate-task-decomposition",
+        help="Check whether a TASK-* is atomic or decomposed enough for one-pass work.",
+    )
+    validate_task_decomposition.add_argument("--task", dest="task_ref", required=True)
+    validate_task_decomposition.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+
+    confirm_atomic_task = subparsers.add_parser(
+        "confirm-atomic-task",
+        help="Mark an existing TASK-* as an executable one-pass leaf task.",
+    )
+    confirm_atomic_task.add_argument("--task", dest="task_ref", required=True)
+    confirm_atomic_task.add_argument("--deliverable", required=True)
+    confirm_atomic_task.add_argument("--done", dest="done_criteria", action="append", required=True)
+    confirm_atomic_task.add_argument("--verify", dest="verification", action="append", default=[])
+    confirm_atomic_task.add_argument("--boundary", dest="scope_boundary", required=True)
+    confirm_atomic_task.add_argument("--blocker-policy", required=True)
+    confirm_atomic_task.add_argument("--no-verification-needed")
+    confirm_atomic_task.add_argument("--note")
+
+    decompose_task = subparsers.add_parser(
+        "decompose-task",
+        help="Split a parent TASK-* into one-pass atomic child tasks.",
+    )
+    decompose_task.add_argument("--task", dest="task_ref", required=True)
+    decompose_task.add_argument("--subtask", dest="subtask_specs", action="append", required=True)
+    decompose_task.add_argument("--note")
 
     task_outcome_check = subparsers.add_parser(
         "task-outcome-check",
@@ -8417,6 +8941,23 @@ def parse_args() -> argparse.Namespace:
     record_input.add_argument("--tag", dest="tags", action="append", default=[])
     record_input.add_argument("--note", required=True)
 
+    record_run = subparsers.add_parser(
+        "record-run",
+        help="Create a RUN-* record for a Bash/tool execution.",
+    )
+    record_run.add_argument("--scope", default="runtime.bash")
+    record_run.add_argument("--command", dest="shell_command", required=True)
+    record_run.add_argument("--cwd")
+    record_run.add_argument("--exit-code", type=int)
+    record_run.add_argument("--stdout-quote")
+    record_run.add_argument("--stderr-quote")
+    record_run.add_argument("--action-kind")
+    record_run.add_argument("--artifact-ref", dest="artifact_refs", action="append", default=[])
+    record_run.add_argument("--project", dest="project_refs", action="append", default=[])
+    record_run.add_argument("--task", dest="task_refs", action="append", default=[])
+    record_run.add_argument("--tag", dest="tags", action="append", default=[])
+    record_run.add_argument("--note", default="")
+
     classify_input = subparsers.add_parser(
         "classify-input",
         help="Attach derived canonical records to an existing INP-* provenance record.",
@@ -8453,6 +8994,11 @@ def parse_args() -> argparse.Namespace:
     record_evidence.add_argument("--line", type=int)
     record_evidence.add_argument("--end-line", type=int)
     record_evidence.add_argument("--command", dest="shell_command")
+    record_evidence.add_argument("--cwd")
+    record_evidence.add_argument("--exit-code", type=int)
+    record_evidence.add_argument("--stdout-quote")
+    record_evidence.add_argument("--stderr-quote")
+    record_evidence.add_argument("--action-kind")
     record_evidence.add_argument("--input", dest="input_refs", action="append", default=[])
     record_evidence.add_argument("--artifact-ref", dest="artifact_refs", action="append", default=[])
     record_evidence.add_argument("--origin-ref")
@@ -8471,6 +9017,33 @@ def parse_args() -> argparse.Namespace:
     record_evidence.add_argument("--contradiction", dest="contradiction_refs", action="append", default=[])
     record_evidence.add_argument("--derived-from", dest="derived_from", action="append", default=[])
     record_evidence.add_argument("--recorded-at")
+
+    record_support = subparsers.add_parser(
+        "record-support",
+        help="Graph-v2 front door: agent gives a thought plus support; API creates FILE/RUN/SRC/CLM links.",
+    )
+    record_support.add_argument("--scope", required=True)
+    record_support.add_argument("--kind", required=True, choices=sorted(EVIDENCE_KIND_DEFAULTS))
+    record_support.add_argument("--thought", required=True)
+    record_support.add_argument("--quote", default="")
+    record_support.add_argument("--path", dest="path_value")
+    record_support.add_argument("--line", type=int)
+    record_support.add_argument("--end-line", type=int)
+    record_support.add_argument("--command", dest="shell_command")
+    record_support.add_argument("--cwd")
+    record_support.add_argument("--exit-code", type=int)
+    record_support.add_argument("--stdout-quote")
+    record_support.add_argument("--stderr-quote")
+    record_support.add_argument("--action-kind")
+    record_support.add_argument("--input", dest="input_refs", action="append", default=[])
+    record_support.add_argument("--artifact-ref", dest="artifact_refs", action="append", default=[])
+    record_support.add_argument("--project", dest="project_refs", action="append", default=[])
+    record_support.add_argument("--task", dest="task_refs", action="append", default=[])
+    record_support.add_argument("--tag", dest="tags", action="append", default=[])
+    record_support.add_argument("--note", default="")
+    record_support.add_argument("--claim-plane", choices=sorted(CLAIM_PLANES))
+    record_support.add_argument("--claim-status", choices=sorted(CLAIM_STATUSES), default="supported")
+    record_support.add_argument("--claim-kind", choices=sorted(CLAIM_KINDS), default="factual")
 
     record_source = subparsers.add_parser(
         "record-source",
@@ -8609,6 +9182,29 @@ def parse_args() -> argparse.Namespace:
     record_plan.add_argument("--task", dest="task_refs", action="append", default=[])
     record_plan.add_argument("--tag", dest="tags", action="append", default=[])
     record_plan.add_argument("--note", required=True)
+
+    validate_plan_decomposition = subparsers.add_parser(
+        "validate-plan-decomposition",
+        help="Check whether a PLN-* is atomic or decomposed enough to execute.",
+    )
+    validate_plan_decomposition.add_argument("--plan", dest="plan_ref", required=True)
+    validate_plan_decomposition.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+
+    confirm_atomic_plan = subparsers.add_parser(
+        "confirm-atomic-plan",
+        help="Mark an existing PLN-* as an executable one-pass plan.",
+    )
+    confirm_atomic_plan.add_argument("--plan", dest="plan_ref", required=True)
+    confirm_atomic_plan.add_argument("--task", dest="task_ref")
+    confirm_atomic_plan.add_argument("--note")
+
+    decompose_plan = subparsers.add_parser(
+        "decompose-plan",
+        help="Split a parent PLN-* into one-pass atomic child plans.",
+    )
+    decompose_plan.add_argument("--plan", dest="plan_ref", required=True)
+    decompose_plan.add_argument("--subplan", dest="subplan_specs", action="append", required=True)
+    decompose_plan.add_argument("--note")
 
     record_debt = subparsers.add_parser(
         "record-debt",
@@ -9398,10 +9994,11 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         )
     if args.command == "configure-runtime":
         raise SystemExit(
-            cmd_configure_runtime(
-                root,
-                hook_verbosity=args.hook_verbosity,
-                backend_preset=args.backend_preset,
+                cmd_configure_runtime(
+                    root,
+                    hook_verbosity=args.hook_verbosity,
+                    hook_run_capture=args.hook_run_capture,
+                    backend_preset=args.backend_preset,
                 budget_items=args.context_budget,
                 input_capture_items=args.input_capture_items,
                 analysis_items=args.analysis_items,
@@ -9445,6 +10042,37 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
         )
     if args.command == "show-task":
         raise SystemExit(cmd_show_task(root, show_all=args.show_all))
+    if args.command == "validate-task-decomposition":
+        raise SystemExit(
+            cmd_validate_task_decomposition(
+                root,
+                task_ref=args.task_ref,
+                output_format=args.output_format,
+            )
+        )
+    if args.command == "confirm-atomic-task":
+        raise SystemExit(
+            cmd_confirm_atomic_task(
+                root,
+                task_ref=args.task_ref,
+                deliverable=args.deliverable,
+                done_criteria=args.done_criteria,
+                verification=args.verification,
+                scope_boundary=args.scope_boundary,
+                blocker_policy=args.blocker_policy,
+                no_verification_needed=args.no_verification_needed,
+                note=args.note,
+            )
+        )
+    if args.command == "decompose-task":
+        raise SystemExit(
+            cmd_decompose_task(
+                root,
+                task_ref=args.task_ref,
+                subtask_specs=args.subtask_specs,
+                note=args.note,
+            )
+        )
     if args.command == "task-outcome-check":
         raise SystemExit(
             cmd_task_outcome_check(
@@ -9612,6 +10240,24 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 note=args.note,
             )
         )
+    if args.command == "record-run":
+        raise SystemExit(
+            cmd_record_run(
+                root,
+                scope=args.scope,
+                command=args.shell_command,
+                cwd=args.cwd,
+                exit_code=args.exit_code,
+                stdout_quote=args.stdout_quote,
+                stderr_quote=args.stderr_quote,
+                action_kind=args.action_kind,
+                artifact_refs=args.artifact_refs,
+                project_refs=args.project_refs,
+                task_refs=args.task_refs,
+                tags=args.tags,
+                note=args.note,
+            )
+        )
     if args.command == "classify-input":
         raise SystemExit(
             cmd_classify_input(
@@ -9652,6 +10298,11 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 line=args.line,
                 end_line=args.end_line,
                 command=args.shell_command,
+                cwd=args.cwd,
+                exit_code=args.exit_code,
+                stdout_quote=args.stdout_quote,
+                stderr_quote=args.stderr_quote,
+                action_kind=args.action_kind,
                 input_refs=args.input_refs,
                 artifact_refs=args.artifact_refs,
                 origin_ref=args.origin_ref,
@@ -9670,6 +10321,42 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 contradiction_refs=args.contradiction_refs,
                 derived_from=args.derived_from,
                 recorded_at=args.recorded_at,
+            )
+        )
+    if args.command == "record-support":
+        raise SystemExit(
+            cmd_record_evidence(
+                root,
+                scope=args.scope,
+                kind=args.kind,
+                quote=args.quote,
+                path_value=args.path_value,
+                line=args.line,
+                end_line=args.end_line,
+                command=args.shell_command,
+                cwd=args.cwd,
+                exit_code=args.exit_code,
+                stdout_quote=args.stdout_quote,
+                stderr_quote=args.stderr_quote,
+                action_kind=args.action_kind,
+                input_refs=args.input_refs,
+                artifact_refs=args.artifact_refs,
+                origin_ref=None,
+                critique_status="accepted",
+                confidence=None,
+                project_refs=args.project_refs,
+                task_refs=args.task_refs,
+                tags=args.tags,
+                red_flags=[],
+                note=args.note,
+                claim_statement=args.thought,
+                claim_plane=args.claim_plane,
+                claim_status=args.claim_status,
+                claim_kind=args.claim_kind,
+                support_refs=[],
+                contradiction_refs=[],
+                derived_from=[],
+                recorded_at=None,
             )
         )
     if args.command == "record-source":
@@ -9777,6 +10464,32 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 project_refs=args.project_refs,
                 task_refs=args.task_refs,
                 tags=args.tags,
+                note=args.note,
+            )
+        )
+    if args.command == "validate-plan-decomposition":
+        raise SystemExit(
+            cmd_validate_plan_decomposition(
+                root,
+                plan_ref=args.plan_ref,
+                output_format=args.output_format,
+            )
+        )
+    if args.command == "confirm-atomic-plan":
+        raise SystemExit(
+            cmd_confirm_atomic_plan(
+                root,
+                plan_ref=args.plan_ref,
+                task_ref=args.task_ref,
+                note=args.note,
+            )
+        )
+    if args.command == "decompose-plan":
+        raise SystemExit(
+            cmd_decompose_plan(
+                root,
+                plan_ref=args.plan_ref,
+                subplan_specs=args.subplan_specs,
                 note=args.note,
             )
         )

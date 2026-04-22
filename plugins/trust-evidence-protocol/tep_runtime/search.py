@@ -19,6 +19,11 @@ def record_search_text(data: dict) -> str:
         "text",
         "input_kind",
         "session_ref",
+        "original_ref",
+        "resolved_path",
+        "command",
+        "stdout_quote",
+        "stderr_quote",
         "statement",
         "question",
         "rule",
@@ -152,6 +157,10 @@ def record_summary(data: dict) -> str:
         return concise(str(data.get("text", "")) or ", ".join(data.get("artifact_refs", [])), 180)
     if record_type == "source":
         return concise(str(data.get("quote", "")) or ", ".join(data.get("artifact_refs", [])), 180)
+    if record_type == "file":
+        return concise(str(data.get("original_ref", "")) or str(data.get("resolved_path", "")), 180)
+    if record_type == "run":
+        return concise(str(data.get("command", "")), 180)
     if record_type == "guideline":
         return concise(str(data.get("rule", "")), 180)
     if record_type == "proposal":

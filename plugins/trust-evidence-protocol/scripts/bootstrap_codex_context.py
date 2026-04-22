@@ -18,6 +18,8 @@ REQUIRED_DIRS = (
     "records/workspace",
     "records/project",
     "records/input",
+    "records/file",
+    "records/run",
     "records/source",
     "records/claim",
     "records/permission",
@@ -61,6 +63,8 @@ This index is informational only.
 
 Canonical layers:
 - `records/`
+- `records/file/FILE-*.json` file metadata records
+- `records/run/RUN-*.json` shell/tool execution records
 - `artifacts/`
 - `archives/` cleanup zip archives and manifests
 

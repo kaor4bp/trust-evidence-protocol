@@ -24,6 +24,8 @@ TASK_BLOCKING_STATUSES = {
     "debt": {"open", "accepted", "scheduled"},
     "action": {"planned"},
 }
+TASK_DECOMPOSITION_STATUSES = {"atomic", "decomposed"}
+TASK_TERMINAL_STATUSES = {"completed", "stopped"}
 
 
 def build_task_payload(
@@ -44,8 +46,10 @@ def build_task_payload(
     project_refs: list[str],
     tags: list[str],
     note: str,
+    parent_task_refs: list[str] | None = None,
+    decomposition: dict | None = None,
 ) -> dict:
-    return {
+    payload = {
         "id": record_id,
         "record_type": "task",
         "scope": scope.strip(),
@@ -68,6 +72,217 @@ def build_task_payload(
         "tags": tags,
         "note": note.strip(),
     }
+    if parent_task_refs:
+        payload["parent_task_refs"] = parent_task_refs
+    if decomposition:
+        payload["decomposition"] = decomposition
+    return payload
+
+
+def build_atomic_task_decomposition(
+    *,
+    deliverable: str,
+    done_criteria: list[str],
+    verification: list[str],
+    scope_boundary: str,
+    blocker_policy: str,
+    no_verification_needed: str | None = None,
+) -> dict:
+    payload = {
+        "status": "atomic",
+        "one_pass": True,
+        "deliverable": deliverable.strip(),
+        "done_criteria": [item.strip() for item in done_criteria if item.strip()],
+        "verification": [item.strip() for item in verification if item.strip()],
+        "scope_boundary": scope_boundary.strip(),
+        "blocker_policy": blocker_policy.strip(),
+    }
+    if no_verification_needed and no_verification_needed.strip():
+        payload["no_verification_needed"] = no_verification_needed.strip()
+    return payload
+
+
+def build_decomposed_task_decomposition(
+    *,
+    subtask_refs: list[str],
+    dependency_refs: list[str] | None = None,
+    rollup_policy: str = "all-terminal-or-blocked",
+) -> dict:
+    return {
+        "status": "decomposed",
+        "subtask_refs": [ref.strip() for ref in subtask_refs if ref.strip()],
+        "dependency_refs": [ref.strip() for ref in (dependency_refs or []) if ref.strip()],
+        "rollup_policy": rollup_policy.strip() or "all-terminal-or-blocked",
+    }
+
+
+def apply_atomic_task_decomposition(
+    task: dict,
+    *,
+    timestamp: str,
+    deliverable: str,
+    done_criteria: list[str],
+    verification: list[str],
+    scope_boundary: str,
+    blocker_policy: str,
+    no_verification_needed: str | None = None,
+    note: str | None = None,
+) -> dict:
+    payload = dict(task)
+    payload["decomposition"] = build_atomic_task_decomposition(
+        deliverable=deliverable,
+        done_criteria=done_criteria,
+        verification=verification,
+        scope_boundary=scope_boundary,
+        blocker_policy=blocker_policy,
+        no_verification_needed=no_verification_needed,
+    )
+    payload["updated_at"] = timestamp
+    if note and note.strip():
+        payload["note"] = append_note(str(payload.get("note", "")), f"[{timestamp}] {note.strip()}")
+    return payload
+
+
+def apply_decomposed_task_decomposition(
+    task: dict,
+    *,
+    timestamp: str,
+    subtask_refs: list[str],
+    dependency_refs: list[str] | None = None,
+    rollup_policy: str = "all-terminal-or-blocked",
+    note: str | None = None,
+) -> dict:
+    payload = dict(task)
+    payload["decomposition"] = build_decomposed_task_decomposition(
+        subtask_refs=subtask_refs,
+        dependency_refs=dependency_refs,
+        rollup_policy=rollup_policy,
+    )
+    payload["updated_at"] = timestamp
+    if note and note.strip():
+        payload["note"] = append_note(str(payload.get("note", "")), f"[{timestamp}] {note.strip()}")
+    return payload
+
+
+def validate_task_decomposition_payload(
+    records: dict[str, dict],
+    task_ref: str,
+    *,
+    _seen: set[str] | None = None,
+) -> dict:
+    task = records.get(task_ref)
+    errors: list[str] = []
+    warnings: list[str] = []
+    child_payloads: list[dict] = []
+    if not task or task.get("record_type") != "task":
+        return {
+            "task_ref": task_ref,
+            "accepted": False,
+            "status": "missing",
+            "errors": [f"missing task record {task_ref}"],
+            "warnings": [],
+            "children": [],
+        }
+
+    status = str(task.get("status", "")).strip()
+    decomposition = task.get("decomposition")
+    if not isinstance(decomposition, dict):
+        return {
+            "task_ref": task_ref,
+            "task_status": status,
+            "accepted": False,
+            "status": "needs-decomposition",
+            "errors": ["active task requires atomic or decomposed decomposition before mutating work"],
+            "warnings": [],
+            "children": [],
+        }
+
+    mode = str(decomposition.get("status", "")).strip()
+    if mode not in TASK_DECOMPOSITION_STATUSES:
+        errors.append("decomposition.status must be atomic or decomposed")
+
+    if mode == "atomic":
+        if decomposition.get("one_pass") is not True:
+            errors.append("atomic task requires one_pass=true")
+        for key in ("deliverable", "scope_boundary", "blocker_policy"):
+            if not str(decomposition.get(key, "")).strip():
+                errors.append(f"atomic task requires decomposition.{key}")
+        done = decomposition.get("done_criteria", [])
+        if not isinstance(done, list) or not [str(item).strip() for item in done]:
+            errors.append("atomic task requires non-empty done_criteria")
+        verification = decomposition.get("verification", [])
+        no_verification = str(decomposition.get("no_verification_needed", "")).strip()
+        if not isinstance(verification, list):
+            errors.append("atomic task verification must be a list")
+        elif not [str(item).strip() for item in verification] and not no_verification:
+            errors.append("atomic task requires verification or no_verification_needed reason")
+        if decomposition.get("subtask_refs"):
+            errors.append("atomic task must not define subtask_refs")
+
+    if mode == "decomposed":
+        subtask_refs = decomposition.get("subtask_refs", [])
+        if not isinstance(subtask_refs, list) or not [str(ref).strip() for ref in subtask_refs]:
+            errors.append("decomposed task requires non-empty subtask_refs")
+            subtask_refs = []
+        seen = set(_seen or set())
+        if task_ref in seen:
+            errors.append(f"task decomposition cycle at {task_ref}")
+        seen.add(task_ref)
+        for child_ref in [str(ref).strip() for ref in subtask_refs if str(ref).strip()]:
+            child = records.get(child_ref)
+            if not child or child.get("record_type") != "task":
+                errors.append(f"{child_ref} is not a task")
+                continue
+            if task_ref not in safe_list(child, "parent_task_refs"):
+                errors.append(f"{child_ref} must link back via parent_task_refs")
+            child_payload = validate_task_decomposition_payload(records, child_ref, _seen=seen)
+            child_payloads.append(child_payload)
+            if not child_payload.get("accepted"):
+                errors.append(f"{child_ref} decomposition invalid")
+        if status == "active" and not child_payloads:
+            warnings.append("decomposed task has no valid child payloads")
+
+    return {
+        "task_ref": task_ref,
+        "task_status": status,
+        "accepted": not errors,
+        "status": mode or "invalid",
+        "errors": errors,
+        "warnings": warnings,
+        "children": child_payloads,
+        "next_allowed_commands": (
+            ["confirm-atomic-task --task " + task_ref, "decompose-task --task " + task_ref]
+            if errors
+            else ["continue on a valid leaf task" if mode == "atomic" else "switch to a valid child TASK-* for work"]
+        ),
+    }
+
+
+def task_decomposition_text_lines(payload: dict) -> list[str]:
+    lines = [
+        "# Task Decomposition Check",
+        "",
+        f"task: `{payload.get('task_ref')}` status: `{payload.get('status')}` accepted={payload.get('accepted')}",
+    ]
+    if payload.get("errors"):
+        lines.extend(["", "## Errors"])
+        for error in payload.get("errors", []):
+            lines.append(f"- {error}")
+    if payload.get("warnings"):
+        lines.extend(["", "## Warnings"])
+        for warning in payload.get("warnings", []):
+            lines.append(f"- {warning}")
+    children = payload.get("children") or []
+    if children:
+        lines.extend(["", "## Children"])
+        for child in children:
+            lines.append(
+                f"- `{child.get('task_ref')}` status=`{child.get('status')}` accepted={child.get('accepted')}"
+            )
+    lines.extend(["", "## Next Allowed Commands"])
+    for command in payload.get("next_allowed_commands", []):
+        lines.append(f"- `{command}`")
+    return lines
 
 
 def task_summary_line(task: dict) -> str:

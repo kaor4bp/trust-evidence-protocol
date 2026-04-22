@@ -165,6 +165,10 @@ def record_attention_label(data: dict) -> str:
         return "; ".join(grants)
     if record_type == "source":
         return str(data.get("quote", "")).strip() or ", ".join(safe_list(data, "artifact_refs"))
+    if record_type == "file":
+        return str(data.get("original_ref", "")).strip()
+    if record_type == "run":
+        return str(data.get("command", "")).strip()
     if record_type == "action":
         return str(data.get("kind", "")).strip()
     return ""
@@ -498,6 +502,10 @@ def build_index(root: Path, records: dict[str, dict]) -> None:
             confidence = str(data.get("confidence", "")).strip()
             if confidence:
                 summary = f"{summary} | {confidence}"
+        elif record_type == "file":
+            summary = f"{data.get('file_kind', '')} | {data.get('original_ref', '')}"
+        elif record_type == "run":
+            summary = f"{data.get('status', '')} | {data.get('command', '')}"
         elif record_type == "claim":
             comparison = data.get("comparison")
             claim_key = ""

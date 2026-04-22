@@ -23,7 +23,7 @@ Responsibilities:
 - collect append-only lookup telemetry in `activity/access.jsonl`, including MCP/CLI lookup events and hook-detected raw claim-file reads
 - provide one `lookup` front door that routes agents to fact, code, theory, research, or policy lookup instead of making them guess between overlapping tools
 - return an API contract from lookup routes (`next_allowed_commands`, `route_graph`, `evidence_profile`, and `output_contract`) so agents choose from a mechanical path instead of reconstructing protocol prose
-- provide `record-evidence` as the default mechanical Source -> Claim write path so agents can preserve quotes, command output, file lines, artifacts, and user confirmations without hand-authoring two records
+- provide `record-support` / `record-evidence` as the default mechanical support-capture path so agents can preserve quotes, command output, file lines, artifacts, and user confirmations without hand-authoring `FILE/RUN/SRC/CLM` records
 - push agents to preserve reusable discoveries, rules, actions, plans, debt, questions, models, flows, and proposals as records
 
 Non-responsibilities:
@@ -40,8 +40,9 @@ Current implementation:
 - `scripts/context_cli.py` exposes explicit operational commands
 - `mcp/tep_server.py` exposes bounded context lookup tools over MCP stdio
 - `.mcp.json` declares the local MCP server for clients that support plugin MCP discovery
-- `skills/trust-evidence-protocol/SKILL.md` contains only core semantics and workflow routing
-- `skills/trust-evidence-protocol/workflows/` contains task-specific operating procedures
+- `skills/trust-evidence-protocol/SKILL.md` contains the short agent mental model
+- `skills/trust-evidence-protocol/workflows/` contains compact task-specific operating procedures
+- `docs/reference/plugin-commands.md` contains the full CLI command reference; it is not part of the normal skill route
 
 Runtime hook output is intentionally compact by default. Use compact MCP/CLI projections first, then expand only the specific records or sections needed with tools such as `brief_context(detail=full)`, `search_records`, `claim_graph`, `record_detail`, `linked_records`, `guidelines_for`, `code_search`, and `code_info`.
 Hooks also surface a compact `TEP route` branch so agents can follow the next procedural step instead of rereading the plugin documentation.
@@ -54,7 +55,9 @@ Skill workflow files:
 - `workflows/before-action.md`: what to do before planning, editing, mutating, persisting, or asking permission
 - `workflows/after-action.md`: what to do after edits, tests, commands, discoveries, or completed work
 - `workflows/persistence-and-records.md`: when and how to persist information into canonical records
-- `workflows/plugin-commands.md`: command reference for hydration, review, strictness, records, projects, tasks, and hypotheses
+Full command reference:
+
+- `docs/reference/plugin-commands.md`: command reference for hydration, review, strictness, records, projects, tasks, and hypotheses
 
 The preferred live context root is `~/.tep_context`.
 Legacy repo-local `.codex_context` roots remain supported for migration and tests.
@@ -90,6 +93,7 @@ The only canonical storage layer is:
 - `.codex_context/artifacts/`
 
 Canonical records are stored as one JSON object per file.
+The normal provenance chain is `INP/FILE/ART/RUN -> SRC -> CLM`; `ART-*` is the artifact file id, while `FILE-*` and `RUN-*` are metadata records.
 
 Generated navigation layer:
 
@@ -157,11 +161,12 @@ usage, and hot records; each anomaly includes suggested compact tools and a
 next action so agents do not spend tokens inventing the lookup route. Attention
 maps combine explicit taps and lookup telemetry as navigation/heatmap signals.
 
-Agents should use `record-evidence` for the common persistence path. The command
-maps structured evidence kinds to canonical source/claim records:
+Agents should use `record-support` for the common persistence path.
+`record-evidence` remains the lower-level compatibility form.
+These commands map structured support to canonical graph records:
 
-- `file-line` -> `SRC.source_kind=code`, optional code-plane `CLM-*`
-- `command-output` -> `SRC.source_kind=runtime`, optional runtime-plane `CLM-*`
+- `file-line` -> `FILE-*` plus optional `ART-*` snapshot, then `SRC.source_kind=code`, optional code-plane `CLM-*`
+- `command-output` -> `RUN-*`, then `SRC.source_kind=runtime`, optional runtime-plane `CLM-*`
 - `user-confirmation` -> `SRC.source_kind=theory`, optional theory-plane `CLM-*`
 - `artifact` -> `SRC.source_kind=runtime`, optional runtime-plane `CLM-*`
 
@@ -176,6 +181,7 @@ comparison, logic, migration, or source-only staging.
 - `current_project_ref`
 - `current_task_ref`
 - repo-local Codex hook modes
+- `hooks.run_capture = off|mutating|all` for automatic PostToolUse `RUN-*` capture
 - `context_budget` preferences for compact/normal/debug output
 - `input_capture` policy for prompt/session capture
 - `artifact_policy` for when referenced files are copied or only linked
@@ -197,6 +203,7 @@ Default retention/capture policy:
 
 - `input_capture.user_prompts = "capture"`
 - `input_capture.file_mentions = "reference-only"`
+- `hooks.run_capture = "mutating"`
 - `artifact_policy.copy_mode = "reference-only"`
 - `artifact_policy.max_copy_bytes = 1048576`
 - `cleanup.mode = "report-only"`
@@ -344,11 +351,11 @@ Persistence rule:
 
 Write boundary:
 
-- Canonical records under `.codex_context/records/` must be created or updated through plugin commands such as `record-source`, `record-claim`, `record-guideline`, `record-action`, `resolve-claim`, or `archive-claim`.
+- Canonical records under `.codex_context/records/` must be created or updated through plugin commands. Prefer `record-support` / `record-evidence` for evidence writes; use low-level `record-source` and `record-claim` only for plugin development, migration, comparison logic, or source-only staging.
 - Captured prompt provenance should use `record-input`; an `INP-*` is not proof until later classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
 - Do not write `.codex_context/records/*.json`, indexes, settings, or generated views with shell redirection, `tee`, ad hoc scripts, or manual JSON edits when a plugin command exists.
 - Diagnostic payloads may be written directly only under `.codex_context/artifacts/`; this is for screenshots, logs, copied command output, and similar raw material.
-- After writing a raw artifact, create or update a `SRC-*` record with `record-source --artifact-ref artifacts/...` when the artifact should support future reasoning.
+- After writing a raw artifact, use `record-support --kind artifact` or `record-evidence --kind artifact` when the artifact should support future reasoning.
 - The artifact-write exception does not grant permission to write source files, `/tmp`, arbitrary workspace paths, or canonical records.
 - CIX entries may point to canonical records, and some canonical records may point to CIX entries with `code_index_refs`, but those links are scope/navigation only.
 - Do not use `CIX-*` as `CLM-*` support, `SRC-*` support, or `ACT-*` justification.
@@ -434,6 +441,7 @@ Commands:
 
 - `configure-runtime`
   - shows or updates `hooks.verbosity`
+  - shows or updates `hooks.run_capture`
   - shows or updates `context_budget`
   - shows or updates optional `analysis` backend policy
   - shows or updates optional external backend registry policy
@@ -441,7 +449,7 @@ Commands:
     - `configure-runtime --show`
     - `configure-runtime --backend-preset minimal`
     - `configure-runtime --backend-preset recommended`
-    - `configure-runtime --hook-verbosity quiet --context-budget hydration=compact`
+    - `configure-runtime --hook-verbosity quiet --hook-run-capture mutating --context-budget hydration=compact`
     - `configure-runtime --analysis logic_solver.backend=z3 --analysis logic_solver.install_policy=ask`
     - `configure-runtime --analysis topic_prefilter.backend=nmf --analysis topic_prefilter.missing_dependency=warn`
     - `configure-runtime --backend derivation.backend=datalog --backend derivation.datalog.enabled=true --backend derivation.datalog.mode=fake`
@@ -954,6 +962,23 @@ Guideline disclosure for code edits:
 - `show-task [--all]`
   - prints the current task focus, or all task records with `--all`
 
+- `validate-task-decomposition --task TASK-* [--format text|json]`
+  - checks whether a task is valid for work as either an `atomic` leaf or a `decomposed` parent
+  - active tasks without decomposition report `needs-decomposition`
+  - mutating evidence-authorized work requires the current task to be a valid atomic leaf
+
+- `confirm-atomic-task --task TASK-* --deliverable ... --done ... --verify ... --boundary ... --blocker-policy ...`
+  - marks an existing task as a one-pass executable leaf
+  - use `--no-verification-needed` only when verification is explicitly unnecessary
+
+- `decompose-task --task TASK-* --subtask "scope|title|deliverable|done|verify|boundary[|blocker_policy]"`
+  - creates atomic child `TASK-*` records and marks the parent as `decomposed`
+  - parent tasks are orchestration nodes; work should switch to a child task
+
+- `validate-plan-decomposition --plan PLN-*`, `confirm-atomic-plan --plan PLN-*`, `decompose-plan --plan PLN-* --subplan "scope|title|step|success|claim1,claim2"`
+  - gives plans the same atomic/decomposed split
+  - plans remain optional; use them when order, dependencies, or risk matter
+
 - `task-outcome-check --task TASK-* --outcome done|blocked|user-question [--format text|json]`
   - checks whether a task outcome is mechanically acceptable
   - `done` fails while linked `OPEN-*`, active/proposed/blocked `PLN-*`, unresolved `DEBT-*`, or planned `ACT-*` obligations remain open
@@ -972,6 +997,7 @@ Guideline disclosure for code edits:
 
 - `record-source`
   - creates a canonical `SRC-*` record
+  - low-level path for migration/plugin development; normal agents should prefer `record-support` or `record-evidence`
   - requires explicit `source_kind`, `critique_status`, `origin.kind`, `origin.ref`, and `note`
   - requires either `quote` or `artifact_refs`
   - attaches the current project automatically when `settings.json.current_project_ref` is set
@@ -1007,6 +1033,7 @@ Guideline disclosure for code edits:
 
 - `record-claim`
   - creates a canonical `CLM-*` record
+  - low-level path for migration/plugin development; normal agents should prefer `record-support` or `record-evidence`
   - requires explicit `plane`, `statement`, at least one `source_ref`, and `note`
   - defaults `status` to `tentative`
   - accepts optional `claim_kind`, `confidence`, `red_flags`, and structured `comparison`
@@ -1091,7 +1118,7 @@ Guideline disclosure for code edits:
   - copies a payload file into `.codex_context/artifacts/`
   - preserves the payload as the canonical artifact, without creating a separate record type
   - prints a root-relative artifact ref such as `artifacts/ART-YYYYMMDD-xxxxxxxx__name.txt`
-  - can be used before `record-source` when you need to ingest logs, snapshots, or outputs first
+  - can be used before `record-support --kind artifact` when you need to ingest logs, snapshots, or outputs first
 
 - `impact-graph --claim CLM-*`
   - shows direct and transitive dependencies of a claim across canonical records

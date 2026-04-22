@@ -7,10 +7,12 @@ from pathlib import Path
 from .claims import claim_blocks_current_action, claim_is_fallback, claim_lifecycle
 from .conflicts import validate_claim_comparison
 from .errors import ValidationError
+from .files import FILE_KINDS
 from .ids import WORKING_CONTEXT_ID_PATTERN
 from .logic import validate_claim_logic
 from .records import RECORD_TYPE_TO_PREFIX
 from .repo_scope import root_refs_are_absolute
+from .runs import RUN_STATUSES
 from .validation import (
     ensure_dict,
     ensure_list,
@@ -71,6 +73,8 @@ REF_KEYS = {
     "contradiction_refs",
     "derived_from",
     "input_refs",
+    "file_refs",
+    "run_refs",
     "derived_record_refs",
     "workspace_refs",
     "project_refs",
@@ -91,6 +95,10 @@ REF_KEYS = {
     "related_claim_refs",
     "related_flow_refs",
     "related_open_question_refs",
+    "parent_task_refs",
+    "subtask_refs",
+    "subplan_refs",
+    "parent_plan_refs",
     "model_refs",
     "action_refs",
     "topic_seed_refs",
@@ -253,6 +261,46 @@ def validate_record(record_id: str, data: dict) -> list[str]:
                 except ValueError as exc:
                     errors.append(str(exc))
 
+    elif record_type == "file":
+        if str(data.get("file_kind", "")).strip() not in FILE_KINDS:
+            errors.append("invalid file_kind")
+        if not str(data.get("captured_at", "")).strip():
+            errors.append("captured_at is required")
+        if not str(data.get("original_ref", "")).strip():
+            errors.append("original_ref is required")
+        metadata = data.get("metadata", {})
+        if not isinstance(metadata, dict):
+            errors.append("metadata must be an object")
+            metadata = {}
+        if metadata.get("exists") is True and not str(metadata.get("sha256", "")).strip():
+            errors.append("existing file metadata requires sha256")
+        artifact_refs = ensure_list(data, "artifact_refs")
+        for artifact_ref in artifact_refs:
+            if not artifact_ref_exists(path, artifact_ref):
+                errors.append(f"missing artifact ref: {artifact_ref}")
+        for key in ("cix_refs",):
+            if key in data:
+                try:
+                    ensure_list(data, key)
+                except ValueError as exc:
+                    errors.append(str(exc))
+
+    elif record_type == "run":
+        if str(data.get("status", "")).strip() not in RUN_STATUSES:
+            errors.append("invalid run status")
+        if str(data.get("tool", "")).strip() != "bash":
+            errors.append("run.tool must be bash")
+        if not str(data.get("command", "")).strip():
+            errors.append("command is required")
+        if not str(data.get("captured_at", "")).strip():
+            errors.append("captured_at is required")
+        if "exit_code" in data and not isinstance(data.get("exit_code"), int):
+            errors.append("exit_code must be an integer when provided")
+        artifact_refs = ensure_list(data, "artifact_refs")
+        for artifact_ref in artifact_refs:
+            if not artifact_ref_exists(path, artifact_ref):
+                errors.append(f"missing artifact ref: {artifact_ref}")
+
     elif record_type == "source":
         if str(data.get("source_kind", "")).strip() not in SOURCE_KINDS:
             errors.append("invalid source_kind")
@@ -276,6 +324,20 @@ def validate_record(record_id: str, data: dict) -> list[str]:
         for artifact_ref in artifact_refs:
             if not artifact_ref_exists(path, artifact_ref):
                 errors.append(f"missing artifact ref: {artifact_ref}")
+        for key in ("input_refs", "file_refs", "run_refs", "cix_refs"):
+            if key in data:
+                try:
+                    ensure_list(data, key)
+                except ValueError as exc:
+                    errors.append(str(exc))
+        graph_v2 = "graph-v2" in {str(tag).strip() for tag in data.get("tags", [])}
+        if graph_v2 and not (
+            safe_list(data, "input_refs")
+            or safe_list(data, "file_refs")
+            or safe_list(data, "run_refs")
+            or artifact_refs
+        ):
+            errors.append("graph-v2 source requires input_refs, file_refs, run_refs, or artifact_refs")
         errors.extend(validate_optional_confidence(data))
         errors.extend(validate_optional_red_flags(data))
 
@@ -553,12 +615,34 @@ def validate_record(record_id: str, data: dict) -> list[str]:
             "action_refs",
             "project_refs",
             "restriction_refs",
+            "parent_task_refs",
         ):
             if key in data:
                 try:
                     ensure_list(data, key)
                 except ValueError as exc:
                     errors.append(str(exc))
+        if "decomposition" in data:
+            decomposition = data.get("decomposition")
+            if not isinstance(decomposition, dict):
+                errors.append("task.decomposition must be an object")
+            else:
+                mode = str(decomposition.get("status", "")).strip()
+                if mode not in {"atomic", "decomposed"}:
+                    errors.append("task.decomposition.status must be atomic or decomposed")
+                if mode == "atomic":
+                    if decomposition.get("one_pass") is not True:
+                        errors.append("atomic task decomposition requires one_pass=true")
+                    for key in ("deliverable", "scope_boundary", "blocker_policy"):
+                        if not str(decomposition.get(key, "")).strip():
+                            errors.append(f"atomic task decomposition requires {key}")
+                    for key in ("done_criteria", "verification"):
+                        if key in decomposition and not isinstance(decomposition.get(key), list):
+                            errors.append(f"atomic task decomposition {key} must be a list")
+                if mode == "decomposed":
+                    refs = decomposition.get("subtask_refs", [])
+                    if not isinstance(refs, list):
+                        errors.append("decomposed task subtask_refs must be a list")
 
     elif record_type == "working_context":
         if not str(data.get("title", "")).strip():
@@ -641,6 +725,25 @@ def validate_record(record_id: str, data: dict) -> list[str]:
                     errors.append("blocked plan must define blocked_by")
             except ValueError as exc:
                 errors.append(str(exc))
+        if "parent_plan_refs" in data:
+            try:
+                ensure_list(data, "parent_plan_refs")
+            except ValueError as exc:
+                errors.append(str(exc))
+        if "decomposition" in data:
+            decomposition = data.get("decomposition")
+            if not isinstance(decomposition, dict):
+                errors.append("plan.decomposition must be an object")
+            else:
+                mode = str(decomposition.get("status", "")).strip()
+                if mode not in {"atomic", "decomposed"}:
+                    errors.append("plan.decomposition.status must be atomic or decomposed")
+                if mode == "atomic" and decomposition.get("one_pass") is not True:
+                    errors.append("atomic plan decomposition requires one_pass=true")
+                if mode == "decomposed":
+                    refs = decomposition.get("subplan_refs", [])
+                    if not isinstance(refs, list):
+                        errors.append("decomposed plan subplan_refs must be a list")
 
     elif record_type == "debt":
         if not str(data.get("title", "")).strip():
@@ -837,6 +940,12 @@ def validate_refs(records: dict[str, dict]) -> list[ValidationError]:
         for ref in safe_list(data, "input_refs"):
             if ref in records and records[ref].get("record_type") != "input":
                 errors.append(ValidationError(path, f"input ref {ref} must reference an input record"))
+        for ref in safe_list(data, "file_refs"):
+            if ref in records and records[ref].get("record_type") != "file":
+                errors.append(ValidationError(path, f"file ref {ref} must reference a file record"))
+        for ref in safe_list(data, "run_refs"):
+            if ref in records and records[ref].get("record_type") != "run":
+                errors.append(ValidationError(path, f"run ref {ref} must reference a run record"))
 
         if data.get("record_type") == "workspace":
             for ref in safe_list(data, "project_refs"):
@@ -882,6 +991,10 @@ def validate_refs(records: dict[str, dict]) -> list[ValidationError]:
                         errors.append(
                             ValidationError(path, "supported/corroborated claim requires accepted sources")
                         )
+                    graph_v2 = "graph-v2" in {str(tag).strip() for tag in data.get("tags", [])}
+                    if graph_v2 and str(data.get("plane", "")).strip() == "runtime":
+                        if not any(safe_list(source, "run_refs") for source in resolved_sources):
+                            errors.append(ValidationError(path, "graph-v2 runtime claim requires a source linked to RUN-*"))
 
         if data.get("record_type") == "action":
             justified_by = ensure_list(data, "justified_by")

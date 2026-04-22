@@ -23,6 +23,8 @@ from context_lib import (
     task_outcome_check_payload,
     task_outcome_check_text_lines,
     task_outcome_from_message,
+    task_decomposition_text_lines,
+    validate_task_decomposition_payload,
     unclassified_input_items,
     write_backlog,
     write_conflicts_report,
@@ -532,6 +534,12 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
         if errors:
             print_errors(errors)
             return 1
+        if isinstance(current_task, dict) and current_task.get("id"):
+            decomposition = validate_task_decomposition_payload(records, str(current_task.get("id", "")).strip())
+            if not decomposition.get("accepted"):
+                print("Final response blocked: current TASK-* is not decomposed into a valid atomic/decomposed shape.")
+                print("\n".join(task_decomposition_text_lines(decomposition)))
+                return 1
         unresolved_inputs = unclassified_input_items(records)
         if unresolved_inputs:
             print(
@@ -564,6 +572,15 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
     if action_kind and is_mutating_action_kind(action_kind) and strictness == "evidence-authorized":
         if not isinstance(current_task, dict) or not current_task.get("id"):
             print("Mutating action in evidence-authorized mode requires an active TASK-*")
+            return 1
+        records, errors = collect_validation_errors(root)
+        if errors:
+            print_errors(errors)
+            return 1
+        decomposition = validate_task_decomposition_payload(records, str(current_task.get("id", "")).strip())
+        if not decomposition.get("accepted") or decomposition.get("status") != "atomic":
+            print("Mutating action requires the current TASK-* to be a valid atomic leaf task.")
+            print("\n".join(task_decomposition_text_lines(decomposition)))
             return 1
         hard_restrictions = [
             item

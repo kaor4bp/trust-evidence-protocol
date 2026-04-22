@@ -1265,18 +1265,22 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     assert payload["hydration_fresh"] is True
     assert payload["route_graph"]["graph_version"] == 1
     assert payload["api_contract"]["normal_entrypoint"] == "lookup"
-    assert payload["route_steps"][0].startswith("lookup ")
+    assert payload["route_steps"][0].startswith("validate-task-decomposition ")
+    assert any(step.startswith("lookup ") for step in payload["route_steps"])
+    assert payload["task_decomposition"]["accepted"] is False
     assert {"if": "proof gap", "then": "build/validate evidence chain"} in payload["route_graph"]["branches"]
+    assert {"if": "current task is parent/invalid", "then": "switch to leaf task|decompose-task"} in payload["route_graph"]["branches"]
     assert "missing source-backed proof for truth claim" in payload["route_graph"]["stop_conditions"]
     compact_lines = next_step_text_lines(payload, "TEP", detail="compact")
     assert any(line.startswith("- graph: ") for line in compact_lines)
     assert any("proof gap=>build/validate evidence chain" in line for line in compact_lines)
+    assert any("task-decomposition: status=needs-decomposition accepted=False" in line for line in compact_lines)
     assert "missing source-backed proof for truth claim" not in "\n".join(compact_lines)
     full_lines = next_step_text_lines(payload, "TEP", detail="full")
     assert any(line.startswith("- stop: ") for line in full_lines)
     inline = next_step_inline(payload)
-    assert "next=guidelines-for" in inline
-    assert "graph=guidelines missing=>guidelines-for" in inline
+    assert "next=validate-task-decomposition" in inline
+    assert "guidelines missing=>guidelines-for" in inline
 
 
 def test_reasoning_case_core_builds_payload_and_text() -> None:
@@ -1542,6 +1546,8 @@ def test_cli_common_core_handles_small_payload_and_mutation_helpers() -> None:
 
     assert command_requires_write_lock(SimpleNamespace(command="record-claim"))
     assert command_requires_write_lock(SimpleNamespace(command="record-evidence"))
+    assert command_requires_write_lock(SimpleNamespace(command="record-support"))
+    assert command_requires_write_lock(SimpleNamespace(command="record-run"))
     assert command_requires_write_lock(SimpleNamespace(command="hypothesis", hypothesis_command="add"))
     assert command_requires_write_lock(SimpleNamespace(command="topic-index", topic_index_command="build"))
     assert command_requires_write_lock(SimpleNamespace(command="logic-index", logic_index_command="build"))

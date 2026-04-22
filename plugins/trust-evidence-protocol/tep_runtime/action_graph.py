@@ -9,6 +9,7 @@ from .retrieval import active_guidelines_for
 from .scopes import active_restrictions_for, current_project_ref, current_task_ref, current_workspace_ref
 from .search import concise
 from .settings import load_effective_settings
+from .tasks import validate_task_decomposition_payload
 
 
 NEXT_STEP_INTENTS = {"auto", "answer", "plan", "edit", "test", "persist", "permission", "debug", "after-mutation"}
@@ -37,8 +38,8 @@ def _intent_route(intent: str, task: str) -> tuple[str, list[str]]:
     query_arg = f' --query "{task}"' if task else ' --query "..."'
     routes = {
         "answer": ("answering", [f"lookup{query_arg} --reason answering --kind auto --format json", f"brief-context{task_arg}", "record-detail / linked-records before citing proof"]),
-        "plan": ("planning", [f"lookup{query_arg} --reason planning --kind auto --format json", f"brief-context{task_arg}", "publish Reasoning Checkpoint", "validate evidence chain if decisive"]),
-        "edit": ("editing", [f"lookup{query_arg} --reason editing --kind auto --format json", f"guidelines-for{task_arg}", "build/validate evidence chain", "preflight-task --mode edit"]),
+        "plan": ("planning", [f"lookup{query_arg} --reason planning --kind auto --format json", "validate-task-decomposition --task TASK-*", f"brief-context{task_arg}", "publish Reasoning Checkpoint", "validate evidence chain if decisive"]),
+        "edit": ("editing", ["validate-task-decomposition --task TASK-*", f"lookup{query_arg} --reason editing --kind auto --format json", f"guidelines-for{task_arg}", "build/validate evidence chain", "preflight-task --mode edit"]),
         "test": ("testing", [f"lookup{query_arg} --reason debugging --kind auto --format json", f"brief-context{task_arg}", "record-evidence for meaningful test output", "hydrate-context after mutation"]),
         "persist": ("persisting", [f"lookup{query_arg} --reason migration --kind auto --format json", "classify input/source first", "record-evidence or record-* through context_cli", "hydrate-context"]),
         "permission": ("permission", [f"lookup{query_arg} --reason permission --kind policy --format json", "build-reasoning-case", "cite CLM/GLD/PRM ids + quotes", "request explicit approval if needed"]),
@@ -63,11 +64,13 @@ def _route_graph(intent: str) -> dict:
             {"if": "answer reusable", "then": "persist"},
         ],
         "plan": [
+            {"if": "task needs decomposition", "then": "confirm-atomic-task|decompose-task"},
             {"if": "proof chain explicit", "then": "validate-evidence-chain"},
             {"if": "scope/task drift", "then": "task-drift-check|switch-task"},
             {"if": "permission needed", "then": "permission"},
         ],
         "edit": [
+            {"if": "current task is parent/invalid", "then": "switch to leaf task|decompose-task"},
             {"if": "guidelines missing", "then": "guidelines-for"},
             {"if": "proof gap", "then": "build/validate evidence chain"},
             {"if": "blocked by policy", "then": "permission|debug"},
@@ -133,6 +136,13 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         forced.append("scan-conflicts")
     if active_restrictions and intent in {"edit", "test", "persist", "permission"}:
         forced.append("show-restrictions")
+    task_decomposition = None
+    if task_ref:
+        task_decomposition = validate_task_decomposition_payload(records, task_ref)
+        if intent in {"plan", "edit", "test", "persist", "permission"} and not task_decomposition.get("accepted"):
+            forced.append("validate-task-decomposition")
+        if intent in {"edit", "test"} and task_decomposition.get("status") != "atomic":
+            forced.append("switch-to-atomic-leaf-task")
     if intent == "edit" and not active_guidelines:
         forced.append("guidelines-for")
 
@@ -151,6 +161,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         "current_task": _record_summary(records, task_ref, "scope") if task_ref else None,
         "restriction_count": len(active_restrictions),
         "guideline_count": len(active_guidelines),
+        "task_decomposition": task_decomposition,
         "forced_first": forced,
         "route_steps": route_steps,
         "route_graph": _route_graph(intent),
@@ -160,7 +171,8 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
             "route_graph_required": True,
             "drill_down_tools": ["brief-context", "search-records", "claim-graph", "record-detail", "linked-records"],
             "proof_rule": "Navigation output is not proof; cite canonical records with quotes before decisions.",
-            "write_rule": "Prefer record-evidence for Source -> Claim writes; use specialized record-* commands only when extra fields are needed.",
+            "write_rule": "Use record-support/record-evidence so FILE/RUN/SRC/CLM links are built mechanically; low-level record-source/record-claim are for plugin-dev or migration.",
+            "task_rule": "Mutating work belongs on a valid atomic leaf TASK-*; parent tasks are orchestration only.",
         },
         "note": "Navigation only. This route is not proof; cite records with quotes before decisions.",
     }
@@ -200,6 +212,11 @@ def next_step_text_lines(payload: dict, icon: str, detail: str = "compact") -> l
             if isinstance(branch, dict)
         ]
         lines.append("- graph: " + " | ".join(compact_branches))
+    decomposition = payload.get("task_decomposition") or {}
+    if decomposition:
+        lines.append(
+            f"- task-decomposition: status={decomposition.get('status')} accepted={decomposition.get('accepted')}"
+        )
 
     if detail == "full":
         lines.extend(

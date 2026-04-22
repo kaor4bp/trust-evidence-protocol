@@ -228,6 +228,7 @@ from tep_runtime.hypotheses import (
     write_hypotheses_index,
 )
 from tep_runtime.inputs import build_input_payload, input_items_for_task, unclassified_input_items
+from tep_runtime.files import FILE_KINDS, build_file_payload, file_metadata, infer_file_kind
 from tep_runtime.knowledge import mark_knowledge_records_stale_payloads, stale_knowledge_target_ids
 from tep_runtime.io import context_write_lock, parse_json_file, write_json_file, write_text_file
 from tep_runtime.local_anchor import ANCHOR_FILENAME, anchor_context_root, anchor_task_ref, find_anchor, find_anchor_path, load_anchor
@@ -296,7 +297,11 @@ from tep_runtime.open_questions import build_open_question_payload
 from tep_runtime.tasks import (
     TASK_OUTCOME_MARKER,
     TASK_TERMINAL_OUTCOMES,
+    apply_atomic_task_decomposition,
+    apply_decomposed_task_decomposition,
     assign_task_payload,
+    build_atomic_task_decomposition,
+    build_decomposed_task_decomposition,
     build_precedent_review_payload,
     build_task_drift_payload,
     build_task_payload,
@@ -312,6 +317,8 @@ from tep_runtime.tasks import (
     task_outcome_from_message,
     task_related_counts,
     task_summary_line,
+    task_decomposition_text_lines,
+    validate_task_decomposition_payload,
 )
 from tep_runtime.paths import (
     code_index_entries_root,
@@ -323,7 +330,15 @@ from tep_runtime.paths import (
     settings_path,
 )
 from tep_runtime.policy import ACTION_MUTATION_MARKERS, is_mutating_action_kind, validate_runtime_policy
-from tep_runtime.planning import build_debt_payload, build_plan_payload
+from tep_runtime.planning import (
+    apply_atomic_plan_decomposition,
+    apply_decomposed_plan_decomposition,
+    build_atomic_plan_decomposition,
+    build_debt_payload,
+    build_plan_payload,
+    plan_decomposition_text_lines,
+    validate_plan_decomposition_payload,
+)
 from tep_runtime.permissions import build_permission_payload, resolve_permission_scope
 from tep_runtime.projects import assign_project_payload, build_project_payload
 from tep_runtime.proposals import build_proposal_payload, parse_proposal_option, proposal_summary_line
@@ -333,6 +348,7 @@ from tep_runtime.records import (
     load_code_index_entries,
     load_records,
 )
+from tep_runtime.runs import RUN_STATUSES, build_run_payload
 from tep_runtime.reports import rel_display, write_report, write_validation_report
 from tep_runtime.reasoning import (
     EvidenceChainValidation,

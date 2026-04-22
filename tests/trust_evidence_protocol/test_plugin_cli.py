@@ -187,8 +187,186 @@ def test_record_evidence_creates_source_claim_and_classifies_input(tmp_path: Pat
     assert model_result.returncode == 0, model_result.stdout
 
 
+def test_task_decomposition_cli_confirms_atomic_and_creates_subtasks(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    start = run_cli(
+        context,
+        "start-task",
+        "--scope",
+        "demo.decomposition",
+        "--title",
+        "Implement graph v2",
+        "--type",
+        "implementation",
+        "--note",
+        "task needs explicit decomposition",
+    )
+    task_id = recorded_id(start, "task")
+
+    missing = run_cli(context, "validate-task-decomposition", "--task", task_id, check=False)
+    assert missing.returncode == 1
+    assert "needs-decomposition" in missing.stdout
+
+    run_cli(
+        context,
+        "confirm-atomic-task",
+        "--task",
+        task_id,
+        "--deliverable",
+        "Task decomposition validator is implemented.",
+        "--done",
+        "Validator rejects tasks without decomposition.",
+        "--verify",
+        "Targeted pytest passes.",
+        "--boundary",
+        "Only task decomposition runtime behavior.",
+        "--blocker-policy",
+        "Record OPEN-* for user decisions.",
+        "--note",
+        "confirmed as one-pass task",
+    )
+    task = load_record(context, "task", task_id)
+    assert task["decomposition"]["status"] == "atomic"
+    assert task["decomposition"]["one_pass"] is True
+    assert task["decomposition"]["deliverable"] == "Task decomposition validator is implemented."
+    accepted = run_cli(context, "validate-task-decomposition", "--task", task_id)
+    assert "accepted=True" in accepted.stdout
+
+    second_context = bootstrap_context(tmp_path / "decomposed")
+    parent = recorded_id(
+        run_cli(
+            second_context,
+            "start-task",
+            "--scope",
+            "demo.parent",
+            "--title",
+            "Rebuild TEP API",
+            "--type",
+            "implementation",
+            "--note",
+            "parent orchestration task",
+        ),
+        "task",
+    )
+    split = run_cli(
+        second_context,
+        "decompose-task",
+        "--task",
+        parent,
+        "--subtask",
+        "demo.parent.task-decomposition|Implement decomposition API|Working TASK split commands|Commands pass CLI tests|pytest test_plugin_cli.py|Only TASK/PLAN split behavior",
+        "--note",
+        "split into one leaf task",
+    )
+    child_id = recorded_id(split, "task")
+    parent_task = load_record(second_context, "task", parent)
+    child_task = load_record(second_context, "task", child_id)
+    assert parent_task["decomposition"]["status"] == "decomposed"
+    assert parent_task["decomposition"]["subtask_refs"] == [child_id]
+    assert child_task["parent_task_refs"] == [parent]
+    assert child_task["decomposition"]["status"] == "atomic"
+    assert child_task["decomposition"]["scope_boundary"] == "Only TASK/PLAN split behavior"
+    validated_parent = run_cli(second_context, "validate-task-decomposition", "--task", parent)
+    assert "accepted=True" in validated_parent.stdout
+
+
+def test_plan_decomposition_cli_confirms_atomic_plan(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    claim_id = user_confirmed_theory_claim(
+        context,
+        "demo.plan-decomposition",
+        "Plans should be executable only after decomposition is explicit.",
+    )
+    plan_id = recorded_id(
+        run_cli(
+            context,
+            "record-plan",
+            "--scope",
+            "demo.plan-decomposition",
+            "--title",
+            "Add plan decomposition",
+            "--priority",
+            "high",
+            "--justify",
+            claim_id,
+            "--step",
+            "Implement validators.",
+            "--success",
+            "Plan decomposition check passes.",
+            "--note",
+            "plan needs explicit decomposition",
+        ),
+        "plan",
+    )
+
+    missing = run_cli(context, "validate-plan-decomposition", "--plan", plan_id, check=False)
+    assert missing.returncode == 1
+    assert "needs-decomposition" in missing.stdout
+
+    run_cli(
+        context,
+        "confirm-atomic-plan",
+        "--plan",
+        plan_id,
+        "--note",
+        "existing plan steps are one-pass executable",
+    )
+    plan = load_record(context, "plan", plan_id)
+    assert plan["decomposition"] == {
+        "status": "atomic",
+        "one_pass": True,
+        "task_ref": "",
+    }
+    accepted = run_cli(context, "validate-plan-decomposition", "--plan", plan_id)
+    assert "accepted=True" in accepted.stdout
+
+    parent_plan = recorded_id(
+        run_cli(
+            context,
+            "record-plan",
+            "--scope",
+            "demo.plan-decomposition.parent",
+            "--title",
+            "Parent plan",
+            "--priority",
+            "medium",
+            "--justify",
+            claim_id,
+            "--step",
+            "Split plan.",
+            "--success",
+            "Child plan is executable.",
+            "--note",
+            "parent plan needs subplans",
+        ),
+        "plan",
+    )
+    split = run_cli(
+        context,
+        "decompose-plan",
+        "--plan",
+        parent_plan,
+        "--subplan",
+        f"demo.plan-decomposition.child|Child plan|Implement child behavior|Child plan passes tests|{claim_id}",
+        "--note",
+        "split parent plan into child plan",
+    )
+    child_plan = recorded_id(split, "plan")
+    parent = load_record(context, "plan", parent_plan)
+    child = load_record(context, "plan", child_plan)
+    assert parent["decomposition"]["status"] == "decomposed"
+    assert parent["decomposition"]["subplan_refs"] == [child_plan]
+    assert child["parent_plan_refs"] == [parent_plan]
+    assert child["decomposition"]["status"] == "atomic"
+    accepted_parent = run_cli(context, "validate-plan-decomposition", "--plan", parent_plan)
+    assert "accepted=True" in accepted_parent.stdout
+
+
 def test_record_evidence_maps_file_and_command_evidence(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
+    project_file = tmp_path / "src" / "cache.py"
+    project_file.parent.mkdir(parents=True)
+    project_file.write_text("def refresh_cache():\n    return True\n", encoding="utf-8")
     command_result = run_cli(
         context,
         "record-evidence",
@@ -198,6 +376,8 @@ def test_record_evidence_maps_file_and_command_evidence(tmp_path: Path) -> None:
         "command-output",
         "--command",
         "uv run pytest tests/unit/test_cache.py -q",
+        "--exit-code",
+        "0",
         "--quote",
         "1 passed",
         "--claim",
@@ -209,14 +389,19 @@ def test_record_evidence_maps_file_and_command_evidence(tmp_path: Path) -> None:
     )
     command_source_id = recorded_id(command_result, "source")
     command_claim_id = recorded_id(command_result, "claim")
+    command_run_id = only_record_id(context, "run")
     command_source = load_record(context, "source", command_source_id)
     command_claim = load_record(context, "claim", command_claim_id)
+    command_run = load_record(context, "run", command_run_id)
     assert command_source["source_kind"] == "runtime"
     assert command_source["origin"] == {
         "kind": "command",
         "ref": "uv run pytest tests/unit/test_cache.py -q",
     }
+    assert command_source["run_refs"] == [command_run_id]
     assert command_claim["plane"] == "runtime"
+    assert command_claim["run_refs"] == [command_run_id]
+    assert command_run["status"] == "completed"
 
     file_result = run_cli(
         context,
@@ -226,7 +411,7 @@ def test_record_evidence_maps_file_and_command_evidence(tmp_path: Path) -> None:
         "--kind",
         "file-line",
         "--path",
-        "src/cache.py",
+        str(project_file),
         "--line",
         "12",
         "--end-line",
@@ -242,11 +427,49 @@ def test_record_evidence_maps_file_and_command_evidence(tmp_path: Path) -> None:
     )
     file_source_id = recorded_id(file_result, "source")
     file_claim_id = recorded_id(file_result, "claim")
+    file_record_id = only_record_id(context, "file")
     file_source = load_record(context, "source", file_source_id)
     file_claim = load_record(context, "claim", file_claim_id)
+    file_record = load_record(context, "file", file_record_id)
     assert file_source["source_kind"] == "code"
-    assert file_source["origin"] == {"kind": "file", "ref": "src/cache.py:12-14"}
+    assert file_source["origin"] == {"kind": "file", "ref": f"{project_file}:12-14"}
+    assert file_source["file_refs"] == [file_record_id]
     assert file_claim["plane"] == "code"
+    assert file_record["metadata"]["exists"] is True
+    assert file_record["artifact_refs"]
+
+
+def test_record_support_is_graph_v2_front_door(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    result = run_cli(
+        context,
+        "record-support",
+        "--scope",
+        "demo.record-support",
+        "--kind",
+        "command-output",
+        "--command",
+        "uv run pytest tests/unit/test_cache.py -q",
+        "--exit-code",
+        "0",
+        "--quote",
+        "1 passed",
+        "--thought",
+        "The cache unit test passed.",
+        "--note",
+        "front-door support capture",
+    )
+    source_id = recorded_id(result, "source")
+    claim_id = recorded_id(result, "claim")
+    run_id = only_record_id(context, "run")
+
+    source = load_record(context, "source", source_id)
+    claim = load_record(context, "claim", claim_id)
+    assert "graph-v2" in source["tags"]
+    assert source["run_refs"] == [run_id]
+    assert claim["run_refs"] == [run_id]
+    assert claim["statement"] == "The cache unit test passed."
 
 
 def test_record_evidence_rejects_incomplete_structured_origin(tmp_path: Path) -> None:
@@ -394,11 +617,10 @@ def strictness_approval(context: Path, value: str, permission_id: str | None = N
 
 def test_skill_package_is_core_plus_workflows_without_legacy_identity_artifacts() -> None:
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-    assert "workflows/information-lookup.md" in skill
-    assert "workflows/before-action.md" in skill
-    assert "workflows/after-action.md" in skill
-    assert "workflows/persistence-and-records.md" in skill
-    assert "workflows/plugin-commands.md" in skill
+    assert len(skill.splitlines()) <= 160
+    assert "route / next_step -> lookup -> support capture -> chain validation -> action/final" in skill
+    assert "Command details belong in the plugin README, runtime help, and developer docs." in skill
+    assert "workflows/plugin-commands.md" not in skill
 
     workflow_files = sorted(path.name for path in (SKILL_ROOT / "workflows").glob("*.md"))
     assert workflow_files == [
@@ -406,8 +628,8 @@ def test_skill_package_is_core_plus_workflows_without_legacy_identity_artifacts(
         "before-action.md",
         "information-lookup.md",
         "persistence-and-records.md",
-        "plugin-commands.md",
     ]
+    assert (REPO_ROOT / "docs" / "reference" / "plugin-commands.md").exists()
 
     assert not (REPO_ROOT / "trust-evidence-protocol").exists()
 
@@ -1200,6 +1422,8 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
         "configure-runtime",
         "--hook-verbosity",
         "quiet",
+        "--hook-run-capture",
+        "all",
         "--context-budget",
         "hydration=compact",
         "--context-budget",
@@ -1226,6 +1450,7 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
         "code_intelligence.cocoindex.workspace_glance=false",
     ).stdout
     assert "hooks.verbosity=quiet" in configured
+    assert "hooks.run_capture=all" in configured
     assert "analysis.logic_solver.backend=z3" in configured
     assert "analysis.topic_prefilter.backend=nmf" in configured
     assert "backends.derivation.backend=datalog" in configured
@@ -1233,6 +1458,7 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert "backends.code_intelligence.cocoindex.default_scope=workspace" in configured
     settings = json.loads((context / "settings.json").read_text(encoding="utf-8"))
     assert settings["hooks"]["verbosity"] == "quiet"
+    assert settings["hooks"]["run_capture"] == "all"
     assert settings["context_budget"]["hydration"] == "compact"
     assert settings["analysis"]["logic_solver"]["backend"] == "z3"
     assert settings["analysis"]["logic_solver"]["install_policy"] == "ask"
@@ -1985,7 +2211,7 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert lookup_facts["api_contract_version"] == 1
     assert lookup_facts["evidence_profile"]["normal_entrypoint"] == "lookup"
     assert "record-detail" in lookup_facts["evidence_profile"]["drill_down_tools"]
-    assert lookup_facts["output_contract"]["if_new_support_found"].startswith("use record-evidence")
+    assert lookup_facts["output_contract"]["if_new_support_found"].startswith("use record-support/record-evidence")
     assert lookup_facts["route_graph"]["entrypoint"] == "lookup"
     assert lookup_facts["next_allowed_commands"] == lookup_facts["route"]
     assert any(command.startswith("claim-graph") for command in lookup_facts["route"])
@@ -5034,7 +5260,8 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     assert next_step_payload["intent"] == "edit"
     assert next_step_payload["route_graph"]["graph_version"] == 1
     assert next_step_payload["api_contract"]["normal_entrypoint"] == "lookup"
-    assert next_step_payload["route_steps"][0].startswith("lookup ")
+    assert next_step_payload["route_steps"][0].startswith("validate-task-decomposition ")
+    assert any(step.startswith("lookup ") for step in next_step_payload["route_steps"])
     assert {"if": "proof gap", "then": "build/validate evidence chain"} in next_step_payload["route_graph"]["branches"]
 
     reasoning = run_cli(

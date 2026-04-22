@@ -1375,6 +1375,9 @@ def test_pre_and_post_tool_hooks_track_mutating_bash_commands(tmp_path: Path) ->
         hook_payload(context, "echo hi > /tmp/example"),
     )
     assert "Hydration marked stale" in post_payload["systemMessage"]
+    run_id = record_ids(context, "run")[0]
+    run_payload = json.loads((context / "records" / "run" / f"{run_id}.json").read_text(encoding="utf-8"))
+    assert run_payload["command"] == "echo hi > /tmp/example"
 
     stale = run_runtime(context, "show-hydration", check=False)
     assert stale.returncode == 1
@@ -1502,6 +1505,33 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
     run_runtime(context, "hydrate-context")
     run_runtime(context, "confirm-task", "--task", task_id, "--note", "hook test focus confirmed")
 
+    blocked_result = run_script(
+        HOOK_DIR / "pre_tool_use_guard.py",
+        hook_payload(context, "echo hi > /tmp/example"),
+    )
+    assert "valid atomic leaf task" in blocked_result.stdout
+
+    run_cli(
+        context,
+        "confirm-atomic-task",
+        "--task",
+        task_id,
+        "--deliverable",
+        "Evidence hook task can run one bounded mutation.",
+        "--done",
+        "PreToolUse allows the bounded mutation.",
+        "--verify",
+        "Hook smoke passes.",
+        "--boundary",
+        "Only evidence-authorized preflight hook behavior.",
+        "--blocker-policy",
+        "Record OPEN-* for blockers.",
+        "--note",
+        "confirm hook task as atomic",
+    )
+    run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "hook test focus confirmed after decomposition")
+
     allow_result = run_script(
         HOOK_DIR / "pre_tool_use_guard.py",
         hook_payload(context, "echo hi > /tmp/example"),
@@ -1595,6 +1625,11 @@ PY"""
     assert pre_result.stdout.strip() == ""
     post_result = run_script(HOOK_DIR / "post_tool_use_review.py", hook_payload(context, read_only_version_check))
     assert post_result.stdout.strip() == ""
+    assert record_ids(context, "run") == []
+
+    run_cli(context, "configure-runtime", "--hook-run-capture", "all")
+    run_script(HOOK_DIR / "post_tool_use_review.py", hook_payload(context, read_only_version_check))
+    assert len(record_ids(context, "run")) == 1
 
     heredoc_with_mutating_text = """python3 - <<'PY'
 print("rm -rf /tmp/example")
