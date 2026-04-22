@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/working_context.record.schema.json",
+  "title": "TEP 0.4 working context record",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "id",
+    "record_type",
+    "scope",
+    "title",
+    "status",
+    "context_kind",
+    "agent_identity_ref",
+    "agent_key_fingerprint",
+    "ownership_mode",
+    "handoff_policy",
+    "owner_signature",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "contract_version": {"type": "string", "const": "0.4"},
+    "id": {"type": "string", "pattern": "^WCTX-"},
+    "record_type": {"type": "string", "const": "working_context"},
+    "scope": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "status": {"type": "string", "enum": ["active", "paused", "closed", "archived"]},
+    "context_kind": {"type": "string", "minLength": 1},
+    "agent_identity_ref": {"type": "string", "pattern": "^AGENT-"},
+    "agent_key_fingerprint": {"type": "string", "pattern": "^sha256:"},
+    "ownership_mode": {"type": "string", "const": "owner-only"},
+    "handoff_policy": {"type": "string", "const": "fork-required"},
+    "owner_signature": {
+      "type": "object",
+      "required": ["algorithm", "signed_payload_hash", "signature"],
+      "properties": {
+        "algorithm": {"type": "string", "const": "hmac-sha256"},
+        "signed_payload_hash": {"type": "string", "pattern": "^sha256:"},
+        "signature": {"type": "string", "pattern": "^hmac-sha256:"},
+        "signed_fields": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Canonical WCTX fields covered by signed_payload_hash."
+        }
+      },
+      "additionalProperties": true
+    },
+    "pinned_refs": {"type": "array", "items": {}},
+    "focus_paths": {"type": "array", "items": {}},
+    "topic_terms": {"type": "array", "items": {}},
+    "topic_seed_refs": {"type": "array", "items": {}},
+    "assumptions": {"type": "array", "items": {}},
+    "concerns": {"type": "array", "items": {}},
+    "parent_context_ref": {"type": "string"},
+    "supersedes_refs": {"type": "array", "items": {}},
+    "project_refs": {"type": "array", "items": {}},
+    "task_refs": {"type": "array", "items": {}},
+    "tags": {"type": "array", "items": {}},
+    "note": {"type": "string"},
+    "created_at": {"type": "string"},
+    "updated_at": {"type": "string"},
+    "adoption_request": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional explicit request when an agent wants a fork/adopt workflow."
+    }
+  },
+  "additionalProperties": true,
+  "description": "Owner-bound WCTX operational focus. Other agents may inspect it as navigation/handoff context, but cannot use it as current focus; they must create a signed fork."
+}

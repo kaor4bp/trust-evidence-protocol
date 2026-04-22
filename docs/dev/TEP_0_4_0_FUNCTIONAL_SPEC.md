@@ -68,7 +68,7 @@ Operational records must satisfy this path:
 
 ```text
 WSP-* -> PRJ-* -> TASK-* -> PLN-* / DEBT-* / ACT-* / OPEN-*
-WSP-* -> WCTX-*
+WSP-* -> AGENT-* -> WCTX-*
 TASK-* -> WCTX-* -> REASON-* -> GRANT-* -> RUN-* / protected record
 ```
 
@@ -77,7 +77,9 @@ Rules:
 - Every durable record must have `workspace_refs`, except explicitly marked
   legacy migration records.
 - `project_refs` are optional only for genuinely cross-project records.
-- `WCTX-*` is agent working context, not truth.
+- `AGENT-*` is local agent identity metadata; private key material is not a
+  public record.
+- `WCTX-*` is owner-bound agent working context, not truth.
 - `REASON-*` belongs to one task focus and cannot parent across tasks.
 
 ### 2.3 Provenance Surfaces
@@ -293,10 +295,14 @@ Lookup must have a WCTX.
 Rules:
 
 - If workspace is explicit and no suitable WCTX exists, lookup may auto-create
-  a task-local WCTX.
+  a task-local WCTX for the current `AGENT-*`.
 - If workspace is missing, WCTX auto-create is blocked.
 - WCTX records should be frequent and cheap; they are agent-local working memory
   and may be superseded.
+- WCTX records are owner-only. A different agent may inspect them as handoff
+  context, but must create a signed fork/adopted WCTX before using that focus.
+- WCTX owner signatures cover the canonical focus payload used by `next_step`,
+  lookup, map sessions, and protected-action checks.
 - WCTX cannot prove facts.
 
 ## 5. Lookup Contract
@@ -568,6 +574,8 @@ Required fields:
   "workspace_ref": "WSP-*",
   "project_ref": "PRJ-*|null",
   "task_ref": "TASK-*",
+  "wctx_ref": "WCTX-*",
+  "agent_identity_ref": "AGENT-*",
   "parent_reason_ref": "REASON-*|null",
   "branch": "main",
   "mode": "planning|edit|test|debug|permission|final",
@@ -586,6 +594,7 @@ Rules:
 - append-only JSONL ledger
 - direct file writes blocked by hooks
 - validator verifies hash chain and parent existence
+- validator rejects WCTX/agent identity mismatch
 - same-mode direct continuation on same branch must change chain hash
 - forks may parent any earlier REASON in the same task
 
@@ -600,6 +609,8 @@ Required fields:
   "workspace_ref": "WSP-*",
   "project_ref": "PRJ-*|null",
   "task_ref": "TASK-*",
+  "wctx_ref": "WCTX-*",
+  "agent_identity_ref": "AGENT-*",
   "mode": "edit|test|permission|final",
   "action_kind": "bash|file-write|mcp-write|git|final",
   "cwd": "...",
@@ -614,6 +625,7 @@ Rules:
 
 - GRANT is not mutable and has no `used` flag.
 - Use is inferred from linked RUN/protected record timestamps.
+- GRANT is valid only when the current WCTX owner matches `agent_identity_ref`.
 - Protected action must occur inside the grant window.
 - Final response may require final GRANT in autonomous mode.
 

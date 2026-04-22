@@ -15,6 +15,7 @@ if plugin_root not in sys.path:
 
 from tep_runtime.contracts import (  # noqa: E402
     ACTION_KINDS,
+    AGENT_IDENTITY_RECORD_SCHEMA,
     CHAIN_VALIDATION_RESPONSE_SCHEMA,
     CONTRACT_VERSION,
     GRANT_RECORD_SCHEMA,
@@ -26,6 +27,8 @@ from tep_runtime.contracts import (  # noqa: E402
     REASON_STEP_REQUEST_SCHEMA,
     RECORD_EVIDENCE_REQUEST_SCHEMA,
     RUN_RECORD_SCHEMA,
+    WORKING_CONTEXT_RECORD_SCHEMA,
+    AgentIdentityRecord,
     ChainValidationResponse,
     GrantRecord,
     LookupResponse,
@@ -36,6 +39,7 @@ from tep_runtime.contracts import (  # noqa: E402
     ReasonStepRequest,
     RecordEvidenceRequest,
     RunRecord,
+    WorkingContextRecord,
 )
 
 
@@ -46,6 +50,8 @@ SCHEMA_EXPORTS = {
     "validate_chain.response.schema.json": CHAIN_VALIDATION_RESPONSE_SCHEMA,
     "reason_step.request.schema.json": REASON_STEP_REQUEST_SCHEMA,
     "reason_ledger.entry.schema.json": REASON_LEDGER_ENTRY_SCHEMA,
+    "agent_identity.record.schema.json": AGENT_IDENTITY_RECORD_SCHEMA,
+    "working_context.record.schema.json": WORKING_CONTEXT_RECORD_SCHEMA,
     "grant.record.schema.json": GRANT_RECORD_SCHEMA,
     "run.record.schema.json": RUN_RECORD_SCHEMA,
     "migration.report.schema.json": MIGRATION_REPORT_SCHEMA,
@@ -111,6 +117,49 @@ def test_reason_ledger_contract_preserves_hash_seal_and_pow_fields() -> None:
     assert entry["record_type"] == "reason"
     assert entry["version"] == 2
     assert entry["pow"]["algorithm"] == "sha256-leading-zero-bits"
+
+
+def test_working_context_contract_is_agent_owned_and_signed() -> None:
+    agent_schema = load_schema("agent_identity.record.schema.json")
+    wctx_schema = load_schema("working_context.record.schema.json")
+
+    assert agent_schema["properties"]["key_algorithm"]["const"] == "hmac-sha256"
+    assert agent_schema["properties"]["key_scope"]["const"] == "local-agent"
+
+    required = set(wctx_schema["required"])
+    assert {"agent_identity_ref", "agent_key_fingerprint", "ownership_mode", "owner_signature"} <= required
+    assert wctx_schema["properties"]["ownership_mode"]["const"] == "owner-only"
+    assert wctx_schema["properties"]["handoff_policy"]["const"] == "fork-required"
+    assert wctx_schema["properties"]["owner_signature"]["properties"]["algorithm"]["const"] == "hmac-sha256"
+
+    agent = AgentIdentityRecord(
+        id="AGENT-20260423-demo",
+        agent_name="pytest-agent",
+        key_fingerprint="sha256:agent-key",
+        created_at="2026-04-23T00:00:00+03:00",
+    ).to_payload()
+    assert agent["record_type"] == "agent_identity"
+    assert agent["key_fingerprint"] == "sha256:agent-key"
+
+    context = WorkingContextRecord(
+        id="WCTX-20260423-demo",
+        title="Owned WCTX",
+        scope="pytest",
+        context_kind="investigation",
+        agent_identity_ref="AGENT-20260423-demo",
+        agent_key_fingerprint="sha256:agent-key",
+        owner_signature={
+            "algorithm": "hmac-sha256",
+            "signed_payload_hash": "sha256:wctx-payload",
+            "signature": "hmac-sha256:wctx-signature",
+        },
+        created_at="2026-04-23T00:00:00+03:00",
+        updated_at="2026-04-23T00:00:00+03:00",
+    ).to_payload()
+    assert context["record_type"] == "working_context"
+    assert context["ownership_mode"] == "owner-only"
+    assert context["handoff_policy"] == "fork-required"
+    assert context["agent_identity_ref"] == agent["id"]
 
 
 def test_front_door_contract_payloads_expose_routes_without_proof() -> None:

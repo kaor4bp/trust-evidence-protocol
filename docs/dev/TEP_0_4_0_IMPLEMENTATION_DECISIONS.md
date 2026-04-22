@@ -58,6 +58,11 @@ conflict, update this document and the normative contract before changing code.
 
 ## Authorization
 
+- WCTX is personal operational state. A WCTX must be signed by the owning
+  local `AGENT-*` key and must not be used as active focus by another agent.
+- A non-owner agent can inspect another WCTX as handoff/navigation context, but
+  continuation requires a new signed fork/adopted WCTX with parent links.
+- REASON and GRANT created under WCTX must bind the same `agent_identity_ref`.
 - New `GRANT.action_kind` enum is exactly:
 
 ```text

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/agent_identity.record.schema.json",
+  "title": "TEP 0.4 agent identity record",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "id",
+    "record_type",
+    "agent_name",
+    "key_algorithm",
+    "key_fingerprint",
+    "key_scope",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "contract_version": {"type": "string", "const": "0.4"},
+    "id": {"type": "string", "pattern": "^AGENT-"},
+    "record_type": {"type": "string", "const": "agent_identity"},
+    "agent_name": {"type": "string", "minLength": 1},
+    "key_algorithm": {"type": "string", "const": "hmac-sha256"},
+    "key_fingerprint": {"type": "string", "pattern": "^sha256:"},
+    "key_scope": {"type": "string", "const": "local-agent"},
+    "status": {"type": "string", "enum": ["active", "revoked", "archived"]},
+    "created_at": {"type": "string"}
+  },
+  "additionalProperties": true,
+  "description": "Local agent identity metadata. The private key material is never stored in this public record; the record only exposes the fingerprint needed to verify owner-bound WCTX signatures."
+}

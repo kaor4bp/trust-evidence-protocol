@@ -90,6 +90,8 @@ Rules:
 - If the task does not match current focus, return a focus-drift repair route.
 - If a different repository is referenced, ask for workspace/project admission
   instead of silently attaching it.
+- If the selected `WCTX-*` is owned by a different agent identity, return a
+  fork/adopt repair route instead of using it as current focus.
 
 ### `lookup`
 
@@ -209,6 +211,55 @@ Rules:
   records.
 - `map_drilldown` returns a proof route, not proof.
 
+### Agent-Owned WCTX
+
+Purpose: make `WCTX-*` a personal operational focus for one agent, not a shared
+global scratchpad.
+
+The runtime creates or reuses a local agent identity:
+
+```json
+{
+  "id": "AGENT-*",
+  "record_type": "agent_identity",
+  "key_algorithm": "hmac-sha256",
+  "key_fingerprint": "sha256:*",
+  "key_scope": "local-agent",
+  "status": "active"
+}
+```
+
+Every active `WCTX-*` must be owner-bound:
+
+```json
+{
+  "id": "WCTX-*",
+  "record_type": "working_context",
+  "agent_identity_ref": "AGENT-*",
+  "agent_key_fingerprint": "sha256:*",
+  "ownership_mode": "owner-only",
+  "handoff_policy": "fork-required",
+  "owner_signature": {
+    "algorithm": "hmac-sha256",
+    "signed_payload_hash": "sha256:*",
+    "signature": "hmac-sha256:*"
+  }
+}
+```
+
+Rules:
+
+- WCTX is operational state, not proof.
+- Private agent key material is never stored in the public WCTX record.
+- The WCTX owner signature covers the canonical focus payload that the runtime
+  uses for `next_step`, lookup routing, map sessions, and protected actions.
+- A non-owner agent may inspect a WCTX as navigation or handoff context, but
+  must not use it as current focus.
+- To continue from another agent's WCTX, the runtime must create a new signed
+  fork/adopted WCTX with `parent_context_ref` and `supersedes_refs` links.
+- REASON/GRANT created under a WCTX must bind the same `agent_identity_ref` or
+  be rejected by validation.
+
 ## 4. Evidence Capture Contract
 
 The agent should not manually create `SRC-*` for normal work.
@@ -315,6 +366,8 @@ Rules:
 - Direct same-mode continuation cannot duplicate the parent chain hash on the
   same branch.
 - Forks are allowed when the agent explores an alternative.
+- A REASON step created under a WCTX must bind the same agent identity as the
+  WCTX owner.
 - The runtime should reject direct ledger file writes.
 - Hash-chain sealing and weak proof-of-work are tamper friction, not a security
   boundary.
@@ -330,8 +383,8 @@ REASON -> GRANT -> RUN / protected write
 
 Rules:
 
-- GRANT binds workspace, project, task, mode, action kind, cwd, optional command
-  hash, context fingerprint, and time window.
+- GRANT binds workspace, project, task, WCTX owner agent identity, mode, action
+  kind, cwd, optional command hash, context fingerprint, and time window.
 - GRANT is valid only inside its window.
 - GRANT is not consumed by mutating the grant record; use is inferred from
   linked `RUN-*` or protected records.
@@ -401,6 +454,8 @@ Do not block with a dead end when a safe route exists.
 - Promoting MODEL/FLOW from tentative or runtime-only claims.
 - Reusing the same reason chain as a reusable permit.
 - Falling back to global current task/workspace.
+- Reusing another agent's `WCTX-*` as current focus instead of creating a signed
+  fork/adopted WCTX.
 - Silently attaching a foreign repository to the current workspace.
 - Treating generated views, CIX, backend hits, telemetry, or maps as proof.
 - Calling drill-down tools without first receiving a route from `next_step`,
@@ -411,6 +466,7 @@ Do not block with a dead end when a safe route exists.
 A compatible 0.4 implementation should pass deterministic tests for:
 
 - no workspace fallback
+- WCTX owner signature and agent identity mismatch are rejected for active focus
 - lookup returns route graph and chain candidates
 - lookup defaults to chain-extension mode when current REASON exists
 - evidence capture creates provenance graph

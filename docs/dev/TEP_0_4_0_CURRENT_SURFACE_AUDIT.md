@@ -23,6 +23,9 @@ This document intentionally does not prescribe runtime patches. It captures what
 - Normal raw reads and writes of `~/.tep_context` are hard-blocked.
 - Debugging, migration, forensics, and plugin-development raw access must use an
   explicit auditable raw-access mode.
+- `WCTX-*` is owner-bound operational state. The active WCTX must be signed by
+  the current local `AGENT-*`; other agents must fork/adopt instead of reusing
+  it as current focus.
 - Drill-down tools should require `route_token`, `lookup_ref`, or
   `map_session_ref` so the route discipline is mechanically checkable.
 - Migration dry-run can be MCP-visible, but migration apply is privileged and
@@ -294,8 +297,8 @@ The normal agent surface should be deliberately small.
 
 | Tool | Mutability | Contract |
 |---|---:|---|
-| `next_step(intent, task?, cwd)` | Read-only or WCTX-light mutation if explicitly reported | Returns the nearest route branches, current workspace/project/task, blockers, and exactly which tools are allowed next. |
-| `lookup(query, reason, kind=auto, cwd, scope=current, mode=general)` | Read-only by default; may create explicit WCTX only if contract says so | Returns proof candidates, model/flow context, navigation hints, chain starter candidates, and next route branches. |
+| `next_step(intent, task?, cwd)` | Read-only or WCTX-light mutation if explicitly reported | Returns the nearest route branches, current workspace/project/task, WCTX owner status, blockers, and exactly which tools are allowed next. |
+| `lookup(query, reason, kind=auto, cwd, scope=current, mode=general)` | Read-only by default; may create explicit owner-signed WCTX only if contract says so | Returns proof candidates, model/flow context, navigation hints, chain starter candidates, and next route branches. |
 
 ### Normal Loop Tools
 
@@ -304,8 +307,8 @@ The normal agent surface should be deliberately small.
 | `record_evidence(kind, support, intended_claim?)` | Mutating | Agent supplies file/URL/line/quote, user input ref, command output ref, or artifact ref. Service creates/links `FILE-*`, `ART-*`, `SRC-*`, optional draft `CLM-*`, and CIX links when applicable. |
 | `augment_chain(chain_draft)` | Read-only | Mechanically fills missing source quotes, linked refs, CIX links, graph paths, and validation context. |
 | `validate_chain(chain, mode, action_kind?)` | Read-only | Accepts/rejects chain. Enforces provenance, no unsupported proof hypotheses, no hypothesis-on-hypothesis proof, runtime-to-RUN reachability, task scope, and model/flow source constraints. |
-| `reason_step(chain, intent, mode, action_kind?, why, parent_refs?, branch?)` | Mutating | Appends `REASON-*` step. Rejects duplicate unchanged chains for same task/mode/branch. |
-| `reason_review(reason_ref, mode, action_kind, command?, cwd?)` | Mutating | Appends `GRANT-*` when step validates and requested action is allowed. |
+| `reason_step(chain, intent, mode, action_kind?, why, parent_refs?, branch?)` | Mutating | Appends `REASON-*` step under the current owner-signed WCTX. Rejects duplicate unchanged chains for same task/mode/branch. |
+| `reason_review(reason_ref, mode, action_kind, command?, cwd?)` | Mutating | Appends `GRANT-*` when step validates, WCTX owner identity matches, and requested action is allowed. |
 | `task_outcome_check(task_ref, outcome)` | Read-only | Tells whether final/done/blocked/user-question is mechanically allowed. |
 | `complete_task(task_ref, outcome, reason_ref?)` | Mutating | Finalizes task only after outcome check and final chain requirements. |
 

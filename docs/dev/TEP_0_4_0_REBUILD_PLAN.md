@@ -23,8 +23,8 @@ Goals:
 
 - Define dataclass-style internal contracts and exported JSON Schemas.
 - Lock response shapes for `next_step`, `lookup`, evidence capture, chain
-  validation, `REASON`, chain-ledger entries, `GRANT`, `RUN`, migration
-  reports, and map sessions.
+  validation, agent identity, owner-bound `WCTX`, `REASON`,
+  chain-ledger entries, `GRANT`, `RUN`, migration reports, and map sessions.
 - Introduce `contract_version: "0.4"` while documenting any temporary
   compatibility field such as `api_contract_version`.
 
@@ -58,18 +58,20 @@ Exit criteria:
 Implement validators in this order:
 
 1. Workspace focus: durable work requires explicit workspace focus.
-2. Provenance graph: new `SRC-*` requires `INP-*`, `FILE-*`, `ART-*`, or
+2. WCTX ownership: active focus requires a valid owner signature and matching
+   local `AGENT-*`; non-owner agents must fork/adopt instead of reusing WCTX.
+3. Provenance graph: new `SRC-*` requires `INP-*`, `FILE-*`, `ART-*`, or
    `RUN-*`.
-3. Runtime claim: runtime `CLM-*` requires transitive `RUN-*`.
-4. Chain roles: meta, navigation, and control records cannot become
+4. Runtime claim: runtime `CLM-*` requires transitive `RUN-*`.
+5. Chain roles: meta, navigation, and control records cannot become
    object-level proof.
-5. REASON progression: same-branch continuation cannot reuse the parent chain.
-6. Chain ledger integrity: `prev_ledger_hash`, `entry_hash`, `ledger_hash`,
+6. REASON progression: same-branch continuation cannot reuse the parent chain.
+7. Chain ledger integrity: `prev_ledger_hash`, `entry_hash`, `ledger_hash`,
    HMAC seal, `chain_hash`, signed chain summary, and PoW validate for every
    version-2 ledger entry.
-7. GRANT/RUN lifecycle: protected action requires a valid grant and mutating
+8. GRANT/RUN lifecycle: protected action requires a valid grant and mutating
    bash records or links `RUN-*`.
-8. MODEL/FLOW authority: no tentative, runtime-only, or meta-only decisive
+9. MODEL/FLOW authority: no tentative, runtime-only, or meta-only decisive
    support.
 
 Exit criteria:
@@ -116,6 +118,10 @@ Goals:
 
 - Replace shell-out policy checks with direct service calls.
 - Hard-block raw `~/.tep_context` record reads and writes in normal mode.
+- Generate or load the current agent key through the runtime service; never ask
+  normal agents to read/write key material or raw WCTX files.
+- Block active use of a WCTX signed by a different agent identity and return a
+  fork/adopt repair route.
 - Classify protected effects separately from action kind:
 
 ```text

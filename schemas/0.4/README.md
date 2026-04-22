@@ -6,5 +6,10 @@ The matching Python dataclass helpers live in
 
 The schemas intentionally define stable outer payload shape first. Domain
 validators still enforce semantic rules such as provenance reachability,
-REASON progression, chain-ledger hash/seal/PoW verification, and GRANT/RUN
-authorization.
+agent-owned WCTX signatures, REASON progression, chain-ledger hash/seal/PoW
+verification, and GRANT/RUN authorization.
+
+`AGENT-*` identity records expose only local-agent key metadata and fingerprints.
+Private key material is runtime-private. `WCTX-*` records are owner-bound with
+`ownership_mode=owner-only`; other agents must fork/adopt through the runtime
+instead of using someone else's WCTX as current focus.

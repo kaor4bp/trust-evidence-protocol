@@ -15,9 +15,16 @@ from .migration import MIGRATION_REPORT_SCHEMA, MigrationReport
 from .next_step import NEXT_STEP_RESPONSE_SCHEMA, NextStepResponse
 from .reason import REASON_LEDGER_ENTRY_SCHEMA, REASON_STEP_REQUEST_SCHEMA, ReasonLedgerEntry, ReasonStepRequest
 from .run import RUN_RECORD_SCHEMA, RunRecord
+from .wctx import (
+    AGENT_IDENTITY_RECORD_SCHEMA,
+    WORKING_CONTEXT_RECORD_SCHEMA,
+    AgentIdentityRecord,
+    WorkingContextRecord,
+)
 
 __all__ = [
     "ACTION_KINDS",
+    "AGENT_IDENTITY_RECORD_SCHEMA",
     "CHAIN_VALIDATION_RESPONSE_SCHEMA",
     "CONTRACT_VERSION",
     "GRANT_RECORD_SCHEMA",
@@ -30,6 +37,8 @@ __all__ = [
     "REASON_LEDGER_ENTRY_SCHEMA",
     "RECORD_EVIDENCE_REQUEST_SCHEMA",
     "RUN_RECORD_SCHEMA",
+    "WORKING_CONTEXT_RECORD_SCHEMA",
+    "AgentIdentityRecord",
     "ChainValidationResponse",
     "GrantRecord",
     "LookupResponse",
@@ -40,4 +49,5 @@ __all__ = [
     "ReasonLedgerEntry",
     "RecordEvidenceRequest",
     "RunRecord",
+    "WorkingContextRecord",
 ]
