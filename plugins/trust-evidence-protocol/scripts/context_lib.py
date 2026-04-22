@@ -66,6 +66,7 @@ from tep_runtime.code_index import (
 )
 from tep_runtime.chain_permits import (
     DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
+    chain_hash,
     chain_permit_text_lines,
     create_chain_permit,
     validate_chain_permit,

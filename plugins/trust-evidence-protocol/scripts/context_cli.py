@@ -179,6 +179,7 @@ from context_lib import (
     augment_evidence_chain_payload,
     augmented_evidence_chain_text_lines,
     DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
+    chain_hash,
     chain_permit_text_lines,
     create_chain_permit,
     current_project_ref,
@@ -274,6 +275,7 @@ from context_lib import (
     hypothesis_active_entry_exists,
     validate_records_state,
     validate_candidate_record,
+    validate_chain_permit,
     remove_hypothesis_entries,
     reopen_hypothesis_entry,
     sync_hypothesis_entries,
@@ -298,6 +300,7 @@ from context_lib import (
     z3_logic_check_text_lines,
     working_context_detail_lines,
     working_context_show_payload,
+    load_effective_settings,
     load_settings,
     load_records,
     load_code_index_entries,
@@ -7647,7 +7650,7 @@ def cmd_record_action(
     records, exit_code = load_clean_context(root)
     if exit_code:
         return 1
-    strictness = load_settings(root).get("allowed_freedom", "proof-only")
+    strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
     if strictness == "proof-only" and is_mutating_action_kind(kind):
         print(f"record-action kind {kind!r} requires implementation-choice strictness")
         return 1
@@ -7663,6 +7666,27 @@ def cmd_record_action(
             return 1
         if cmd_validate_evidence_chain(root, evidence_chain) != 0:
             print("evidence-authorized mutating action blocked by invalid evidence chain")
+            return 1
+        try:
+            chain_payload = json.loads(evidence_chain.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"{evidence_chain}: {exc}")
+            return 1
+        permit = validate_chain_permit(
+            root,
+            mode="edit",
+            action_kind=kind,
+            chain_hash_value=chain_hash(chain_payload),
+        )
+        if not permit.get("ok"):
+            print(
+                "evidence-authorized mutating actions require a fresh valid chain permit "
+                f"for mode=edit kind={kind!r}: {permit.get('reason')}"
+            )
+            print(
+                "Run: validate-decision --mode edit "
+                f"--kind {kind} --chain {evidence_chain} --emit-permit"
+            )
             return 1
 
     timestamp = now_timestamp()
@@ -7711,6 +7735,16 @@ def cmd_record_model(
         for message in authority_errors:
             print(message)
         return 1
+    strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
+    if strictness == "evidence-authorized" and status in {"working", "stable", "contested"}:
+        permit = validate_chain_permit(root, mode="model", action_kind=None)
+        if not permit.get("ok"):
+            print(
+                "evidence-authorized model updates require a fresh valid chain permit "
+                f"for mode=model: {permit.get('reason')}"
+            )
+            print("Run: validate-decision --mode model --chain <evidence-chain.json> --emit-permit")
+            return 1
 
     payload = build_model_payload(
         record_id=next_record_id(records, "MODEL-"),
@@ -7847,6 +7881,16 @@ def cmd_record_flow(
         for message in authority_errors:
             print(message)
         return 1
+    strictness = load_effective_settings(root).get("allowed_freedom", "proof-only")
+    if strictness == "evidence-authorized" and status in {"working", "stable", "contested"}:
+        permit = validate_chain_permit(root, mode="flow", action_kind=None)
+        if not permit.get("ok"):
+            print(
+                "evidence-authorized flow updates require a fresh valid chain permit "
+                f"for mode=flow: {permit.get('reason')}"
+            )
+            print("Run: validate-decision --mode flow --chain <evidence-chain.json> --emit-permit")
+            return 1
 
     payload = build_flow_payload(
         record_id=next_record_id(records, "FLOW-"),

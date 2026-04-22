@@ -106,6 +106,7 @@ def validate_chain_permit(
     *,
     mode: str,
     action_kind: str | None,
+    chain_hash_value: str | None = None,
     context_fingerprint: str | None = None,
 ) -> dict[str, Any]:
     normalized_kind = (action_kind or "").strip()
@@ -133,6 +134,9 @@ def validate_chain_permit(
             continue
         if mode not in permit.get("valid_for", []):
             failures.append(f"{permit_id}: permit is not valid for mode {mode}")
+            continue
+        if chain_hash_value and str(permit.get("chain_hash", "")).strip() != chain_hash_value:
+            failures.append(f"{permit_id}: chain hash mismatch")
             continue
         expires = _parse_timestamp(str(permit.get("expires_at", "")))
         if expires is None or expires < now:

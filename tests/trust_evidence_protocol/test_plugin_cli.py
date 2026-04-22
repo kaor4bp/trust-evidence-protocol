@@ -4746,6 +4746,40 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
     assert missing_chain.returncode == 1
     assert "require --evidence-chain" in missing_chain.stdout
 
+    missing_permit = run_cli(
+        context,
+        "record-action",
+        "--kind",
+        "edit",
+        "--scope",
+        "demo.evidence-authorized",
+        "--justify",
+        claim_id,
+        "--safety-class",
+        "safe",
+        "--status",
+        "executed",
+        "--evidence-chain",
+        str(chain),
+        "--note",
+        "missing chain permit",
+        check=False,
+    )
+    assert missing_permit.returncode == 1
+    assert "fresh valid chain permit" in missing_permit.stdout
+
+    run_cli(
+        context,
+        "validate-decision",
+        "--mode",
+        "edit",
+        "--kind",
+        "edit",
+        "--chain",
+        str(chain),
+        "--emit-permit",
+    )
+
     run_cli(
         context,
         "record-action",
@@ -4765,6 +4799,180 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
         "evidence-authorized historical mutating action",
     )
     assert only_record_id(context, "action").startswith("ACT-")
+
+
+def test_evidence_authorized_model_and_flow_require_chain_permits(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    claim_id = user_confirmed_theory_claim(
+        context,
+        "demo.model-permit",
+        "User confirms that the cache refreshes only at startup.",
+    )
+
+    request_id, approval_source_id = strictness_approval(context, "evidence-authorized")
+    run_cli(
+        context,
+        "change-strictness",
+        "evidence-authorized",
+        "--request",
+        request_id,
+        "--approval-source",
+        approval_source_id,
+    )
+
+    blocked_model = run_cli(
+        context,
+        "record-model",
+        "--knowledge-class",
+        "investigation",
+        "--domain",
+        "smartpick",
+        "--scope",
+        "demo.model-permit",
+        "--aspect",
+        "cache-refresh",
+        "--status",
+        "working",
+        "--summary",
+        "Cache refreshes only at startup.",
+        "--claim",
+        claim_id,
+        "--note",
+        "model without permit",
+        check=False,
+    )
+    assert blocked_model.returncode == 1
+    assert "mode=model" in blocked_model.stdout
+
+    model_chain = context.parent / "model-chain.json"
+    model_chain.write_text(
+        json.dumps(
+            {
+                "task": "record model from confirmed theory",
+                "nodes": [{"role": "fact", "ref": claim_id, "quote": "cache refreshes only at startup"}],
+                "edges": [{"from": claim_id, "to": claim_id, "relation": "anchors-model"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_cli(context, "validate-decision", "--mode", "model", "--chain", str(model_chain), "--emit-permit")
+
+    model_id = recorded_id(
+        run_cli(
+            context,
+            "record-model",
+            "--knowledge-class",
+            "investigation",
+            "--domain",
+            "smartpick",
+            "--scope",
+            "demo.model-permit",
+            "--aspect",
+            "cache-refresh",
+            "--status",
+            "working",
+            "--summary",
+            "Cache refreshes only at startup.",
+            "--claim",
+            claim_id,
+            "--note",
+            "model with permit",
+        ),
+        "model",
+    )
+
+    blocked_flow = run_cli(
+        context,
+        "record-flow",
+        "--knowledge-class",
+        "investigation",
+        "--domain",
+        "smartpick",
+        "--scope",
+        "demo.model-permit",
+        "--status",
+        "working",
+        "--summary",
+        "Startup-only cache flow.",
+        "--model",
+        model_id,
+        "--oracle-success",
+        claim_id,
+        "--step-id",
+        "step-1",
+        "--step-label",
+        "cache initialized at startup",
+        "--step-status",
+        "aligned",
+        "--step-claims",
+        claim_id,
+        "--step-next",
+        "",
+        "--step-open-questions",
+        "",
+        "--step-accepted-deviation-refs",
+        "",
+        "--note",
+        "flow without permit",
+        check=False,
+    )
+    assert blocked_flow.returncode == 1
+    assert "mode=flow" in blocked_flow.stdout
+
+    flow_chain = context.parent / "flow-chain.json"
+    flow_chain.write_text(
+        json.dumps(
+            {
+                "task": "record flow from confirmed model",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "cache refreshes only at startup"},
+                    {"role": "model", "ref": model_id, "quote": "Cache refreshes only at startup."},
+                ],
+                "edges": [{"from": claim_id, "to": model_id, "relation": "anchors-flow"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_cli(context, "validate-decision", "--mode", "flow", "--chain", str(flow_chain), "--emit-permit")
+
+    flow_id = recorded_id(
+        run_cli(
+            context,
+            "record-flow",
+            "--knowledge-class",
+            "investigation",
+            "--domain",
+            "smartpick",
+            "--scope",
+            "demo.model-permit",
+            "--status",
+            "working",
+            "--summary",
+            "Startup-only cache flow.",
+            "--model",
+            model_id,
+            "--oracle-success",
+            claim_id,
+            "--step-id",
+            "step-1",
+            "--step-label",
+            "cache initialized at startup",
+            "--step-status",
+            "aligned",
+            "--step-claims",
+            claim_id,
+            "--step-next",
+            "",
+            "--step-open-questions",
+            "",
+            "--step-accepted-deviation-refs",
+            "",
+            "--note",
+            "flow with permit",
+        ),
+        "flow",
+    )
+    assert flow_id.startswith("FLOW-")
 
 
 def test_flow_accepted_deviation_allows_user_permission(tmp_path: Path) -> None:

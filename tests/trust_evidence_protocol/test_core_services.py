@@ -1282,6 +1282,22 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     assert "next=validate-task-decomposition" in inline
     assert "guidelines missing=>guidelines-for" in inline
 
+    write_settings(
+        root,
+        allowed_freedom="evidence-authorized",
+        current_workspace_ref=workspace_id,
+        current_project_ref=project_id,
+        current_task_ref=task_id,
+    )
+    write_hydration_state(root, {"status": "hydrated", "fingerprint": compute_context_fingerprint(root)})
+    evidence_payload = build_next_step_payload(records, root, intent="edit", task="change action graph")
+    assert evidence_payload["chain_permit"]["required"] is True
+    assert evidence_payload["chain_permit"]["ok"] is False
+    assert "validate-decision --mode edit" in evidence_payload["chain_permit"]["command"]
+    assert any("validate-decision --mode edit" in step for step in evidence_payload["route_steps"])
+    evidence_lines = next_step_text_lines(evidence_payload, "TEP", detail="compact")
+    assert any(line.startswith("- chain-permit: missing") for line in evidence_lines)
+
 
 def test_reasoning_case_core_builds_payload_and_text() -> None:
     project_id = "PRJ-20260418-project1"
