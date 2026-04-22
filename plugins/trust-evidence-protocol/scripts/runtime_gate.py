@@ -13,6 +13,8 @@ from context_lib import (
     collect_validation_errors,
     compute_context_fingerprint,
     context_write_lock,
+    decision_reason_status,
+    final_reason_status,
     hydration_state_path,
     invalidate_hydration_state,
     is_mutating_action_kind,
@@ -310,6 +312,11 @@ def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bo
             print("\n".join(task_outcome_check_text_lines(outcome_payload)))
             return 1
         if outcome == "done":
+            final_reason = final_reason_status(root, context_fingerprint=current_fingerprint)
+            if not final_reason.get("ok"):
+                print(f"Autonomous TASK-* cannot be marked done without a final REASON-*: {final_reason.get('message')}")
+                print("Run: context_cli.py reason-step --mode final --chain evidence-chain.json --why \"final answer\"")
+                return 1
             permit = validate_reason_access(
                 root,
                 mode="final",
@@ -546,6 +553,13 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
             print(render_current_task(current_task))
             return 1
 
+    if mode == "planning" and isinstance(current_task, dict) and current_task.get("id"):
+        planning_reason = decision_reason_status(root, mode="planning", context_fingerprint=current_fingerprint)
+        if not planning_reason.get("ok"):
+            print(f"Planning blocked: missing valid REASON-* for current TASK-*: {planning_reason.get('message')}")
+            print("Run lookup/reasoning as needed, then: context_cli.py reason-step --mode planning --chain evidence-chain.json --why \"planning continuation\"")
+            return 1
+
     if mode == "final":
         records, errors = collect_validation_errors(root)
         if errors:
@@ -569,6 +583,12 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
             if len(unresolved_inputs) > 12:
                 print(f"... {len(unresolved_inputs) - 12} more unresolved INP-*")
             return 1
+        if isinstance(current_task, dict) and current_task.get("id"):
+            final_reason = final_reason_status(root, context_fingerprint=current_fingerprint)
+            if not final_reason.get("ok"):
+                print(f"Final response blocked: missing final REASON-*: {final_reason.get('message')}")
+                print("Run: context_cli.py reason-step --mode final --chain evidence-chain.json --why \"final answer\"")
+                return 1
         if (
             isinstance(current_task, dict)
             and str(current_task.get("status", "")).strip() == "active"

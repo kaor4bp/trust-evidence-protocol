@@ -151,12 +151,20 @@ Additional transient index:
 `runtime/reasoning/reasons.jsonl` is an append-only sealed `REASON-*` reasoning ledger.
 It is not truth storage, but protected actions use reviewed `REASON-*` access grants as their authority.
 Direct writes to the ledger or seal are blocked by hooks and detected by ledger validation.
+Same-mode continuation cannot mechanically duplicate the direct parent chain; extend the evidence chain or fork a named alternative branch.
+Final answers for an active task require a reviewed `REASON-* mode=final`.
+Autonomous `TEP TASK OUTCOME: done` additionally requires a fresh `GRANT-* mode=final`.
 
 Agents must not read raw `records/claim/*.json` as the normal discovery path.
 Use MCP `claim_graph` or CLI `claim-graph --query "..."` to get matching
 current `CLM-*` anchors and compact linked source/support edges, then expand
 only the specific proof-critical records with `record_detail` or
 `linked_records`. Codex/Claude hooks block normal Bash reads of raw claim JSON.
+When a current `REASON-*` exists, `lookup` defaults to chain extension mode:
+it proposes records that can become new chain nodes and filters out refs already
+present in the current reason chain. If no new proof-capable nodes are found,
+the route explicitly falls back to revisiting existing nodes and recording a
+fact-compatible hypothesis or open question.
 Use an explicit escape-hatch prefix such as `TEP_RAW_RECORD_MODE=plugin-dev`,
 `debug`, `migration`, or `forensics` only for plugin development, debugging,
 migration, or audit work.
@@ -301,6 +309,8 @@ Prompt capture mechanics:
 - The hook rehydrates after a successful capture so prompt provenance does not leave the next agent turn mechanically stale.
 - `review-context` writes `review/inputs.md` and warns when any `INP-*` has no valid classification link.
 - `preflight-task --mode final` blocks final responses while any `INP-*` lacks both valid `derived_record_refs` and incoming `input_refs`.
+- `preflight-task --mode planning` blocks planning continuation for an active task until a current valid `REASON-*` exists for `planning`.
+- `preflight-task --mode final` blocks final responses for an active task until the current context has a reviewed `REASON-* mode=final`.
 - `preflight-task --mode planning|edit|action|final` blocks when a hydrated current `TASK-*` has not been explicitly confirmed with `confirm-task --task TASK-*`.
 - Task confirmation is tied to the focus tuple, not every record write; unrelated `SRC/CLM/ACT` writes do not require repeated confirmation, but task/workspace/project focus changes do.
 
@@ -863,6 +873,7 @@ Commands:
   - requires `requested_permission` nodes for permission-mode chains
   - returns `valid_for`, `invalid_for`, hypothesis refs, blockers, warnings, and recommended follow-up commands
   - with `--emit-permit`, creates a `REASON-*` step and a one-shot `GRANT-*`
+  - `reason-step --mode final --chain evidence-chain.json --why "final answer"` creates the final reasoning ledger step without granting protected access
   - protected actions use the reviewed `GRANT-*`, not the loose chain file itself
   - emitted grants require exactly one current `TASK-*` node in the chain and bind to one mode, optional action kind, current workspace/project/task, chain hash, and context fingerprint
   - grant TTL defaults to `settings.chain_permits.ttl_seconds = 300`; `--ttl-seconds` may request a shorter window but cannot exceed settings
@@ -1238,6 +1249,7 @@ Current prioritization behavior:
 - use `pause-task`, `resume-task`, or `switch-task` instead of silently continuing in the wrong task context
 - use `review-precedents` before repeating a substantial task type to inspect similar past tasks and linked plans/debt/actions/open questions
 - when a `Stop` hook is configured and the current active task is autonomous, the final answer must include one exact marker: `TEP TASK OUTCOME: done`, `TEP TASK OUTCOME: blocked`, or `TEP TASK OUTCOME: user-question`
+- autonomous `done` requires both `REASON-* mode=final` and `GRANT-* mode=final`; interrupted or non-terminal continuation is resumable and does not require a final reason yet
 - the Stop hook validates that marker with `task-outcome-check`; the marker is not accepted as a bare self-declaration
 
 ## Projects And Restrictions

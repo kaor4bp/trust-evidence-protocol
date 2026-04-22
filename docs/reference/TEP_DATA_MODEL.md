@@ -474,10 +474,29 @@ evidence:
 - `GRANT-*`: reviewed one-shot authorization bound to mode, action kind, task
   scope, context fingerprint, expiry, and optionally exact command hash plus cwd.
 
+The ledger is not a free-form record store. The append-only ledger validator
+accepts current `REASON-*` and `GRANT-*` entries, plus legacy `AUTH/USE` entries
+for old contexts. `REASON-*` chain snapshots may cite only supported evidence
+chain roles: `fact`, `observation`, `hypothesis`, `exploration_context`,
+`permission`, `requested_permission`, `restriction`, `guideline`, `proposal`,
+`task`, `working_context`, `project`, `model`, `flow`, and `open_question`.
+Generated/backend/navigation ids such as `CIX-*`, `BCK-*`, `backend:*`, or
+`topic_index:*` cannot be proof nodes.
+
 `REASON-*` entries form a task-local DAG. A new step without explicit parents
 continues from the latest step for the current task; explicit `parent_refs` and
 `branch` create forks for alternative interpretations or rollback paths. A
 reason step cannot parent across another `TASK-*`.
+Same-mode continuation cannot duplicate the direct parent chain hash on the
+same branch; the agent must extend the evidence chain or fork a named
+alternative branch. This keeps the ledger as reasoning progression, not a
+reusable permit token.
+
+Final answers for an active task must be backed by a reviewed
+`REASON-* mode=final` entry with the current task node and context fingerprint.
+Autonomous `done` completion is stricter: it also needs a fresh
+`GRANT-* mode=final`. Interrupted work or ordinary continuation can resume from
+the latest non-final `REASON-*` without fabricating a final step.
 
 For protected Bash, the intended path is:
 

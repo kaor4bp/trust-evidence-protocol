@@ -11,9 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from .hydration import compute_context_fingerprint
+from .hypotheses import active_hypothesis_entry_by_claim
 from .io import write_json_file
 from .paths import reasoning_runtime_dir, reasoning_seal_path, reasons_ledger_path
 from .records import load_records
+from .reasoning import decision_validation_payload
 from .scopes import current_project_ref, current_task_ref, current_workspace_ref
 from .settings import chain_permit_ttl_seconds, load_effective_settings
 from .telemetry import append_access_event
@@ -298,6 +300,12 @@ def validate_reason_ledger(root: Path) -> dict[str, Any]:
         expected_ledger_hash = _ledger_hash(previous, expected_entry_hash, expected_seal)
         if str(entry.get("ledger_hash", "")).strip() != expected_ledger_hash:
             errors.append(f"{entry_id or index}: ledger_hash mismatch; ledger appears tampered")
+        if str(entry.get("entry_type", "")).strip() == "step" and int(entry.get("version", 1) or 1) >= 2:
+            chain_payload = entry.get("chain_payload")
+            if not isinstance(chain_payload, dict):
+                errors.append(f"{entry_id or index}: reason step missing chain_payload")
+            elif str(entry.get("chain_hash", "")).strip() != chain_payload_hash(chain_payload):
+                errors.append(f"{entry_id or index}: chain_hash mismatch")
         previous = str(entry.get("ledger_hash", "")).strip()
     return {
         "ok": not errors,
@@ -369,6 +377,153 @@ def latest_reason_step(entries: list[dict[str, Any]], task_ref: str | None = Non
     return None
 
 
+def latest_final_reason_step(
+    entries: list[dict[str, Any]],
+    *,
+    task_ref: str,
+    context_fingerprint: str | None = None,
+) -> dict[str, Any] | None:
+    for entry in reversed(entries):
+        if str(entry.get("entry_type", "")).strip() != "step":
+            continue
+        if str(entry.get("task_ref", "")).strip() != task_ref:
+            continue
+        if str(entry.get("mode", "")).strip() != "final":
+            continue
+        if not entry.get("decision_valid"):
+            continue
+        if "final" not in entry.get("valid_for", []):
+            continue
+        if context_fingerprint and str(entry.get("context_fingerprint", "")).strip() != context_fingerprint:
+            continue
+        chain_payload = entry.get("chain_payload") if isinstance(entry.get("chain_payload"), dict) else {}
+        if current_task_node_count(chain_payload, task_ref) != 1:
+            continue
+        return entry
+    return None
+
+
+def latest_decision_reason_step(
+    entries: list[dict[str, Any]],
+    *,
+    task_ref: str,
+    mode: str,
+    context_fingerprint: str | None = None,
+) -> dict[str, Any] | None:
+    for entry in reversed(entries):
+        if str(entry.get("entry_type", "")).strip() != "step":
+            continue
+        if str(entry.get("task_ref", "")).strip() != task_ref:
+            continue
+        if not entry.get("decision_valid"):
+            continue
+        if mode not in entry.get("valid_for", []):
+            continue
+        if context_fingerprint and str(entry.get("context_fingerprint", "")).strip() != context_fingerprint:
+            continue
+        chain_payload = entry.get("chain_payload") if isinstance(entry.get("chain_payload"), dict) else {}
+        if current_task_node_count(chain_payload, task_ref) != 1:
+            continue
+        return entry
+    return None
+
+
+def decision_reason_status(root: Path, *, mode: str, context_fingerprint: str | None = None) -> dict[str, Any]:
+    task_ref = current_task_ref(root)
+    if not task_ref:
+        return {"ok": True, "required": False, "reason": None, "message": "no active TASK-*"}
+    validation = validate_reason_ledger(root)
+    if not validation["ok"]:
+        return {
+            "ok": False,
+            "required": True,
+            "reason": None,
+            "message": "; ".join(validation["errors"]),
+        }
+    fingerprint = context_fingerprint or compute_context_fingerprint(root)
+    reason = latest_decision_reason_step(
+        validation["entries"],
+        task_ref=task_ref,
+        mode=mode,
+        context_fingerprint=fingerprint,
+    )
+    if not reason:
+        return {
+            "ok": False,
+            "required": True,
+            "reason": None,
+            "message": (
+                f"missing reviewed REASON-* valid_for={mode}, current TASK-* node, "
+                "and current context fingerprint"
+            ),
+        }
+    records, record_errors = load_records(root)
+    if record_errors:
+        return {
+            "ok": False,
+            "required": True,
+            "reason": reason,
+            "message": "; ".join(f"{error.path}: {error.message}" for error in record_errors),
+        }
+    chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
+    decision = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain_payload, mode)
+    if not decision.get("decision_valid"):
+        blockers = decision.get("blockers", [])
+        return {
+            "ok": False,
+            "required": True,
+            "reason": reason,
+            "message": f"reason chain no longer validates for mode={mode}: "
+            + "; ".join(str(item) for item in blockers),
+        }
+    return {"ok": True, "required": True, "reason": reason, "message": ""}
+
+
+def final_reason_status(root: Path, *, context_fingerprint: str | None = None) -> dict[str, Any]:
+    task_ref = current_task_ref(root)
+    if not task_ref:
+        return {"ok": True, "required": False, "reason": None, "message": "no active TASK-*"}
+    validation = validate_reason_ledger(root)
+    if not validation["ok"]:
+        return {
+            "ok": False,
+            "required": True,
+            "reason": None,
+            "message": "; ".join(validation["errors"]),
+        }
+    fingerprint = context_fingerprint or compute_context_fingerprint(root)
+    reason = latest_final_reason_step(validation["entries"], task_ref=task_ref, context_fingerprint=fingerprint)
+    if reason:
+        records, record_errors = load_records(root)
+        if record_errors:
+            return {
+                "ok": False,
+                "required": True,
+                "reason": reason,
+                "message": "; ".join(f"{error.path}: {error.message}" for error in record_errors),
+            }
+        chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
+        decision = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain_payload, "final")
+        if not decision.get("decision_valid"):
+            blockers = decision.get("blockers", [])
+            return {
+                "ok": False,
+                "required": True,
+                "reason": reason,
+                "message": "final reason chain no longer validates: " + "; ".join(str(item) for item in blockers),
+            }
+        return {"ok": True, "required": True, "reason": reason, "message": ""}
+    return {
+        "ok": False,
+        "required": True,
+        "reason": None,
+        "message": (
+            "missing reviewed REASON-* with mode=final, current TASK-* node, "
+            "valid_for=final, and current context fingerprint"
+        ),
+    }
+
+
 def create_reason_step(
     root: Path,
     *,
@@ -404,6 +559,14 @@ def create_reason_step(
             return None, f"missing parent reason {parent}"
         if str(parent_entry.get("task_ref", "")).strip() != task_ref:
             return None, f"parent reason {parent} belongs to another TASK-*"
+        parent_mode = str(parent_entry.get("mode", "")).strip()
+        parent_branch = str(parent_entry.get("branch", "main")).strip() or "main"
+        parent_chain_hash = str(parent_entry.get("chain_hash", "")).strip()
+        if parent_mode == mode and parent_branch == (branch.strip() or "main") and parent_chain_hash == chain_payload_hash(chain_payload):
+            return None, (
+                f"reason step would duplicate parent {parent} for mode={mode}; "
+                "extend the chain with a new fact/observation/hypothesis/open question or fork a named branch"
+            )
     return append_reason_entry(
         root,
         {
@@ -799,6 +962,12 @@ def reason_current_text_lines(root: Path) -> tuple[list[str], int]:
         )
     else:
         lines.append("- current_reason: `none`")
+    final_status = final_reason_status(root)
+    final_reason = final_status.get("reason")
+    if isinstance(final_reason, dict):
+        lines.append(f"- final_reason: `{final_reason.get('id')}`")
+    elif final_status.get("required"):
+        lines.append(f"- final_reason: `none` ({final_status.get('message')})")
     recent_steps = [
         entry
         for entry in entries

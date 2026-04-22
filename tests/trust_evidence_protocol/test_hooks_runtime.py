@@ -350,6 +350,140 @@ def test_final_preflight_blocks_unclassified_inputs(tmp_path: Path) -> None:
     assert "Preflight passed for final" in allowed.stdout
 
 
+def test_final_preflight_requires_final_reason_for_active_task(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.final-reason",
+            "--source-kind",
+            "theory",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "user",
+            "--origin-ref",
+            "test-final-reason",
+            "--quote",
+            "final answers must have a reviewed final reason",
+            "--note",
+            "final reason source",
+        ),
+        "source",
+    )
+    claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.final-reason",
+            "--plane",
+            "theory",
+            "--status",
+            "supported",
+            "--statement",
+            "Final answers must have a reviewed final reason.",
+            "--source",
+            source_id,
+            "--note",
+            "final reason claim",
+        ),
+        "claim",
+    )
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "demo.final-reason",
+            "--title",
+            "Finish with a reason ledger step",
+            "--related-claim",
+            claim_id,
+            "--note",
+            "final reason task",
+        ),
+        "task",
+    )
+    final_chain = tmp_path / "final-reason-chain.json"
+    final_chain.write_text(
+        json.dumps(
+            {
+                "task": "finish with a reason ledger step",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Final answers must have a reviewed final reason."},
+                    {"role": "task", "ref": task_id, "quote": "Finish with a reason ledger step"},
+                ],
+                "edges": [{"from": claim_id, "to": task_id, "relation": "supports-final-answer"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_cli(
+        context,
+        "confirm-atomic-task",
+        "--task",
+        task_id,
+        "--deliverable",
+        "Final answer is backed by a REASON step.",
+        "--done",
+        "Final preflight accepts the final reason.",
+        "--verify",
+        "preflight-task --mode final passes after reason-step.",
+        "--boundary",
+        "Only final answer gating.",
+        "--blocker-policy",
+        "Record OPEN-* for blockers.",
+        "--note",
+        "final reason task is atomic",
+    )
+    run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "final reason focus")
+
+    blocked_planning = run_runtime(context, "preflight-task", "--mode", "planning", check=False)
+    assert blocked_planning.returncode == 1
+    assert "missing valid REASON-*" in blocked_planning.stdout
+    run_cli(
+        context,
+        "reason-step",
+        "--mode",
+        "planning",
+        "--chain",
+        str(final_chain),
+        "--why",
+        "plan final response from the validated task facts",
+    )
+    planning = run_runtime(context, "preflight-task", "--mode", "planning")
+    assert "Preflight passed for planning" in planning.stdout
+
+    blocked = run_runtime(context, "preflight-task", "--mode", "final", check=False)
+    assert blocked.returncode == 1
+    assert "missing final REASON-*" in blocked.stdout
+
+    reason = json.loads(
+        run_cli(
+            context,
+            "reason-step",
+            "--mode",
+            "final",
+            "--chain",
+            str(final_chain),
+            "--why",
+            "final answer is supported by the validated chain",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert reason["mode"] == "final"
+    current = run_cli(context, "reason-current").stdout
+    assert f"final_reason: `{reason['id']}`" in current
+
+    allowed = run_runtime(context, "preflight-task", "--mode", "final")
+    assert "Preflight passed for final" in allowed.stdout
+
+
 def test_shell_wrappers_keep_explicit_legacy_context_override(tmp_path: Path) -> None:
     home = tmp_path / "home"
     bootstrap_named_context(home / ".tep_context")
@@ -407,26 +541,141 @@ def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:
 
     confirmed = run_runtime(context, "confirm-task", "--task", task_id, "--note", "user confirmed focus")
     assert f"Confirmed current task {task_id}" in confirmed.stdout
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.task",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest",
+            "--quote",
+            "Task confirmation supports explicit planning.",
+            "--note",
+            "planning source after task confirmation",
+        ),
+        "source",
+    )
+    claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.task",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Task confirmation supports explicit planning.",
+            "--source",
+            source_id,
+            "--note",
+            "planning claim after task confirmation",
+        ),
+        "claim",
+    )
+    planning_chain = tmp_path / "task-planning-chain.json"
+    planning_chain.write_text(
+        json.dumps(
+            {
+                "task": "plan the explicit task layer check",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Task confirmation supports explicit planning."},
+                    {"role": "task", "ref": task_id, "quote": "Debug bridge check-r1 retry"},
+                ],
+                "edges": [{"from": claim_id, "to": task_id, "relation": "supports planning"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_cli(
+        context,
+        "reason-step",
+        "--mode",
+        "planning",
+        "--chain",
+        str(planning_chain),
+        "--why",
+        "continue planning after user-confirmed task focus",
+    )
+    run_runtime(context, "hydrate-context")
     planning = run_runtime(context, "preflight-task", "--mode", "planning")
     assert "Preflight passed for planning" in planning.stdout
 
+    source2_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.task",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest",
+            "--quote",
+            "Task confirmation survives unrelated records.",
+            "--note",
+            "unrelated source after task confirmation",
+        ),
+        "source",
+    )
+    claim2_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.task",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Task confirmation survives unrelated records.",
+            "--source",
+            source2_id,
+            "--note",
+            "unrelated claim after task confirmation",
+        ),
+        "claim",
+    )
+    planning_chain2 = tmp_path / "task-planning-chain-2.json"
+    planning_chain2.write_text(
+        json.dumps(
+            {
+                "task": "continue the explicit task layer check",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Task confirmation supports explicit planning."},
+                    {"role": "fact", "ref": claim2_id, "quote": "Task confirmation survives unrelated records."},
+                    {"role": "task", "ref": task_id, "quote": "Debug bridge check-r1 retry"},
+                ],
+                "edges": [
+                    {"from": claim_id, "to": task_id, "relation": "supports planning"},
+                    {"from": claim2_id, "to": task_id, "relation": "supports continued planning"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     run_cli(
         context,
-        "record-source",
-        "--scope",
-        "demo.task",
-        "--source-kind",
-        "runtime",
-        "--critique-status",
-        "accepted",
-        "--origin-kind",
-        "command",
-        "--origin-ref",
-        "pytest",
-        "--quote",
-        "Task confirmation survives unrelated records.",
-        "--note",
-        "unrelated source after task confirmation",
+        "reason-step",
+        "--mode",
+        "planning",
+        "--chain",
+        str(planning_chain2),
+        "--why",
+        "continue planning after unrelated records changed the context fingerprint",
     )
     run_runtime(context, "hydrate-context")
     still_confirmed = run_runtime(context, "preflight-task", "--mode", "planning")
@@ -578,12 +827,40 @@ def test_autonomous_task_stop_guard_requires_terminal_outcome(tmp_path: Path) ->
         check=False,
     )
     assert no_final_permit.returncode == 1
-    assert "mode=final" in no_final_permit.stdout
+    assert "final REASON-*" in no_final_permit.stdout
     final_preflight_block = run_runtime(context, "preflight-task", "--mode", "final", check=False)
     assert final_preflight_block.returncode == 1
-    assert "mode=final" in final_preflight_block.stdout
+    assert "missing final REASON-*" in final_preflight_block.stdout
 
-    run_cli(context, "validate-decision", "--mode", "final", "--chain", str(final_chain), "--emit-permit")
+    final_reason = json.loads(
+        run_cli(
+            context,
+            "reason-step",
+            "--mode",
+            "final",
+            "--chain",
+            str(final_chain),
+            "--why",
+            "autonomous final response is ready for grant review",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert final_reason["mode"] == "final"
+    missing_grant_preflight = run_runtime(context, "preflight-task", "--mode", "final", check=False)
+    assert missing_grant_preflight.returncode == 1
+    assert "fresh valid GRANT-*" in missing_grant_preflight.stdout
+    missing_grant_stop = run_runtime(
+        context,
+        "stop-guard",
+        "--last-assistant-message",
+        "TEP TASK OUTCOME: done\nCompleted the requested work.",
+        check=False,
+    )
+    assert missing_grant_stop.returncode == 1
+    assert "fresh valid GRANT-*" in missing_grant_stop.stdout
+
+    run_cli(context, "reason-review", "--reason", final_reason["id"], "--mode", "final", "--grant")
     final_preflight = run_runtime(context, "preflight-task", "--mode", "final")
     assert "Preflight passed for final" in final_preflight.stdout
     accepted = run_runtime(
@@ -1816,22 +2093,84 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
     )
     assert "used" in used_result.stdout or "no matching" in used_result.stdout
 
-    run_cli(
-        context,
-        "validate-decision",
-        "--mode",
-        "edit",
-        "--kind",
-        "write",
-        "--chain",
-        str(chain),
-        "--emit-permit",
+    source2_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.evidence-hook",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest evidence hook second grant",
+            "--quote",
+            "second bounded hook mutation remains supported",
+            "--note",
+            "evidence hook second grant source",
+        ),
+        "source",
+    )
+    claim2_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.evidence-hook",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Second bounded hook mutation remains supported.",
+            "--source",
+            source2_id,
+            "--note",
+            "evidence hook second grant claim",
+        ),
+        "claim",
+    )
+    chain2 = tmp_path / "edit-chain-2.json"
+    chain2.write_text(
+        json.dumps(
+            {
+                "task": "evidence-authorized edit continuation",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Bounded hook mutation is supported."},
+                    {"role": "fact", "ref": claim2_id, "quote": "Second bounded hook mutation remains supported."},
+                    {"role": "task", "ref": task_id, "quote": "Evidence hook task"},
+                ],
+                "edges": [
+                    {"from": claim_id, "to": task_id, "relation": "justifies-action"},
+                    {"from": claim2_id, "to": task_id, "relation": "justifies-continued-action"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    permit2 = json.loads(
+        run_cli(
+            context,
+            "validate-decision",
+            "--mode",
+            "edit",
+            "--kind",
+            "write",
+            "--chain",
+            str(chain2),
+            "--emit-permit",
+            "--format",
+            "json",
+        ).stdout
     )
     run_cli(
         context,
         "reason-review",
         "--reason",
-        permit["reason"]["id"],
+        permit2["reason"]["id"],
         "--mode",
         "edit",
         "--kind",
@@ -1842,6 +2181,8 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         "--cwd",
         str(tmp_path),
     )
+    run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "hook test focus confirmed after second grant")
 
     allow_result = run_script(
         HOOK_DIR / "pre_tool_use_guard.py",

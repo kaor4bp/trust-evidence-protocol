@@ -188,6 +188,7 @@ from context_lib import (
     chain_payload_hash,
     create_reason_step,
     latest_reason_use_for_command,
+    latest_reason_step,
     current_project_ref,
     current_task_ref,
     curiosity_probe_text_lines,
@@ -3255,6 +3256,30 @@ def append_lookup_chain_support_nodes(nodes: list[dict], records: dict[str, dict
         append_lookup_chain_node(nodes, records, support_ref)
 
 
+def current_lookup_reason_context(root: Path) -> dict:
+    validation = validate_reason_ledger(root)
+    if not validation.get("ok"):
+        return {"ok": False, "reason_ref": "", "used_refs": set(), "message": "; ".join(validation.get("errors", []))}
+    task_ref = current_task_ref(root)
+    reason = latest_reason_step(validation.get("entries", []), task_ref)
+    if not reason:
+        return {"ok": True, "reason_ref": "", "used_refs": set(), "message": "no current REASON-*"}
+    chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
+    nodes = chain_payload.get("nodes", []) if isinstance(chain_payload.get("nodes"), list) else []
+    used_refs = {
+        str(node.get("ref", "")).strip()
+        for node in nodes
+        if isinstance(node, dict) and str(node.get("ref", "")).strip()
+    }
+    return {
+        "ok": True,
+        "reason_ref": str(reason.get("id", "")).strip(),
+        "reason_mode": str(reason.get("mode", "")).strip(),
+        "used_refs": used_refs,
+        "message": "",
+    }
+
+
 def build_lookup_chain_starter(
     root: Path,
     records: dict[str, dict],
@@ -3287,16 +3312,20 @@ def build_lookup_chain_starter(
         }
 
     record_types = LOOKUP_CHAIN_RECORD_TYPES_BY_KIND.get(selected_kind, LOOKUP_CHAIN_RECORD_TYPES_BY_KIND["facts"])
+    reason_context = current_lookup_reason_context(root)
+    used_refs = reason_context.get("used_refs", set()) if reason_context.get("ok") else set()
     ranked = ranked_record_search(
         records,
         terms,
-        8,
+        16,
         record_types,
         current_project_ref(root) or None,
         current_task_ref(root) or None,
         include_fallback=False,
         include_archived=False,
     )
+    if used_refs:
+        ranked = [item for item in ranked if str(item["record"].get("id") or "") not in used_refs]
     nodes: list[dict] = []
     for item in ranked:
         if len(nodes) >= 5:
@@ -3304,6 +3333,9 @@ def build_lookup_chain_starter(
         record = item["record"]
         append_lookup_chain_node(nodes, records, str(record.get("id") or ""))
         append_lookup_chain_support_nodes(nodes, records, record, limit=6)
+    task_ref = current_task_ref(root)
+    if task_ref:
+        append_lookup_chain_node(nodes, records, task_ref)
 
     fact_refs = [str(node["ref"]) for node in nodes if node.get("role") == "fact"]
     edges: list[dict] = []
@@ -3325,6 +3357,16 @@ def build_lookup_chain_starter(
         "mode": selected_mode,
         "decision_mode": decision_mode,
         "working_context_ref": wctx_ref,
+        "chain_extension": {
+            "default": bool(reason_context.get("reason_ref")),
+            "current_reason_ref": reason_context.get("reason_ref", ""),
+            "current_reason_mode": reason_context.get("reason_mode", ""),
+            "excluded_existing_ref_count": len(used_refs),
+            "new_candidate_count": len([node for node in nodes if str(node.get("ref", "")).strip() not in used_refs]),
+            "fallback_when_empty": (
+                "If no new proof-capable nodes are returned, review existing chain nodes and record a fact-compatible hypothesis or open question."
+            ),
+        },
         "nodes": nodes,
         "edges": edges,
     }
@@ -3349,6 +3391,10 @@ def build_lookup_chain_starter(
     ]
     if not fact_refs:
         chain["notes"].append("No supported/corroborated CLM fact matched; open record-detail/claim-graph before relying on this draft.")
+    if reason_context.get("reason_ref") and not any(str(node.get("ref", "")).strip() not in used_refs and node.get("role") == "fact" for node in nodes):
+        chain["notes"].append(
+            "No new fact node was found for the current REASON-*; fallback is to review existing nodes and create a supported hypothesis/open question."
+        )
     return chain
 
 
@@ -3438,6 +3484,7 @@ def lookup_payload(
         "if_answering": "open record-detail or linked-records before citing a record as proof",
         "if_new_support_found": "use record-support/record-evidence so FILE/RUN/SRC/CLM links are created mechanically",
         "if_chain_needed": "draft ids/quotes, run augment-chain, then validate-evidence-chain or validate-decision",
+        "if_continuing_reason": "prefer new chain nodes not already present in current REASON-*; only fall back to revisiting old nodes when lookup finds no new candidates",
         "if_theory_should_rank_high": "promote supported/user-confirmed theory into MODEL/FLOW through validated write paths",
         "if_uncertain": "record a tentative CLM, OPEN-*, or PRP-* instead of silently relying on a guess",
     }
@@ -3485,6 +3532,7 @@ def lookup_payload(
             "Treat lookup and generated maps as navigation only, not proof.",
             "Open record-detail or linked-records before citing a canonical record.",
             "When new support is found, prefer record-support or record-evidence over separate manual record-source/record-claim calls.",
+            "When a current REASON-* exists, lookup defaults to proposing new chain nodes before revisiting old chain nodes.",
             "Use code-search through TEP; do not call external code backends directly in normal work.",
         ],
     }
@@ -3513,6 +3561,12 @@ def lookup_text_lines(payload: dict) -> list[str]:
             f"- nodes: `{len(chain_starter.get('nodes', []))}` edges: `{len(chain_starter.get('edges', []))}` "
             f"decision_mode: `{chain_starter.get('decision_mode')}` validation_ok: `{validation.get('ok')}`"
         )
+        extension = chain_starter.get("chain_extension") or {}
+        if extension.get("current_reason_ref"):
+            lines.append(
+                f"- extends: `{extension.get('current_reason_ref')}` new_candidates=`{extension.get('new_candidate_count', 0)}` "
+                f"excluded_existing_refs=`{extension.get('excluded_existing_ref_count', 0)}`"
+            )
         if chain_starter.get("write_hint"):
             lines.append(f"- write: {chain_starter.get('write_hint')}")
         for node in chain_starter.get("nodes", [])[:4]:

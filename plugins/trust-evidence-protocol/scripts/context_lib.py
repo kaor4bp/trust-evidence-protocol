@@ -67,7 +67,10 @@ from tep_runtime.code_index import (
 from tep_runtime.reason_ledger import (
     chain_payload_hash,
     create_reason_step,
+    decision_reason_status,
+    final_reason_status,
     grant_reason_access,
+    latest_reason_step,
     latest_reason_use_for_command,
     reason_access_text_lines,
     reason_current_text_lines,

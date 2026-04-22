@@ -5475,6 +5475,80 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
     assert first["branch"] == "main"
     assert first["signed_chain"]["nodes"][0]["ref"] == claim_id
 
+    duplicate = run_cli(
+        context,
+        "reason-step",
+        "--mode",
+        "planning",
+        "--chain",
+        str(chain),
+        "--why",
+        "mechanically repeat the previous checkpoint",
+        "--format",
+        "json",
+        check=False,
+    )
+    assert duplicate.returncode == 1
+    assert "duplicate parent" in duplicate.stdout
+
+    source2_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.reason-ledger",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest reason ledger continuation",
+            "--quote",
+            "reasoning should advance with a changed chain",
+            "--note",
+            "reason ledger continuation source",
+        ),
+        "source",
+    )
+    claim2_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.reason-ledger",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Reasoning should advance with a changed chain.",
+            "--source",
+            source2_id,
+            "--note",
+            "reason ledger continuation claim",
+        ),
+        "claim",
+    )
+    chain2 = context.parent / "reason-chain-2.json"
+    chain2.write_text(
+        json.dumps(
+            {
+                "task": "record reason ledger branches",
+                "nodes": [
+                    {"role": "fact", "ref": claim_id, "quote": "Reasoning can be recorded as a validated ledger step."},
+                    {"role": "fact", "ref": claim2_id, "quote": "Reasoning should advance with a changed chain."},
+                    {"role": "task", "ref": task_id, "quote": "Record reason ledger branches"},
+                ],
+                "edges": [
+                    {"from": claim_id, "to": task_id, "relation": "supports reasoning ledger work"},
+                    {"from": claim2_id, "to": task_id, "relation": "supports reasoning progression"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     second = json.loads(
         run_cli(
             context,
@@ -5482,9 +5556,9 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
             "--mode",
             "planning",
             "--chain",
-            str(chain),
+            str(chain2),
             "--why",
-            "continue from the previous checkpoint",
+            "continue from the previous checkpoint with new support",
             "--format",
             "json",
         ).stdout
@@ -5563,6 +5637,187 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
     )
     assert cross_task_parent.returncode == 1
     assert f"parent reason {first['id']} belongs to another TASK-*" in cross_task_parent.stdout
+
+
+def test_lookup_defaults_to_new_reason_chain_nodes(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "lookup-chain-workspace",
+            "--title",
+            "Lookup chain workspace",
+            "--note",
+            "workspace for lookup chain extension",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    source1_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.lookup-chain",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest lookup chain alpha",
+            "--quote",
+            "alpha-only-token supports the lookup chain",
+            "--note",
+            "lookup chain alpha source",
+        ),
+        "source",
+    )
+    claim1_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.lookup-chain",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Alpha-only-token supports the lookup chain.",
+            "--source",
+            source1_id,
+            "--note",
+            "lookup chain alpha claim",
+        ),
+        "claim",
+    )
+    source2_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.lookup-chain",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest lookup chain beta",
+            "--quote",
+            "beta extension supports the lookup chain",
+            "--note",
+            "lookup chain beta source",
+        ),
+        "source",
+    )
+    claim2_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.lookup-chain",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "Beta extension supports the lookup chain.",
+            "--source",
+            source2_id,
+            "--note",
+            "lookup chain beta claim",
+        ),
+        "claim",
+    )
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "demo.lookup-chain",
+            "--title",
+            "Continue lookup chain",
+            "--related-claim",
+            claim1_id,
+            "--note",
+            "lookup chain task",
+        ),
+        "task",
+    )
+    chain1 = tmp_path / "lookup-chain-1.json"
+    chain1.write_text(
+        json.dumps(
+            {
+                "task": "continue lookup chain",
+                "nodes": [
+                    {"role": "fact", "ref": claim1_id, "quote": "Alpha-only-token supports the lookup chain."},
+                    {"role": "task", "ref": task_id, "quote": "Continue lookup chain"},
+                ],
+                "edges": [{"from": claim1_id, "to": task_id, "relation": "supports initial lookup reasoning"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    reason = json.loads(
+        run_cli(
+            context,
+            "reason-step",
+            "--mode",
+            "planning",
+            "--chain",
+            str(chain1),
+            "--why",
+            "seed lookup chain with the first fact",
+            "--format",
+            "json",
+        ).stdout
+    )
+
+    lookup = json.loads(
+        run_cli(
+            context,
+            "lookup",
+            "--query",
+            "beta extension lookup chain",
+            "--reason",
+            "planning",
+            "--kind",
+            "facts",
+            "--format",
+            "json",
+        ).stdout
+    )
+    starter = lookup["chain_starter"]
+    assert starter["chain_extension"]["current_reason_ref"] == reason["id"]
+    refs = {node["ref"] for node in starter["nodes"]}
+    assert claim2_id in refs
+    assert claim1_id not in refs
+    assert task_id in refs
+
+    fallback = json.loads(
+        run_cli(
+            context,
+            "lookup",
+            "--query",
+            "alpha-only-token",
+            "--reason",
+            "planning",
+            "--kind",
+            "facts",
+            "--format",
+            "json",
+        ).stdout
+    )
+    fallback_starter = fallback["chain_starter"]
+    assert fallback_starter["chain_extension"]["current_reason_ref"] == reason["id"]
+    assert not any(node["ref"] == claim1_id for node in fallback_starter["nodes"])
+    assert any("No new fact node" in note for note in fallback_starter["notes"])
 
 
 def test_evidence_authorized_model_and_flow_require_grants(tmp_path: Path) -> None:

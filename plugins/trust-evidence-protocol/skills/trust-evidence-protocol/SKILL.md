@@ -39,10 +39,10 @@ They should rank above scattered claims, but they must come from supported or us
 ## Start Here
 
 1. If unsure what to do, call `next_step` or CLI `next-step`.
-2. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason.
+2. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason. If a current `REASON-*` exists, lookup will prefer records that can extend the chain with new nodes.
 3. If the route says task decomposition is missing, use `validate-task-decomposition`, `confirm-atomic-task`, or `decompose-task`.
 4. If making or relying on a claim, use the support-capture API and then validate or augment the chain.
-5. Before protected edits, model/flow updates, final autonomous completion, or permission-sensitive writes, create or reuse a `REASON-*` step and get it reviewed into a `GRANT-*`. Bash mutations need a command-bound `GRANT-*`.
+5. Before planning continuation or final answers for an active task, append a relevant `REASON-*` step. Before protected edits, model/flow updates, autonomous `done`, or permission-sensitive writes, get the relevant `REASON-*` reviewed into a `GRANT-*`. Bash mutations need a command-bound `GRANT-*`.
 
 Do not browse raw records as the normal path.
 Use lookup, record detail, linked records, graph/map views, and chain tools.
@@ -88,11 +88,14 @@ fact: CLM-* "quote" -> observation: SRC/RUN/INP/ART "quote" -> decision
 Then run chain validation when the decision matters.
 If the chain does not validate, do not treat the conclusion as proved.
 Protected actions need a reviewed `REASON-*` ledger step, not just a loose chain file.
+Planning continuation for an active task needs a valid `REASON-*` whose chain still validates for `planning`.
+Final answers for an active task need a reviewed `REASON-* mode=final`; autonomous `TEP TASK OUTCOME: done` also needs a fresh `GRANT-* mode=final`.
 Bash authorization is append-only: `REASON-* -> GRANT-* -> RUN-*`.
 `GRANT-*` is valid only for its task, mode, action kind, optional exact command, current context fingerprint, and configured time window.
 Do not rely on mutable `used=true` state; a grant is considered consumed when a linked `RUN-*` or protected record exists.
 Use `REASON-*` as the task-local ledger of justified reasoning, not just as a grant prelude.
 When your interpretation changes, append a new reason step with a parent and `why`; when exploring an alternative, fork with an explicit parent and branch.
+Do not reuse the same chain as a mechanical permit; same-mode continuation must extend the evidence chain or fork a named alternative branch.
 Fork or roll back the reasoning ledger when observations change direction.
 
 Hypotheses are allowed for exploration.
