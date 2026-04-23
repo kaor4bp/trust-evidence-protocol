@@ -13,6 +13,7 @@ if plugin_root not in sys.path:
     sys.path.insert(0, plugin_root)
 
 from tep_runtime.core_validators import validate_active_focus, validate_core_graph  # noqa: E402
+from tep_runtime.agent_identity import sign_working_context_payload  # noqa: E402
 from tep_runtime.paths import reasoning_seal_path, reasons_ledger_path  # noqa: E402
 from tep_runtime.reason_ledger import (  # noqa: E402
     append_reason_entry,
@@ -222,6 +223,42 @@ def test_v04_core_validator_enforces_agent_owned_wctx() -> None:
     assert "0.4 WCTX ownership_mode must be owner-only" in errors
     assert "0.4 WCTX handoff_policy must be fork-required" in errors
     assert "WCTX owner_signature.algorithm must be hmac-sha256" in errors
+
+
+def test_v04_core_validator_detects_tampered_local_wctx_signature(tmp_path: Path) -> None:
+    root = tmp_path / ".tep_context"
+    context = record(
+        "working_context",
+        "WCTX-20260423-a0000008",
+        contract_version="0.4",
+        title="Owned focus",
+        status="active",
+        context_kind="investigation",
+        pinned_refs=[],
+        focus_paths=[],
+        topic_terms=[],
+        topic_seed_refs=[],
+        assumptions=[],
+        concerns=[],
+        parent_context_ref="",
+        supersedes_refs=[],
+        project_refs=[],
+        task_refs=[],
+        tags=[],
+        created_at=TS,
+        updated_at=TS,
+        workspace_refs=[WORKSPACE_REF],
+    )
+    signed, owner = sign_working_context_payload(root, {}, context, timestamp=TS)
+    records = base_records(owner, signed)
+    assert messages(validate_core_graph(root, records)) == []
+
+    tampered = dict(signed)
+    tampered["title"] = "Tampered focus"
+    errors = messages(validate_core_graph(root, base_records(owner, tampered)))
+
+    assert "WCTX owner_signature.signed_payload_hash mismatch" in errors
+    assert "WCTX owner_signature.signature mismatch" in errors
 
 
 def test_v04_model_authority_rejects_runtime_or_tentative_support() -> None:

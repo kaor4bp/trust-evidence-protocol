@@ -271,8 +271,8 @@ Rules:
   exposed through `AGENT-*`.
 - The WCTX owner signature covers the canonical focus payload that the runtime
   uses for `next_step`, lookup routing, map sessions, and protected actions.
-- Agent-facing auto-created WCTX records, such as lookup focus contexts, must
-  be created as signed 0.4 owner-bound records.
+- Agent-facing WCTX creation and mutation paths, including lookup auto-create
+  and manual create/fork/close, must produce signed 0.4 owner-bound records.
 - A non-owner agent may inspect a WCTX as navigation or handoff context, but
   must not use it as current focus.
 - To continue from another agent's WCTX, the runtime must create a new signed

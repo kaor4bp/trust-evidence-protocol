@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .agent_identity import verify_working_context_signature
 from .claims import claim_is_fallback
 from .errors import ValidationError
 from .paths import settings_path
@@ -108,7 +109,7 @@ def validate_active_focus(root: Path, records: dict[str, dict]) -> list[Validati
     return errors
 
 
-def validate_wctx_ownership(records: dict[str, dict]) -> list[ValidationError]:
+def validate_wctx_ownership(root: Path, records: dict[str, dict]) -> list[ValidationError]:
     """Owner-bound WCTX records must match a valid local AGENT-* identity."""
 
     errors: list[ValidationError] = []
@@ -144,6 +145,8 @@ def validate_wctx_ownership(records: dict[str, dict]) -> list[ValidationError]:
             errors.append(ValidationError(_path(record), "WCTX owner_signature.signed_payload_hash must start with sha256:"))
         if not str(signature.get("signature", "")).strip().startswith("hmac-sha256:"):
             errors.append(ValidationError(_path(record), "WCTX owner_signature.signature must start with hmac-sha256:"))
+        for message in verify_working_context_signature(root, record):
+            errors.append(ValidationError(_path(record), message))
     return errors
 
 
@@ -210,7 +213,7 @@ def validate_model_flow_authority(records: dict[str, dict]) -> list[ValidationEr
 def validate_core_graph(root: Path, records: dict[str, dict]) -> list[ValidationError]:
     errors: list[ValidationError] = []
     errors.extend(validate_workspace_focus(root, records))
-    errors.extend(validate_wctx_ownership(records))
+    errors.extend(validate_wctx_ownership(root, records))
     errors.extend(validate_provenance_graph(records))
     errors.extend(validate_model_flow_authority(records))
     return errors

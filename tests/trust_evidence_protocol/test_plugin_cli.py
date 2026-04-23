@@ -2888,6 +2888,20 @@ def test_claim_logic_index_validates_symbols_rules_and_conflict_candidates(tmp_p
 
 def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "wctx-demo",
+            "--title",
+            "WCTX demo workspace",
+            "--note",
+            "workspace for signed WCTX test",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
     task = run_cli(
         context,
         "start-task",
@@ -2971,6 +2985,13 @@ def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> 
     assert wctx["pinned_refs"] == [claim_id]
     assert wctx["topic_seed_refs"] == [claim_id]
     assert wctx["assumptions"][0]["mode"] == "exploration-only"
+    assert wctx["contract_version"] == "0.4"
+    assert wctx["record_version"] == 1
+    assert wctx["ownership_mode"] == "owner-only"
+    assert wctx["owner_signature"]["algorithm"] == "hmac-sha256"
+    owner = load_record(context, "agent_identity", wctx["agent_identity_ref"])
+    assert owner["key_fingerprint"] == wctx["agent_key_fingerprint"]
+    assert "secret" not in owner
     assert wctx_id in load_record(context, "task", task_id)["working_context_refs"]
 
     forked = run_cli(
@@ -2997,6 +3018,10 @@ def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> 
     assert fork["parent_context_ref"] == wctx_id
     assert wctx_id in fork["supersedes_refs"]
     assert "handoff" in fork["topic_terms"]
+    assert fork["contract_version"] == "0.4"
+    assert fork["record_version"] == 1
+    assert fork["agent_identity_ref"] == wctx["agent_identity_ref"]
+    assert fork["owner_signature"]["signed_payload_hash"] != wctx["owner_signature"]["signed_payload_hash"]
     task_after_fork = load_record(context, "task", task_id)
     assert wctx_id in task_after_fork["working_context_refs"]
     assert fork_id in task_after_fork["working_context_refs"]
@@ -3006,7 +3031,9 @@ def test_working_context_records_support_copy_on_write_focus(tmp_path: Path) -> 
     assert claim_id in show
 
     run_cli(context, "working-context", "close", "--context", fork_id, "--note", "done")
-    assert load_record(context, "working_context", fork_id)["status"] == "closed"
+    closed = load_record(context, "working_context", fork_id)
+    assert closed["status"] == "closed"
+    assert closed["owner_signature"]["signed_payload_hash"] != fork["owner_signature"]["signed_payload_hash"]
     assert run_cli(context, "review-context").returncode == 0
 
 
@@ -3223,6 +3250,20 @@ def test_workspace_admission_requires_decision_for_unknown_repo(tmp_path: Path) 
 
 def test_working_context_check_drift_uses_task_text_against_active_focus(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "wctx-drift",
+            "--title",
+            "WCTX drift workspace",
+            "--note",
+            "workspace for signed WCTX drift test",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
 
     created = run_cli(
         context,

@@ -111,9 +111,11 @@ fingerprint. It must not store private key material.
 The corresponding HMAC key is runtime-private state under
 `.tep_context/runtime/agent_identity/`. Owner-bound `WCTX-*` records store an
 `owner_signature` over the canonical WCTX focus payload plus the public
-`AGENT-*` reference and fingerprint. Another agent may inspect that WCTX as
-navigation context, but must create a signed fork/adopted WCTX before using it
-as current focus.
+`AGENT-*` reference and fingerprint. Runtime validators recompute the signed
+payload hash for every signed WCTX, and verify the HMAC when the local runtime
+secret owns that WCTX. Another agent may inspect that WCTX as navigation
+context, but must create a signed fork/adopted WCTX before using it as current
+focus.
 
 ## Core Semantics
 

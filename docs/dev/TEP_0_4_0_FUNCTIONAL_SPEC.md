@@ -80,8 +80,8 @@ Rules:
 - `AGENT-*` is versioned local agent identity metadata; private key material is
   runtime-private and only the public fingerprint is recorded.
 - `WCTX-*` is a versioned owner-bound agent working context, not truth.
-- Agent-facing runtime paths that create WCTX automatically, starting with
-  `lookup`, must create signed owner-bound 0.4 WCTX records.
+- Agent-facing runtime paths that create or mutate WCTX, including `lookup` and
+  manual create/fork/close, must create signed owner-bound 0.4 WCTX records.
 - `REASON-*` belongs to one task focus and cannot parent across tasks.
 
 ### 2.3 Provenance Surfaces

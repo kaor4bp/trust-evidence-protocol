@@ -108,6 +108,23 @@ def load_or_create_local_agent_secret(root: Path, records: dict[str, dict], time
     return payload
 
 
+def load_local_agent_secret(root: Path) -> dict:
+    path = local_agent_secret_path(root)
+    if not path.exists():
+        return {}
+    try:
+        payload = parse_json_file(path)
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+    if (
+        int(payload.get("version", 0) or 0) != LOCAL_AGENT_SECRET_VERSION
+        or not str(payload.get("agent_identity_ref", "")).startswith("AGENT-")
+        or not str(payload.get("secret", "")).strip()
+    ):
+        return {}
+    return payload
+
+
 def local_agent_identity_record(secret_payload: dict) -> dict:
     timestamp = str(secret_payload.get("created_at") or now_timestamp())
     return AgentIdentityRecord(
@@ -134,6 +151,48 @@ def ensure_local_agent_identity(root: Path, records: dict[str, dict], timestamp:
 def signed_wctx_payload_hash(payload: dict) -> str:
     signed_payload = {field: payload.get(field) for field in WCTX_SIGNED_FIELDS if field in payload}
     return _sha256_text(_canonical_json(signed_payload))
+
+
+def local_agent_owns_working_context(root: Path, payload: dict) -> bool:
+    secret_payload = load_local_agent_secret(root)
+    if not secret_payload:
+        return False
+    secret = str(secret_payload.get("secret", ""))
+    fingerprint = str(secret_payload.get("key_fingerprint") or agent_key_fingerprint(secret))
+    return (
+        str(secret_payload.get("agent_identity_ref", "")).strip()
+        == str(payload.get("agent_identity_ref", "")).strip()
+        and fingerprint == str(payload.get("agent_key_fingerprint", "")).strip()
+    )
+
+
+def verify_working_context_signature(root: Path, payload: dict) -> list[str]:
+    signature = payload.get("owner_signature")
+    if not isinstance(signature, dict):
+        return []
+    errors: list[str] = []
+    expected_hash = signed_wctx_payload_hash(payload)
+    actual_hash = str(signature.get("signed_payload_hash", "")).strip()
+    if actual_hash.startswith("sha256:") and actual_hash != expected_hash:
+        errors.append("WCTX owner_signature.signed_payload_hash mismatch")
+
+    secret_payload = load_local_agent_secret(root)
+    if not secret_payload:
+        return errors
+    if str(secret_payload.get("agent_identity_ref", "")).strip() != str(payload.get("agent_identity_ref", "")).strip():
+        return errors
+
+    secret = str(secret_payload.get("secret", ""))
+    fingerprint = str(secret_payload.get("key_fingerprint") or agent_key_fingerprint(secret))
+    if fingerprint != str(payload.get("agent_key_fingerprint", "")).strip():
+        errors.append("WCTX local agent secret fingerprint mismatch")
+        return errors
+
+    expected_signature = "hmac-sha256:" + hmac.new(secret.encode("utf-8"), expected_hash.encode("utf-8"), hashlib.sha256).hexdigest()
+    actual_signature = str(signature.get("signature", "")).strip()
+    if actual_signature.startswith("hmac-sha256:") and not hmac.compare_digest(actual_signature, expected_signature):
+        errors.append("WCTX owner_signature.signature mismatch")
+    return errors
 
 
 def sign_working_context_payload(root: Path, records: dict[str, dict], payload: dict, timestamp: str | None = None) -> tuple[dict, dict]:

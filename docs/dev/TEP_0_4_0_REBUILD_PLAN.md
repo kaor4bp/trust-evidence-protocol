@@ -127,6 +127,9 @@ Progress:
 - Added local agent identity signing helpers. Lookup auto-created WCTX records
   now write/reuse a public `AGENT-*` identity, keep the HMAC key under runtime
   private storage, and persist signed owner-bound 0.4 WCTX payloads.
+- Extended WCTX signing to manual create/fork/close paths and validator
+  preflight. The validator now detects canonical payload hash tampering, and it
+  verifies the HMAC signature when the local runtime secret owns that WCTX.
 - Added GRANT/RUN lifecycle validation as a shared service. Durable `RUN-*` and
   protected records that cite `grant_ref` must point to a current v2 `GRANT-*`,
   match grant scope/action/command bindings, and respect `max_runs`.

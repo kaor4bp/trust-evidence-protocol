@@ -366,6 +366,7 @@ from tep_runtime.cli_common import (
     validate_mutated_records,
 )
 from tep_runtime import lookup_service
+from tep_runtime.agent_identity import local_agent_owns_working_context, sign_working_context_payload
 from tep_runtime.migrations import build_schema_migration_report, migration_report_text_lines
 from tep_runtime.code_index import (
     annotation_snapshot,
@@ -2034,7 +2035,14 @@ def cmd_working_context_check_drift(root: Path, task_text: str, output_format: s
     return 0
 
 
-def persist_working_context_with_task_links(root: Path, records: dict[str, dict], payload: dict, *, quiet: bool = False) -> int:
+def persist_working_context_with_task_links(
+    root: Path,
+    records: dict[str, dict],
+    payload: dict,
+    *,
+    quiet: bool = False,
+    extra_records: tuple[dict, ...] = (),
+) -> int:
     if not payload.get("workspace_refs"):
         refs = workspace_refs_for_write(root, [])
         if refs:
@@ -2042,6 +2050,10 @@ def persist_working_context_with_task_links(root: Path, records: dict[str, dict]
             payload["workspace_refs"] = refs
     timestamp = now_timestamp()
     mutations: dict[str, dict] = {payload["id"]: payload}
+    for extra in extra_records:
+        record_id = str(extra.get("id", "")).strip()
+        if record_id:
+            mutations[record_id] = extra
     for task_ref in payload.get("task_refs", []) if isinstance(payload.get("task_refs"), list) else []:
         task = records.get(str(task_ref))
         if not task or task.get("record_type") != "task":
@@ -2062,10 +2074,11 @@ def persist_working_context_with_task_links(root: Path, records: dict[str, dict]
         return 1
 
     write_json_file(record_path(root, "working_context", payload["id"]), payload)
-    for task_ref, task_payload in mutations.items():
-        if task_ref == payload["id"]:
+    for record_id, record_payload in mutations.items():
+        if record_id == payload["id"]:
             continue
-        write_json_file(record_path(root, "task", task_ref), task_payload)
+        record_type = str(record_payload.get("record_type", "")).strip()
+        write_json_file(record_path(root, record_type, record_id), record_payload)
     write_validation_report(root, [])
     refresh_generated_outputs(root, merged)
     invalidate_hydration_state(root, f"recorded working_context {payload['id']}")
@@ -2117,7 +2130,8 @@ def cmd_working_context_create(
         tags=tags,
         note=note,
     )
-    return persist_working_context_with_task_links(root, records, payload)
+    payload, agent_record = sign_working_context_payload(root, records, payload, timestamp=timestamp)
+    return persist_working_context_with_task_links(root, records, payload, extra_records=(agent_record,))
 
 
 def cmd_working_context_show(root: Path, context_ref: str | None, show_all: bool, output_format: str) -> int:
@@ -2217,7 +2231,8 @@ def cmd_working_context_fork(
         tags=tags,
         note=note,
     )
-    return persist_working_context_with_task_links(root, records, payload)
+    payload, agent_record = sign_working_context_payload(root, records, payload, timestamp=timestamp)
+    return persist_working_context_with_task_links(root, records, payload, extra_records=(agent_record,))
 
 
 def cmd_working_context_close(root: Path, context_ref: str, status: str, note: str | None) -> int:
@@ -2233,11 +2248,19 @@ def cmd_working_context_close(root: Path, context_ref: str, status: str, note: s
         return 1
     timestamp = now_timestamp()
     payload = close_working_context_payload(public_record_payload(context), timestamp, status, note)
-    merged_records, errors = validate_mutated_records(root, records, {context_ref: payload})
+    mutations = {context_ref: payload}
+    if context.get("contract_version") == "0.4" or context.get("owner_signature"):
+        if not local_agent_owns_working_context(root, context):
+            print(f"{context_ref} is owned by another local agent; fork/adopt before changing it")
+            return 1
+        payload, agent_record = sign_working_context_payload(root, records, payload, timestamp=timestamp)
+        mutations[context_ref] = payload
+        mutations[str(agent_record["id"])] = agent_record
+    merged_records, errors = validate_mutated_records(root, records, mutations)
     if errors:
         print_errors(errors)
         return 1
-    return persist_mutated_records(root, merged_records, [context_ref], f"Closed working_context {context_ref} as {status}")
+    return persist_mutated_records(root, merged_records, list(mutations), f"Closed working_context {context_ref} as {status}")
 
 
 def cmd_curator_pool_build(

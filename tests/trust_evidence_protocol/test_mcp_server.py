@@ -562,6 +562,20 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     run_cli(context, "logic-index", "build")
     run_cli(context, "tap-record", "--record", claim_id, "--kind", "cited", "--intent", "mcp test")
     run_cli(context, "attention-index", "build")
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "mcp-readonly",
+            "--title",
+            "MCP read-only workspace",
+            "--note",
+            "workspace for signed MCP WCTX fixture",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
     wctx_id = recorded_id(
         run_cli(
             context,

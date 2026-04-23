@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .attention import ATTENTION_MODES
-from .agent_identity import sign_working_context_payload
+from .agent_identity import local_agent_owns_working_context, sign_working_context_payload
 from .claims import claim_is_fallback
 from .cli_common import public_record_payload, refresh_generated_outputs, validate_mutated_records
 from .hydration import invalidate_hydration_state
@@ -121,17 +121,22 @@ def working_context_is_usable_for_focus(
     )
 
 
-def active_working_context_for_lookup(records: dict[str, dict], project_ref: str, task_ref: str) -> dict | None:
+def active_working_context_for_lookup(root: Path, records: dict[str, dict], project_ref: str, task_ref: str) -> dict | None:
     task = records.get(task_ref) if task_ref else None
     if task and task.get("record_type") == "task" and task_is_active(records, task_ref):
         for ref in task.get("working_context_refs", []):
             context = records.get(str(ref))
-            if context and working_context_is_usable_for_focus(records, context, project_ref or None, task_ref):
+            if (
+                context
+                and working_context_is_usable_for_focus(records, context, project_ref or None, task_ref)
+                and local_agent_owns_working_context(root, context)
+            ):
                 return context
     candidates = [
         data
         for data in records.values()
         if working_context_is_usable_for_focus(records, data, project_ref or None, task_ref or None)
+        and local_agent_owns_working_context(root, data)
     ]
     return sorted(candidates, key=lambda item: str(item.get("updated_at", "")), reverse=True)[0] if candidates else None
 
@@ -188,7 +193,7 @@ def ensure_lookup_working_context(root: Path, records: dict[str, dict], query: s
     workspace_ref = current_workspace_ref(root)
     project_ref = current_project_ref(root)
     task_ref = current_active_task_ref(root, records)
-    existing = active_working_context_for_lookup(records, project_ref, task_ref)
+    existing = active_working_context_for_lookup(root, records, project_ref, task_ref)
     if existing:
         return str(existing.get("id", "")), None, None
     if not workspace_ref:
