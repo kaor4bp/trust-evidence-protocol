@@ -217,7 +217,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
             "proof_rule": "Navigation output is not proof; cite canonical records with quotes before decisions.",
             "chain_rule": "Before STEP/GRANT/final, advance through connected CLM records; relation CLM records are the semantic edges.",
             "reason_rule": "Treat STEP-* as the agent's task/WCTX cursor: start by checking the briefing, then extend or fork the ledger when intent, evidence, tests, or direction change.",
-            "rights_rule": "Briefing includes a non-authoritative rights snapshot; lookup/next_step are always allowed, while protected actions still require runtime grant validation at use time.",
+            "rights_rule": "Briefing includes a non-authoritative rights snapshot, but the agent must still start with a personal agent_private_key; even next_step/lookup may require identity checks before routing. Protected actions still require runtime grant validation at use time.",
             "grant_rule": "Mutating protected actions in evidence-authorized or implementation-choice require a fresh one-shot GRANT-* bound to current workspace/project/task/fingerprint.",
             "write_rule": "Use record-support/record-evidence so FILE/RUN/SRC/CLM links are built mechanically; low-level record-source/record-claim are for plugin-dev or migration.",
             "task_rule": "Mutating work belongs on a valid atomic leaf TASK-*; parent tasks are orchestration only.",

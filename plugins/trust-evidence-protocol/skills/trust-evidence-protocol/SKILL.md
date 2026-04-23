@@ -51,12 +51,13 @@ They should rank above scattered claims, but they must come from supported or us
 
 ## Start Here
 
-1. Invent a private per-agent key at the start of a work session and reuse it for every mutating MCP call as `agent_private_key`, or expose it to CLI/hooks as `TEP_AGENT_PRIVATE_KEY`. Do not share this key with another agent.
-2. If unsure what to do, call `next_step` or CLI `next-step`. Read the briefing before acting: it includes the current `STEP-*` cursor and a non-authoritative rights snapshot. `next_step` and `lookup` are always allowed entrypoints; protected writes, mutating bash, and autonomous `done` still need a valid reviewed `STEP-*`/`GRANT-*` checked at use time.
-3. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason. If you do not know what is important yet, use map/curiosity navigation to inspect anchors, bridges, ignored facts, and tap smell. If a current `STEP-*` exists, lookup and map drill-down should prefer records that can extend or safely fork the CLM chain.
-4. If the route says task decomposition is missing, use `validate-task-decomposition`, `confirm-atomic-task`, or `decompose-task`.
-5. If making or relying on a claim, use the support-capture API. If the next step depends on a previous claim, record an explicit relation CLM such as `supports`, `causes`, `depends_on`, `implies`, or `refines`.
-6. Before planning continuation or final answers for an active task, append a relevant `STEP-*` claim step through `reason_step`/`reason-step`. Before protected edits, model/flow updates, autonomous `done`, or permission-sensitive writes, get the relevant `STEP-*` reviewed into a `GRANT-*`. Bash mutations need a command-bound `GRANT-*`.
+1. Invent a private per-agent key at the start of a work session and keep it as your personal `agent_private_key`, or expose it to CLI/hooks as `TEP_AGENT_PRIVATE_KEY`. Do not share this key with another agent. Treat it as mandatory session state, not as an optional mutation-only token.
+2. If the key is missing, stop and obtain one before continuing. The runtime may require `agent_private_key` for any operation, including `lookup`, `next_step`, map navigation, and all mutating routes. Do not assume any front door is exempt from owner-bound identity checks.
+3. If unsure what to do, call `next_step` or CLI `next-step`. Read the briefing before acting: it includes the current `STEP-*` cursor and a non-authoritative rights snapshot. The briefing helps route work, but authorization is still checked at use time.
+4. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason. If you do not know what is important yet, use map/curiosity navigation to inspect anchors, bridges, ignored facts, and tap smell. If a current `STEP-*` exists, lookup and map drill-down should prefer records that can extend or safely fork the CLM chain.
+5. If the route says task decomposition is missing, use `validate-task-decomposition`, `confirm-atomic-task`, or `decompose-task`.
+6. If making or relying on a claim, use the support-capture API. If the next step depends on a previous claim, record an explicit relation CLM such as `supports`, `causes`, `depends_on`, `implies`, or `refines`.
+7. Before planning continuation or final answers for an active task, append a relevant `STEP-*` claim step through `reason_step`/`reason-step`. Before protected edits, model/flow updates, autonomous `done`, or permission-sensitive writes, get the relevant `STEP-*` reviewed into a `GRANT-*`. Bash mutations need a command-bound `GRANT-*`.
 
 Do not browse raw records as the normal path.
 Use lookup, record detail, linked records, graph/map views, and chain tools.

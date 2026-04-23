@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.4.9"
+SERVER_VERSION = "0.4.10"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 plugin_root = str(PLUGIN_ROOT)
@@ -131,6 +131,7 @@ TOOLS: list[JsonObject] = [
                     "default": "compact",
                     "description": "Output detail. Compact is token-light; full preserves the expanded sectioned brief.",
                 },
+                "agent_private_key": agent_private_key_property(),
             },
             ["task"],
         ),
@@ -151,6 +152,7 @@ TOOLS: list[JsonObject] = [
                 },
                 "task": {"type": "string", "description": "Optional concrete task or prompt summary."},
                 "detail": {"type": "string", "enum": ["compact", "full"], "default": "compact"},
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
@@ -1199,6 +1201,9 @@ def add_repeated(cli_args: list[str], flag: str, values: list[str]) -> None:
 
 
 def tool_brief_context(args: JsonObject) -> tuple[bool, str]:
+    token_error = require_agent_private_key_arg(args)
+    if token_error:
+        return False, token_error
     return run_cli(
         args,
         [
@@ -1220,6 +1225,9 @@ def tool_next_step(args: JsonObject) -> tuple[bool, str]:
     root = mcp_context_root(args)
     if root is None:
         return False, "Could not resolve TEP context root"
+    token_error = require_agent_private_key_arg(args)
+    if token_error:
+        return False, token_error
     unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
     if unsafe_fallback:
         return False, unsafe_fallback
@@ -1227,12 +1235,13 @@ def tool_next_step(args: JsonObject) -> tuple[bool, str]:
     if error:
         return False, error
     assert records is not None
-    payload = build_next_step_payload(
-        records,
-        root,
-        intent=str(args.get("intent") or "auto"),
-        task=str(args.get("task") or ""),
-    )
+    with agent_identity_scope(agent_private_key_arg(args)):
+        payload = build_next_step_payload(
+            records,
+            root,
+            intent=str(args.get("intent") or "auto"),
+            task=str(args.get("task") or ""),
+        )
     if as_format(args.get("format")) == "json":
         return True, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
     return True, "\n".join(next_step_text_lines(payload, TEP_ICON, detail=str(args.get("detail") or "compact")))

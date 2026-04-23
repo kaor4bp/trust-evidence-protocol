@@ -104,8 +104,9 @@ def current_agent_private_key() -> str:
 class AgentIdentityRequiredError(RuntimeError):
     def __init__(self) -> None:
         super().__init__(
-            "agent_identity_required: provide a per-agent private key with "
-            "agent_private_key or TEP_AGENT_PRIVATE_KEY before WCTX/STEP/GRANT mutations"
+            "agent_identity_required: generate or provide your personal agent_private_key "
+            "(or TEP_AGENT_PRIVATE_KEY) before starting work; the runtime may require it "
+            "even for next_step, lookup, and other front-door calls"
         )
 
 

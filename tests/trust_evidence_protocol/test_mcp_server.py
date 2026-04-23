@@ -122,7 +122,7 @@ def load_mcp_server_module():
 def test_mcp_manifest_declares_readonly_server() -> None:
     plugin_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_manifest["mcpServers"] == "./.mcp.json"
-    assert plugin_manifest["version"] == "0.4.9"
+    assert plugin_manifest["version"] == "0.4.10"
 
     claude_manifest = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert claude_manifest["version"] == plugin_manifest["version"]
@@ -135,6 +135,23 @@ def test_mcp_manifest_declares_readonly_server() -> None:
 
     module = load_mcp_server_module()
     assert module.SERVER_VERSION == plugin_manifest["version"]
+
+
+def test_next_step_requires_agent_private_key() -> None:
+    module = load_mcp_server_module()
+
+    ok, message = module.tool_next_step(
+        {
+            "context": "/tmp/tep-context",
+            "cwd": "/tmp",
+            "intent": "auto",
+            "format": "json",
+        }
+    )
+
+    assert ok is False
+    assert "agent_identity_required" in message
+    assert "agent_private_key" in message
 
 
 def test_mcp_migration_dry_run_uses_service_without_writing_target(tmp_path: Path) -> None:
