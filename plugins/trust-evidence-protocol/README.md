@@ -150,6 +150,11 @@ Additional transient index:
 `runtime/reasoning/agents/AGENT-*/reasons.jsonl` is the append-only sealed
 per-agent `REASON-*` reasoning ledger.
 It is not truth storage, but protected actions use reviewed `REASON-*` access grants as their authority.
+Agents should treat the current `REASON-*` as their task cursor, not only as a
+permission prelude. `next-step` and `lookup` surface `start_briefing` and
+`reason_pressure` so the agent sees the current branch, recent reasoning steps,
+recent actions/runs, and the cheapest path to extend or fork the ledger before
+substantial work.
 Direct writes to the ledger or seal are blocked by hooks and detected by ledger validation.
 Same-mode continuation cannot mechanically duplicate the direct parent chain; extend the evidence chain or fork a named alternative branch.
 Final answers for an active task require a reviewed `REASON-* mode=final`.
@@ -557,7 +562,9 @@ Commands:
   - one front door for normal lookup routing
   - `--reason` is mandatory and is written into telemetry
   - ensures a `WCTX-*` operational context exists when a workspace is known; auto-created WCTX is not proof and not authorization
-  - returns the primary tool, ordered route commands, `next_allowed_commands`, `route_graph`, `evidence_profile`, `output_contract`, navigation-only `map_navigation`, and a compact `chain_starter`
+  - returns the primary tool, ordered route commands, `next_allowed_commands`, `route_graph`, `evidence_profile`, `output_contract`, navigation-only `map_navigation`, `start_briefing`, `reason_pressure`, and a compact `chain_starter`
+  - `start_briefing` is navigation/control metadata over the current REASON branch, recent REASON steps, recent actions/runs, and checks to perform before continuing
+  - `reason_pressure` is navigation/control metadata that recommends `lookup` or `reason_step` when the current task has no REASON, the mode is stale, or a chain starter is ready
   - `map_navigation` returns relevant durable `MAP-*` cells when available; these cells are navigation memory only and require `map-drilldown`, `record-detail`, and chain validation before proof use
   - active `L2` map cells with `down_refs` rank above covered `L1` evidence patches, and map views expose hierarchy `up_cells` / `down_cells` for bounded navigation
   - `map-drilldown` expands higher-level map cells through bounded `down_refs` and returns child map hops plus lower-level proof routes as navigation metadata; every expanded route keeps `route_is_proof=false`
@@ -573,6 +580,7 @@ Commands:
 
 - `next-step --intent answer|plan|edit|test|persist|permission|debug --task "..."`
   - prints the compact route branch the agent should follow next
+  - shows `start_briefing` and `reason_pressure` before route commands so the agent checks the current branch and decides whether to extend/fork REASON first
   - includes a compact action graph (`condition=>route`) so the agent follows a route instead of re-reading the whole protocol
   - route steps begin with `lookup` when information is needed, then continue to narrower drill-down and validation commands
   - accepts `--format json` for the structured payload, including `route_graph.branches` and current workspace/project/task metadata
@@ -870,11 +878,11 @@ Commands:
   - blocks permission/restriction/guideline/proposal-as-truth edges, project/task/exploration-as-proof edges, and chains without at least one fact node
   - `validate-planning-chain` remains as a compatibility alias
 
-- `validate-decision --mode planning|permission|edit|model|flow|proposal|final|curiosity|debugging --chain evidence-chain.json`
+- `validate-decision --mode planning|permission|edit|test|model|flow|proposal|final|curiosity|debugging --chain evidence-chain.json`
   - validates whether a mechanically valid evidence chain is acceptable for the requested decision type
   - returns `justification_valid` and `decision_chain_valid` for the mode-specific public-chain result; `decision_valid` remains a compatible alias
   - allows indexed tentative hypotheses for uncertainty-bearing modes such as planning, proposal, curiosity, and debugging
-  - blocks `hypothesis` and `exploration_context` nodes as decisive proof for permission, edit, model, flow, and final decisions
+  - blocks `hypothesis` and `exploration_context` nodes as decisive proof for permission, edit, test, model, flow, and final decisions
   - requires `requested_permission` nodes for permission-mode chains
   - returns `valid_for`, `invalid_for`, hypothesis refs, blockers, warnings, and recommended follow-up commands
   - with `--emit-permit`, creates a `REASON-*` step and a one-shot `GRANT-*`

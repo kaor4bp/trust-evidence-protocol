@@ -31,6 +31,7 @@ DECISION_MODES = {
     "planning",
     "permission",
     "edit",
+    "test",
     "model",
     "flow",
     "proposal",
@@ -38,7 +39,7 @@ DECISION_MODES = {
     "curiosity",
     "debugging",
 }
-PROOF_DECISION_MODES = {"permission", "edit", "model", "flow", "final"}
+PROOF_DECISION_MODES = {"permission", "edit", "test", "model", "flow", "final"}
 UNCERTAIN_DECISION_MODES = {"planning", "proposal", "curiosity", "debugging"}
 
 CONTROL_CHAIN_ROLES = {"permission", "requested_permission", "restriction", "guideline", "proposal"}

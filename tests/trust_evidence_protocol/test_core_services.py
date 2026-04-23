@@ -1276,6 +1276,11 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     assert payload["active_focus"]["ok"] is True
     assert payload["route_graph"]["graph_version"] == 1
     assert payload["api_contract"]["normal_entrypoint"] == "lookup"
+    assert payload["start_briefing"]["briefing_is_proof"] is False
+    assert payload["start_briefing"]["current_reason_ref"] == ""
+    assert payload["reason_pressure"]["pressure_is_proof"] is False
+    assert payload["reason_pressure"]["level"] == "high"
+    assert payload["reason_pressure"]["recommended_tool"] == "lookup"
     assert payload["route_steps"][0].startswith("validate-task-decomposition ")
     assert any(step.startswith("lookup ") for step in payload["route_steps"])
     assert payload["task_decomposition"]["accepted"] is False
@@ -1284,6 +1289,8 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     assert "missing source-backed proof for truth claim" in payload["route_graph"]["stop_conditions"]
     compact_lines = next_step_text_lines(payload, "TEP", detail="compact")
     assert any(line.startswith("- graph: ") for line in compact_lines)
+    assert any(line.startswith("- briefing: ") for line in compact_lines)
+    assert any(line.startswith("- reason-pressure: high") for line in compact_lines)
     assert any("proof gap=>build/validate evidence chain" in line for line in compact_lines)
     assert any("task-decomposition: status=needs-decomposition accepted=False" in line for line in compact_lines)
     assert "missing source-backed proof for truth claim" not in "\n".join(compact_lines)
@@ -1292,6 +1299,12 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     inline = next_step_inline(payload)
     assert "next=validate-task-decomposition" in inline
     assert "guidelines missing=>guidelines-for" in inline
+    assert "reason_pressure=high:lookup" in inline
+
+    test_payload = build_next_step_payload(records, root, intent="test", task="verify action graph")
+    assert test_payload["reason_pressure"]["recommended_mode"] == "test"
+    assert any("validate-decision --mode test" in step for step in test_payload["route_steps"])
+    assert {"if": "no current test reason", "then": "lookup -> augment-chain -> validate-decision --mode test -> reason-step"} in test_payload["route_graph"]["branches"]
 
     write_settings(
         root,

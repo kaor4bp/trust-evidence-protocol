@@ -16,6 +16,7 @@ When the plugin MCP server is available, prefer MCP for lookup-heavy work and ke
 - `brief_context`: equivalent to compact `brief-context --task "..."`; pass `detail=full` only when the expanded brief is needed
 - `next_step`: equivalent to `next-step --intent ...`; use it as the first route branch when unsure what to do next, follow its compact action graph before re-reading the protocol, and request `format=json` when a tool needs structured `route_graph` data
 - `lookup`: equivalent to `lookup --query "..." --reason ...`; reason is mandatory, lookup may auto-create a lightweight `WCTX-*`, and output is navigation only
+- `next_step` and `lookup` return `start_briefing` and `reason_pressure`; check them before work so the current branch, recent actions, and REASON gap are visible
 - `lookup` returns `next_allowed_commands`, `route_graph`, `evidence_profile`, `output_contract`, and `chain_starter`; follow these fields before broadening the search
 - `chain_starter` is a compact draft of ids, quotes, and candidate edges; write it to a chain file, run `augment-chain`, then run `validate-decision` for the intended mode before using it as proof or authorization
 - `search_records`: equivalent to `search-records --query "..."`; drill-down after `lookup` in normal work
@@ -172,9 +173,10 @@ Use `logic-search` / `logic-check` only as predicate prefilters over `CLM.logic`
 Use `build-reasoning-case` before non-trivial actions or recommendations that span several facts, models, or flows.
 Use `augment-chain` when you already have record refs but need the plugin to fill quotes, source refs, and validation output mechanically.
 Use `validate-evidence-chain` before asking permission, recording a mutating `ACT-*`, or presenting a user-facing proof chain.
-Use `validate-decision` after evidence-chain validation when deciding whether that chain is sufficient for planning, permission, edit, model, flow, proposal, final, curiosity, or debugging mode.
+Use `validate-decision` after evidence-chain validation when deciding whether that chain is sufficient for planning, permission, edit, test, model, flow, proposal, final, curiosity, or debugging mode.
 Read `justification_valid` / `decision_chain_valid` from `validate-decision` JSON output for the mode-specific public-chain result; `decision_valid` remains a compatible alias only.
 Use `reason-step` to append a task-scoped `REASON-*` reasoning step when the agent changes direction or needs protected access.
+Use `reason-step --mode test` before meaningful verification runs so tests are connected to the current public reasoning branch instead of appearing as detached shell activity.
 Use `reason-review --reason REASON-* --mode edit --kind <action-kind> --grant --command "..." --cwd ...` before protected mutating Bash in `evidence-authorized` or `implementation-choice`; the PreToolUse hook requires a command-bound `GRANT-*`.
 Use `validate-decision --emit-permit --mode edit --kind <action-kind>` as a shortcut for write-API gates; for Bash hooks, follow it with a command-bound `reason-review`.
 Reason authorization output includes ids, mode, action kind, expiry, command hash, and max runs so the agent can show the user what it actually requested.

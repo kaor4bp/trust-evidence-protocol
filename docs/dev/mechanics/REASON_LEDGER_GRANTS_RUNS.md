@@ -40,10 +40,16 @@ forces the agent to attach its next move to cited facts, observations, marked
 hypotheses, or an explicit fork. The runtime can verify that structure and
 progression, but it cannot verify that the agent chose the globally best
 reasoning path.
+`next-step` and `lookup` expose `start_briefing` and `reason_pressure` to make
+that pressure visible before work starts: agents see the current branch, recent
+reason steps, recent actions/runs, and whether the next cheap move is lookup or
+`reason_step`.
 
 ## Planning And Final Gates
 
 - Planning continuation requires a current valid `REASON-*` for the active task.
+- Meaningful test/verification runs should have a current `REASON-* mode=test`
+  unless they are trivial local probes with no task consequence.
 - Final response requires `REASON-* mode=final`.
 - Autonomous `done` requires final reason and `GRANT-* mode=final`.
 - Lookup/read/reasoning can happen before a reason step so the agent can gather

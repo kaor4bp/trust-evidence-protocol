@@ -201,7 +201,7 @@ TOOLS: list[JsonObject] = [
                 "intent": {"type": "string", "default": "planning"},
                 "mode": {
                     "type": "string",
-                    "enum": ["answering", "curiosity", "debugging", "edit", "final", "permission", "planning"],
+                    "enum": ["answering", "curiosity", "debugging", "edit", "final", "permission", "planning", "test"],
                     "default": "planning",
                 },
                 "action_kind": {"type": "string", "description": "Optional protected action kind such as write, bash, git, or final."},
@@ -265,7 +265,7 @@ TOOLS: list[JsonObject] = [
                 "reason_ref": {"type": "string", "description": "REASON-* step to review."},
                 "mode": {
                     "type": "string",
-                    "enum": ["answering", "curiosity", "debugging", "edit", "final", "permission", "planning"],
+                    "enum": ["answering", "curiosity", "debugging", "edit", "final", "permission", "planning", "test"],
                     "default": "planning",
                 },
                 "action_kind": {"type": "string", "description": "Optional protected action kind such as write, bash, git, or final."},

@@ -3077,7 +3077,7 @@ def cmd_help(topic: str) -> int:
             "lookup --query ... --reason orientation|planning|answering|permission|editing|debugging|retrospective|curiosity|migration --kind facts|code|theory|research|policy|auto [--format json]",
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
-            "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|model|flow|proposal|final --chain evidence-chain.json",
+            "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|test|model|flow|proposal|final --chain evidence-chain.json",
             "reason-step --mode edit --kind write --chain evidence-chain.json --why ... | reason-review --reason REASON-* --mode edit --kind write --grant [--command ... --cwd ...] | reason-check-grant --mode edit --kind write --command ... --cwd ... | reason-current",
             "record-input ... | record-run --command ... | record-support --thought ... --kind file-line|command-output|user-confirmation | classify-input --input INP-* --derived-record REF",
             "curator-pool build --workspace WSP-* [--project PRJ-*] [--task TASK-*] --kind health|duplicates|conflicts|modeling|flow|staleness --query ... | curator-pool show --pool CURP-* [--format json]",
@@ -8969,7 +8969,7 @@ def parse_args() -> argparse.Namespace:
         "validate-decision",
         help="Validate whether an evidence chain is acceptable for a planning/permission/edit/model/flow/proposal/final decision.",
     )
-    validate_decision.add_argument("--mode", required=True, choices=["planning", "permission", "edit", "model", "flow", "proposal", "final", "curiosity", "debugging"])
+    validate_decision.add_argument("--mode", required=True, choices=sorted(DECISION_MODES))
     validate_decision.add_argument("--chain", dest="chain_file", required=True)
     validate_decision.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     validate_decision.add_argument("--kind", dest="action_kind")

@@ -19,6 +19,7 @@ from .map_refresh import map_refresh_recommended_commands, map_refresh_triggers
 from .notes import append_note
 from .paths import record_path
 from .reason_ledger import latest_reason_step, validate_reason_ledger
+from .reason_pressure import build_reason_pressure, build_start_briefing
 from .reasoning import decision_validation_payload
 from .reports import write_validation_report
 from .scopes import (
@@ -642,6 +643,8 @@ def lookup_payload(
         scope=scope,
         wctx_ref=wctx_ref,
     )
+    start_briefing = build_start_briefing(root, records, intent=reason)
+    reason_pressure = build_reason_pressure(root, records, intent=reason, chain_starter=chain_starter)
     map_navigation = build_lookup_map_navigation(
         root=root,
         records=records,
@@ -727,8 +730,11 @@ def lookup_payload(
         "output_contract": output_contract,
         "map_navigation": map_navigation,
         "chain_starter": chain_starter,
+        "start_briefing": start_briefing,
+        "reason_pressure": reason_pressure,
         "rules": [
             "Use lookup first when unsure where to search.",
+            "At the start of work, review start_briefing and either extend, fork, or create REASON-* before substantial action.",
             "Treat lookup and generated maps as navigation only, not proof.",
             "Treat MAP-* cells as navigation memory; use map-drilldown, record-detail, and chain validation before proof use.",
             "Open record-detail or linked-records before citing a canonical record.",
@@ -748,8 +754,26 @@ def lookup_text_lines(payload: dict) -> list[str]:
         f"query: `{payload.get('query', '')}` reason: `{payload.get('reason')}` kind: `{payload.get('kind')}` primary_tool: `{payload.get('primary_tool')}` scope: `{payload.get('scope')}` mode: `{payload.get('mode')}`",
         f"focus: workspace=`{payload.get('focus', {}).get('workspace_ref', '')}` project=`{payload.get('focus', {}).get('project_ref', '')}` task=`{payload.get('focus', {}).get('task_ref', '')}` wctx=`{payload.get('focus', {}).get('working_context_ref', '')}`",
         "",
-        "## Route",
+        "## Start Briefing",
     ]
+    briefing = payload.get("start_briefing") or {}
+    lines.append(
+        f"- reason=`{briefing.get('current_reason_ref') or 'none'}` mode=`{briefing.get('current_mode') or 'none'}` "
+        f"branch=`{briefing.get('current_branch') or 'none'}` recent_steps=`{len(briefing.get('recent_steps') or [])}` "
+        f"recent_actions=`{len(briefing.get('recent_actions') or [])}` proof=`false`"
+    )
+    for check in (briefing.get("checks") or [])[:3]:
+        lines.append(f"- check: {check}")
+    pressure = payload.get("reason_pressure") or {}
+    if pressure:
+        reasons = "; ".join(str(item) for item in (pressure.get("reasons") or [])[:2])
+        lines.append(
+            f"- reason-pressure: `{pressure.get('level')}` mode=`{pressure.get('recommended_mode')}` "
+            f"next=`{pressure.get('recommended_tool')}` {reasons}"
+        )
+    lines.extend([
+        "## Route",
+    ])
     for command in payload.get("route", []):
         lines.append(f"- `{command}`")
     map_navigation = payload.get("map_navigation") or {}

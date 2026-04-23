@@ -29,6 +29,8 @@ NEXT_STEP_RESPONSE_SCHEMA = compact_object_schema(
         "contract_version": CONTRACT_VERSION_PROPERTY,
         "focus": loose_object("Workspace/project/task/WCTX focus projection."),
         "route_graph": loose_object("Bounded route branches for the next allowed action."),
+        "start_briefing": loose_object("Navigation-only current REASON branch, recent steps, recent actions, and checks."),
+        "reason_pressure": loose_object("Navigation/control pressure that makes REASON-* the preferred next cursor update."),
         "required_next": {"type": "array", "items": {"type": "string"}},
         "blocked": {"type": "boolean"},
         "repair": loose_array("Repair routes when blocked."),

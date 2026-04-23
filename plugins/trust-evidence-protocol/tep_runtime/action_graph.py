@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .core_validators import validate_active_focus
 from .hydration import compute_context_fingerprint, load_hydration_state
+from .reason_pressure import build_reason_pressure, build_start_briefing
 from .reason_ledger import validate_reason_access
 from .retrieval import active_guidelines_for
 from .scopes import active_restrictions_for, current_project_ref, current_task_ref, current_workspace_ref
@@ -43,7 +44,7 @@ def _intent_route(intent: str, task: str) -> tuple[str, list[str]]:
         "answer": ("answering", [f"lookup{query_arg} --reason answering --kind auto --format json", f"brief-context{task_arg}", "record-detail / linked-records before citing proof"]),
         "plan": ("planning", [f"lookup{query_arg} --reason planning --kind auto --format json", "validate-task-decomposition --task TASK-*", f"brief-context{task_arg}", "augment-chain -> validate-decision --mode planning", "reason-step --mode planning"]),
         "edit": ("editing", ["validate-task-decomposition --task TASK-*", f"lookup{query_arg} --reason editing --kind auto --format json", f"guidelines-for{task_arg}", "augment-chain -> validate-decision --mode edit", "reason-step --mode edit", "preflight-task --mode edit"]),
-        "test": ("testing", [f"lookup{query_arg} --reason debugging --kind auto --format json", f"brief-context{task_arg}", "record-evidence for meaningful test output", "hydrate-context after mutation"]),
+        "test": ("testing", [f"lookup{query_arg} --reason debugging --kind auto --format json", f"brief-context{task_arg}", "augment-chain -> validate-decision --mode test", "reason-step --mode test", "record-evidence for meaningful test output", "hydrate-context after mutation"]),
         "persist": ("persisting", [f"lookup{query_arg} --reason migration --kind auto --format json", "classify input/source first", "record-evidence or record-* through context_cli", "hydrate-context"]),
         "permission": ("permission", [f"lookup{query_arg} --reason permission --kind policy --format json", "build-reasoning-case", "cite CLM/GLD/PRM ids + quotes", "request explicit approval if needed"]),
         "debug": ("debugging", ["show-hydration", f"lookup{query_arg} --reason debugging --kind auto --format json", "review-context", "scan-conflicts / reindex-context if needed"]),
@@ -83,6 +84,7 @@ def _route_graph(intent: str) -> dict:
             {"if": "edited", "then": "after-mutation"},
         ],
         "test": [
+            {"if": "no current test reason", "then": "lookup -> augment-chain -> validate-decision --mode test -> reason-step"},
             {"if": "test output meaningful", "then": "record-evidence"},
             {"if": "failure unexplained", "then": "debug"},
             {"if": "state changed", "then": "after-mutation"},
@@ -158,6 +160,8 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
 
     route_label, route_steps = _intent_route(intent, task)
     route_steps = list(route_steps)
+    start_briefing = build_start_briefing(root, records, intent=intent)
+    reason_pressure = build_reason_pressure(root, records, intent=intent)
     grant_status = {
         "required": False,
         "mode": "",
@@ -202,6 +206,8 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
         "forced_first": forced,
         "route_steps": route_steps,
         "route_graph": _route_graph(intent),
+        "start_briefing": start_briefing,
+        "reason_pressure": reason_pressure,
         "grant": grant_status,
         "api_contract": {
             "contract_version": 1,
@@ -210,6 +216,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
             "drill_down_tools": ["brief-context", "search-records", "claim-graph", "record-detail", "linked-records"],
             "proof_rule": "Navigation output is not proof; cite canonical records with quotes before decisions.",
             "chain_rule": "Before REASON/GRANT/final, build a public chain with lookup/record-detail, run augment-chain, then validate-decision for the intended mode.",
+            "reason_rule": "Treat REASON-* as the agent's task cursor: start by checking the briefing, then extend or fork the ledger when intent, evidence, tests, or direction change.",
             "grant_rule": "Mutating protected actions in evidence-authorized or implementation-choice require a fresh one-shot GRANT-* bound to current workspace/project/task/fingerprint.",
             "write_rule": "Use record-support/record-evidence so FILE/RUN/SRC/CLM links are built mechanically; low-level record-source/record-claim are for plugin-dev or migration.",
             "task_rule": "Mutating work belongs on a valid atomic leaf TASK-*; parent tasks are orchestration only.",
@@ -236,6 +243,21 @@ def next_step_text_lines(payload: dict, icon: str, detail: str = "compact") -> l
         current.append(f"task={task.get('id')}")
     lines.append("- current: " + " | ".join(current))
     lines.append(f"- intent: {payload.get('intent')} ({payload.get('route_label')})")
+    briefing = payload.get("start_briefing") or {}
+    current_reason = briefing.get("current_reason_ref") or "none"
+    current_branch = briefing.get("current_branch") or "none"
+    lines.append(
+        f"- briefing: reason=`{current_reason}` mode=`{briefing.get('current_mode') or 'none'}` "
+        f"branch=`{current_branch}` recent_steps=`{len(briefing.get('recent_steps') or [])}` "
+        f"recent_actions=`{len(briefing.get('recent_actions') or [])}`"
+    )
+    pressure = payload.get("reason_pressure") or {}
+    if pressure:
+        reasons = "; ".join(str(item) for item in (pressure.get("reasons") or [])[:2])
+        lines.append(
+            f"- reason-pressure: {pressure.get('level')} mode=`{pressure.get('recommended_mode')}` "
+            f"next=`{pressure.get('recommended_tool')}` {reasons}"
+        )
 
     forced = payload.get("forced_first") or []
     if forced:
@@ -267,6 +289,7 @@ def next_step_text_lines(payload: dict, icon: str, detail: str = "compact") -> l
             [
                 f"- controls: restrictions={payload.get('restriction_count')} guidelines={payload.get('guideline_count')}",
                 f"- task text: {concise(payload.get('task', ''), 180) or 'none'}",
+                "- briefing-checks: " + " | ".join(str(item) for item in briefing.get("checks", [])),
                 "- stop: " + " | ".join(str(item) for item in graph.get("stop_conditions", [])),
                 f"- note: {payload.get('note')}",
             ]
@@ -289,7 +312,13 @@ def next_step_inline(payload: dict) -> str:
         if isinstance(branch, dict)
     )
     graph_part = f" | graph={compact_graph}" if compact_graph else ""
+    pressure = payload.get("reason_pressure") or {}
+    pressure_part = (
+        f" | reason_pressure={pressure.get('level')}:{pressure.get('recommended_tool')}"
+        if pressure
+        else ""
+    )
     return (
         f"TEP route: intent={payload.get('intent')} | fresh={payload.get('hydration_fresh')} "
-        f"| freedom={payload.get('allowed_freedom')} | next={route}{graph_part}"
+        f"| freedom={payload.get('allowed_freedom')} | next={route}{graph_part}{pressure_part}"
     )

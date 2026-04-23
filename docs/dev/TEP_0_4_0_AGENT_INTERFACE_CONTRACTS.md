@@ -78,6 +78,20 @@ Required output:
       {"if": "needs protected action", "then": "reason-step -> grant"}
     ]
   },
+  "start_briefing": {
+    "briefing_is_proof": false,
+    "current_reason_ref": "REASON-*|",
+    "current_branch": "main|",
+    "recent_steps": [],
+    "recent_actions": [],
+    "checks": []
+  },
+  "reason_pressure": {
+    "pressure_is_proof": false,
+    "level": "none|low|medium|high|blocked",
+    "recommended_tool": "lookup|reason_step|reason-current",
+    "recommended_mode": "planning|edit|test|final|..."
+  },
   "required_next": ["lookup"],
   "blocked": false,
   "repair": []
@@ -92,6 +106,9 @@ Rules:
   instead of silently attaching it.
 - If the selected `WCTX-*` is owned by a different agent identity, return a
   fork/adopt repair route instead of using it as current focus.
+- `start_briefing` and `reason_pressure` are navigation/control metadata that
+  help the agent check recent actions, branches, and whether to create, extend,
+  or fork `REASON-*` before substantial work.
 
 ### `lookup`
 
@@ -137,6 +154,8 @@ Required output:
     "map_session_ref": "WCTX-*#map-session",
     "cells": []
   },
+  "start_briefing": {"briefing_is_proof": false},
+  "reason_pressure": {"pressure_is_proof": false},
   "next_allowed_tools": ["record_detail", "linked_records", "augment_chain"],
   "route_token": "ROUTE-*",
   "repair": []
@@ -155,6 +174,8 @@ Rules:
 - Resolved/stale claims are fallback unless regression suspicion is detected.
 - If a current `REASON-*` exists, lookup defaults to chain-extension mode and
   proposes nodes not already used in the current branch.
+- Lookup returns `start_briefing` and `reason_pressure` so the agent can decide
+  whether to use the returned `chain_starter` immediately for `reason_step`.
 - Raw record paths should not be returned for normal agent work.
 - Drill-down tools should require a `route_token`, `lookup_ref`, or
   `map_session_ref` so the runtime can verify that the agent followed the
@@ -394,6 +415,10 @@ Rules:
 ## 6. REASON And GRANT Contract
 
 `REASON-*` is the task-local ledger of justified progression.
+Agents should treat it as their current task cursor, not just as authorization
+paperwork. `next_step` and `lookup` should make a fresh or extended REASON the
+shortest route when the current task has no reason step, the branch is stale,
+or a lookup `chain_starter` is ready.
 
 The agent appends a reason step when it wants to plan, request permission, take
 protected action, or finalize:

@@ -357,6 +357,19 @@ Direct raw record reads are allowed only for:
     "map_navigation_is_proof": false,
     "cells": []
   },
+  "start_briefing": {
+    "briefing_is_proof": false,
+    "current_reason_ref": "optional REASON-*",
+    "recent_steps": [],
+    "recent_actions": [],
+    "checks": []
+  },
+  "reason_pressure": {
+    "pressure_is_proof": false,
+    "level": "none|low|medium|high|blocked",
+    "recommended_tool": "lookup|reason_step|reason-current",
+    "recommended_mode": "planning|edit|test|final|..."
+  },
   "telemetry": {
     "event_ref": "TEL-*|null",
     "raw_records_returned": 0
@@ -411,6 +424,8 @@ If `current_reason_ref` exists, lookup must:
   hypotheses
 - if no new candidate exists, return fallback branches:
   `fork_reason`, `record_hypothesis`, `ask_open_question`, `retrospective`
+- include `start_briefing` and `reason_pressure` so the agent checks recent
+  actions/runs and branches before choosing whether to extend or fork REASON
 
 This prevents reusable-permit behavior.
 
@@ -602,6 +617,10 @@ Rules:
 
 - append-only JSONL ledger at `runtime/reasoning/agents/AGENT-*/reasons.jsonl`
 - direct file writes blocked by hooks
+- agents should treat the latest valid `REASON-*` as the current task cursor;
+  `next-step` and `lookup` must make create/extend/fork REASON the shortest
+  route when the ledger is empty, stale for the intent, or a chain starter is
+  ready
 - `justification_valid` and `decision_chain_valid` mean the public chain
   validated for the requested mode; they do not prove globally correct private
   reasoning

@@ -2349,6 +2349,9 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert "record-detail" in lookup_facts["evidence_profile"]["drill_down_tools"]
     assert lookup_facts["output_contract"]["if_new_support_found"].startswith("use record-support/record-evidence")
     assert lookup_facts["route_graph"]["entrypoint"] == "lookup"
+    assert lookup_facts["start_briefing"]["briefing_is_proof"] is False
+    assert lookup_facts["reason_pressure"]["pressure_is_proof"] is False
+    assert lookup_facts["reason_pressure"]["recommended_mode"] == "curiosity"
     assert lookup_facts["next_allowed_commands"] == lookup_facts["route"]
     assert lookup_facts["map_navigation"]["map_navigation_is_proof"] is False
     assert lookup_facts["map_navigation"]["cells"][0]["ref"] == map_record_id
@@ -2370,6 +2373,8 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert any(command.startswith("validate-decision --mode curiosity") for command in chain_starter["next_commands"])
     lookup_text = run_cli(context, "lookup", "--query", "Facility Program relationship", "--reason", "curiosity", "--kind", "facts").stdout
     assert "## MAP Navigation" in lookup_text
+    assert "## Start Briefing" in lookup_text
+    assert "reason-pressure" in lookup_text
     assert "## Chain Starter" in lookup_text
     assert "validate-decision --mode curiosity" in lookup_text
     lookup_code = json.loads(
@@ -5793,6 +5798,12 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
     assert first["decision_valid"] is True
     assert first["signed_chain"]["nodes"][0]["ref"] == claim_id
 
+    test_decision = json.loads(
+        run_cli(context, "validate-decision", "--mode", "test", "--chain", str(chain), "--format", "json").stdout
+    )
+    assert test_decision["decision_chain_valid"] is True
+    assert "test" in test_decision["valid_for"]
+
     invalid_decision = run_cli(
         context,
         "reason-step",
@@ -6841,6 +6852,8 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     assert next_step_payload["intent"] == "edit"
     assert next_step_payload["route_graph"]["graph_version"] == 1
     assert next_step_payload["api_contract"]["normal_entrypoint"] == "lookup"
+    assert next_step_payload["start_briefing"]["briefing_is_proof"] is False
+    assert next_step_payload["reason_pressure"]["pressure_is_proof"] is False
     assert next_step_payload["route_steps"][0].startswith("validate-task-decomposition ")
     assert any(step.startswith("lookup ") for step in next_step_payload["route_steps"])
     assert {"if": "proof gap", "then": "build/validate evidence chain"} in next_step_payload["route_graph"]["branches"]
