@@ -361,6 +361,10 @@ Direct raw record reads are allowed only for:
   "start_briefing": {
     "briefing_is_proof": false,
     "current_step_ref": "optional STEP-*",
+    "permission_snapshot": {
+      "snapshot_is_authorization": false,
+      "always_allowed": ["next_step", "lookup"]
+    },
     "recent_steps": [],
     "recent_actions": [],
     "checks": []

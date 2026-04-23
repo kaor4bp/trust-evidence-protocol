@@ -217,6 +217,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
             "proof_rule": "Navigation output is not proof; cite canonical records with quotes before decisions.",
             "chain_rule": "Before STEP/GRANT/final, advance through connected CLM records; relation CLM records are the semantic edges.",
             "reason_rule": "Treat STEP-* as the agent's task/WCTX cursor: start by checking the briefing, then extend or fork the ledger when intent, evidence, tests, or direction change.",
+            "rights_rule": "Briefing includes a non-authoritative rights snapshot; lookup/next_step are always allowed, while protected actions still require runtime grant validation at use time.",
             "grant_rule": "Mutating protected actions in evidence-authorized or implementation-choice require a fresh one-shot GRANT-* bound to current workspace/project/task/fingerprint.",
             "write_rule": "Use record-support/record-evidence so FILE/RUN/SRC/CLM links are built mechanically; low-level record-source/record-claim are for plugin-dev or migration.",
             "task_rule": "Mutating work belongs on a valid atomic leaf TASK-*; parent tasks are orchestration only.",
@@ -250,6 +251,15 @@ def next_step_text_lines(payload: dict, icon: str, detail: str = "compact") -> l
         f"- briefing: step=`{current_step}` mode=`{briefing.get('current_mode') or 'none'}` "
         f"branch=`{current_branch}` recent_steps=`{len(briefing.get('recent_steps') or [])}` "
         f"recent_actions=`{len(briefing.get('recent_actions') or [])}`"
+    )
+    permission_snapshot = briefing.get("permission_snapshot") or {}
+    always_allowed = ", ".join(str(item) for item in (permission_snapshot.get("always_allowed") or [])[:4])
+    current_grants = permission_snapshot.get("current_grants") or []
+    active_permissions = permission_snapshot.get("active_permission_refs") or []
+    agent_ref = permission_snapshot.get("agent_identity_ref") or "none"
+    lines.append(
+        f"- rights: always=`{always_allowed or 'none'}` grants=`{len(current_grants)}` "
+        f"permissions=`{len(active_permissions)}` agent=`{agent_ref}`"
     )
     pressure = payload.get("reason_pressure") or {}
     if pressure:
@@ -290,6 +300,14 @@ def next_step_text_lines(payload: dict, icon: str, detail: str = "compact") -> l
                 f"- controls: restrictions={payload.get('restriction_count')} guidelines={payload.get('guideline_count')}",
                 f"- task text: {concise(payload.get('task', ''), 180) or 'none'}",
                 "- briefing-checks: " + " | ".join(str(item) for item in briefing.get("checks", [])),
+                "- rights-detail: "
+                + " | ".join(
+                    [
+                        str(permission_snapshot.get("check_at_use") or "runtime authorization is authoritative"),
+                        "default-denied="
+                        + ", ".join(str(item) for item in (permission_snapshot.get("default_denied") or [])[:3]),
+                    ]
+                ),
                 "- stop: " + " | ".join(str(item) for item in graph.get("stop_conditions", [])),
                 f"- note: {payload.get('note')}",
             ]

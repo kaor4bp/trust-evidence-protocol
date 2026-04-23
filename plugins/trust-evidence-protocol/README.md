@@ -153,8 +153,10 @@ It is not truth storage, but protected actions use reviewed `STEP-*` access gran
 Agents should treat the current `STEP-*` as their task cursor, not only as a
 permission prelude. `next-step` and `lookup` surface `start_briefing` and
 `reason_pressure` so the agent sees the current branch, recent reasoning steps,
-recent actions/runs, and the cheapest path to extend or fork the ledger before
-substantial work.
+recent actions/runs, the current rights snapshot, and the cheapest path to
+extend or fork the ledger before substantial work. The rights snapshot is
+navigation-only: `next_step` and `lookup` are always allowed entrypoints, but
+protected actions must still pass runtime grant validation at use time.
 Direct writes to the ledger or seal are blocked by hooks and detected by ledger validation.
 Same-mode continuation cannot mechanically duplicate the direct parent claim; advance through an explicit relation `CLM-*` or fork a named alternative branch.
 Final answers for an active task require a reviewed `STEP-* mode=final`.

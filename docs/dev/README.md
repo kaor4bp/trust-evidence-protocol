@@ -25,6 +25,7 @@ Move stable data contracts to `docs/reference/`. Move exploratory material to
 - [TEP 0.4.5 Release Notes](TEP_0_4_5_RELEASE_NOTES.md)
 - [TEP 0.4.6 Release Notes](TEP_0_4_6_RELEASE_NOTES.md)
 - [TEP 0.4.7 Release Notes](TEP_0_4_7_RELEASE_NOTES.md)
+- [TEP 0.4.8 Release Notes](TEP_0_4_8_RELEASE_NOTES.md)
 - [TEP Map Graph v1](TEP_MAP_GRAPH_V1.md)
 - [TEP Core Rewrite Working Context](TEP_CORE_REWRITE_CONTEXT.md)
 - [TEP Core Baseline](TEP_CORE_BASELINE.md)

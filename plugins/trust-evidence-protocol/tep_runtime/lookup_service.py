@@ -762,6 +762,18 @@ def lookup_text_lines(payload: dict) -> list[str]:
         f"branch=`{briefing.get('current_branch') or 'none'}` recent_steps=`{len(briefing.get('recent_steps') or [])}` "
         f"recent_actions=`{len(briefing.get('recent_actions') or [])}` proof=`false`"
     )
+    permission_snapshot = briefing.get("permission_snapshot") or {}
+    always_allowed = ", ".join(str(item) for item in (permission_snapshot.get("always_allowed") or [])[:4])
+    current_grants = permission_snapshot.get("current_grants") or []
+    active_permissions = permission_snapshot.get("active_permission_refs") or []
+    agent_ref = permission_snapshot.get("agent_identity_ref") or "none"
+    lines.append(
+        f"- rights: always=`{always_allowed or 'none'}` grants=`{len(current_grants)}` "
+        f"permissions=`{len(active_permissions)}` agent=`{agent_ref}`"
+    )
+    check_at_use = str(permission_snapshot.get("check_at_use") or "").strip()
+    if check_at_use:
+        lines.append(f"- rights-note: {check_at_use}")
     for check in (briefing.get("checks") or [])[:3]:
         lines.append(f"- check: {check}")
     pressure = payload.get("reason_pressure") or {}

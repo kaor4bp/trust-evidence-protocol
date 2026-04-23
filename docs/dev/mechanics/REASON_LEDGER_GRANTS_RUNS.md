@@ -41,8 +41,11 @@ progression, but it cannot verify that the agent chose the globally best
 reasoning path.
 `next-step` and `lookup` expose `start_briefing` and `reason_pressure` to make
 that pressure visible before work starts: agents see the current branch, recent
-reason steps, recent actions/runs, and whether the next cheap move is lookup or
-`reason_step`.
+reason steps, recent actions/runs, a compact rights snapshot, and whether the
+next cheap move is lookup or `reason_step`.
+The rights snapshot is advisory only. It must always show `next_step` and
+`lookup` as allowed entrypoints, but protected actions still validate against
+the current runtime grant state at use time.
 
 ## Planning And Final Gates
 

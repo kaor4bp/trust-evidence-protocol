@@ -1262,6 +1262,22 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
             "project_refs": [project_id],
         },
     )
+    write_json_file(
+        root / "records" / "permission" / "PRM-20260423-brief1111.json",
+        {
+            "id": "PRM-20260423-brief1111",
+            "record_type": "permission",
+            "status": "active",
+            "scope": "tep-core",
+            "applies_to": "task",
+            "task_refs": [task_id],
+            "project_refs": [project_id],
+            "workspace_refs": [workspace_id],
+            "granted_by": "user",
+            "grants": ["bounded-edit"],
+            "note": "Allow bounded edit for action graph work.",
+        },
+    )
     write_settings(
         root,
         allowed_freedom="proof-only",
@@ -1280,6 +1296,8 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     assert payload["api_contract"]["normal_entrypoint"] == "lookup"
     assert payload["start_briefing"]["briefing_is_proof"] is False
     assert payload["start_briefing"]["current_step_ref"] == ""
+    assert payload["start_briefing"]["permission_snapshot"]["always_allowed"] == ["next_step", "lookup"]
+    assert payload["start_briefing"]["permission_snapshot"]["active_permission_refs"][0]["id"] == "PRM-20260423-brief1111"
     assert payload["reason_pressure"]["pressure_is_proof"] is False
     assert payload["reason_pressure"]["level"] == "high"
     assert payload["reason_pressure"]["recommended_tool"] == "lookup"
@@ -1292,6 +1310,7 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     compact_lines = next_step_text_lines(payload, "TEP", detail="compact")
     assert any(line.startswith("- graph: ") for line in compact_lines)
     assert any(line.startswith("- briefing: ") for line in compact_lines)
+    assert any(line.startswith("- rights: always=`next_step, lookup`") for line in compact_lines)
     assert any(line.startswith("- reason-pressure: high") for line in compact_lines)
     assert any("proof gap=>record support and relation CLM" in line for line in compact_lines)
     assert any("task-decomposition: status=needs-decomposition accepted=False" in line for line in compact_lines)

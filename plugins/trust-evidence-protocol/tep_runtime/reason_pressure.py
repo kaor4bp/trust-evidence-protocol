@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .reason_ledger import latest_reason_step, validate_reason_ledger
-from .scopes import current_task_ref
+from .hydration import compute_context_fingerprint
+from .reason_ledger import current_reasoning_agent_ref, grant_use_count, latest_reason_step, validate_reason_ledger
+from .retrieval import active_permissions_for
+from .scopes import current_project_ref, current_task_ref, current_workspace_ref
 
 
 INTENT_REASON_MODE = {
@@ -57,6 +60,103 @@ def _short_record(record: dict[str, Any]) -> dict[str, str]:
             or ""
         ).strip()[:240],
         "time": _record_time(record),
+    }
+
+
+def _parse_time(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.astimezone()
+    return parsed
+
+
+def _permission_label(permission: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(permission.get("id", "")).strip(),
+        "status": str(permission.get("status", "")).strip(),
+        "scope": str(permission.get("scope", "")).strip(),
+        "applies_to": str(permission.get("applies_to", "")).strip(),
+        "grants": [str(item).strip() for item in permission.get("grants", []) if str(item).strip()][:6],
+        "summary": str(permission.get("summary") or permission.get("title") or permission.get("note") or "").strip()[:240],
+    }
+
+
+def _grant_is_scope_current(grant: dict[str, Any], *, workspace_ref: str, project_ref: str, task_ref: str, fingerprint: str) -> bool:
+    return (
+        str(grant.get("workspace_ref", "")).strip() == workspace_ref
+        and str(grant.get("project_ref", "")).strip() == project_ref
+        and str(grant.get("task_ref", "")).strip() == task_ref
+        and str(grant.get("context_fingerprint", "")).strip() == fingerprint
+    )
+
+
+def _grant_is_time_current(grant: dict[str, Any]) -> bool:
+    expires_at = _parse_time(str(grant.get("expires_at", "")).strip())
+    return expires_at is not None and expires_at >= datetime.now().astimezone()
+
+
+def _current_grant_label(root: Path, grant: dict[str, Any]) -> dict[str, Any]:
+    grant_ref = str(grant.get("id", "")).strip()
+    max_runs = int(grant.get("max_runs", grant.get("max_uses", 1)) or 1)
+    use_count = grant_use_count(root, grant_ref)
+    return {
+        "id": grant_ref,
+        "mode": str(grant.get("mode", "")).strip(),
+        "action_kind": str(grant.get("action_kind", "")).strip() or "*",
+        "grant_type": str(grant.get("grant_type", "")).strip() or "action_kind",
+        "reason_ref": str(grant.get("reason_ref", "")).strip(),
+        "claim_ref": str(grant.get("claim_ref", "")).strip(),
+        "relation_claim_ref": str(grant.get("relation_claim_ref", "")).strip(),
+        "command_bound": bool(str(grant.get("command_sha256", "")).strip()),
+        "expires_at": str(grant.get("expires_at", "")).strip(),
+        "remaining_runs": max(0, max_runs - use_count) if max_runs > 0 else -1,
+    }
+
+
+def build_permission_snapshot(root: Path, records: dict[str, dict], entries: list[dict[str, Any]], *, limit: int = 5) -> dict[str, Any]:
+    """Return a compact, non-authoritative summary of currently visible rights."""
+
+    workspace_ref = current_workspace_ref(root)
+    project_ref = current_project_ref(root)
+    task_ref = current_task_ref(root)
+    fingerprint = compute_context_fingerprint(root)
+    agent_ref = current_reasoning_agent_ref(root, create=False)
+    active_permissions = active_permissions_for(records, set(), project_ref or None, task_ref or None, limit)
+    grants = [
+        entry
+        for entry in entries
+        if str(entry.get("entry_type", "")).strip() == "grant"
+        and str(entry.get("status", "")).strip() == "active"
+        and (not agent_ref or str(entry.get("agent_identity_ref", "")).strip() == agent_ref)
+        and _grant_is_scope_current(
+            entry,
+            workspace_ref=workspace_ref,
+            project_ref=project_ref,
+            task_ref=task_ref,
+            fingerprint=fingerprint,
+        )
+        and _grant_is_time_current(entry)
+    ]
+    current_grants = [
+        label
+        for label in (_current_grant_label(root, grant) for grant in reversed(grants))
+        if int(label.get("remaining_runs", 0)) != 0
+    ][:limit]
+    return {
+        "snapshot_is_authorization": False,
+        "always_allowed": ["next_step", "lookup"],
+        "agent_identity_ref": agent_ref,
+        "active_permission_refs": [_permission_label(permission) for permission in active_permissions],
+        "current_grants": current_grants,
+        "default_denied": [
+            "protected writes without reviewed STEP-* and GRANT-*",
+            "mutating bash without command-bound GRANT-*",
+            "autonomous done without fresh final STEP-* and GRANT-*",
+        ],
+        "check_at_use": "Use reason-review/reason-check-grant or the runtime hook for authoritative authorization.",
     }
 
 
@@ -125,6 +225,7 @@ def build_start_briefing(root: Path, records: dict[str, dict], *, intent: str = 
         ],
         "branches": sorted(branches.values(), key=lambda item: str(item.get("branch", ""))),
         "recent_actions": recent_actions,
+        "permission_snapshot": build_permission_snapshot(root, records, entries, limit=limit),
         "checks": checks,
     }
 

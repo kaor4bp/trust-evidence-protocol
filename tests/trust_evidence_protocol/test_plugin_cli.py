@@ -179,6 +179,10 @@ def current_wctx_ref(context: Path, query: str = "current working context") -> s
     return recorded_id(run_cli(context, *args), "working_context")
 
 
+def current_task_setting(context: Path) -> str:
+    return str(json.loads((context / "settings.json").read_text(encoding="utf-8")).get("current_task_ref") or "")
+
+
 def append_claim_step(
     context: Path,
     *,
@@ -2440,6 +2444,18 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
         run_cli(context, "map-refresh", "--volume", "compact", "--scope", "all", "--limit", "3", "--dry-run", "--format", "json").stdout
     )
     assert dry_run["applied"] is False
+    lookup_text = run_cli(
+        context,
+        "lookup",
+        "--query",
+        "Facility Program relationship",
+        "--reason",
+        "curiosity",
+        "--kind",
+        "facts",
+    ).stdout
+    assert "TEP Lookup Route" in lookup_text
+    assert "- rights: always=`next_step, lookup`" in lookup_text
     lookup_facts = json.loads(
         run_cli(context, "lookup", "--query", "Facility Program relationship", "--reason", "curiosity", "--kind", "facts", "--format", "json").stdout
     )
@@ -2466,6 +2482,7 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert lookup_facts["output_contract"]["if_new_support_found"].startswith("use record-support/record-evidence")
     assert lookup_facts["route_graph"]["entrypoint"] == "lookup"
     assert lookup_facts["start_briefing"]["briefing_is_proof"] is False
+    assert lookup_facts["start_briefing"]["permission_snapshot"]["always_allowed"] == ["next_step", "lookup"]
     assert lookup_facts["reason_pressure"]["pressure_is_proof"] is False
     assert lookup_facts["reason_pressure"]["recommended_mode"] == "curiosity"
     assert lookup_facts["next_allowed_commands"] == lookup_facts["route"]
@@ -7136,6 +7153,57 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
         "working flow",
     )
     flow_id = only_record_id(context, "flow")
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "demo.bridge",
+            "--title",
+            "Debug bridge check-r1 retry",
+            "--type",
+            "debugging",
+            "--related-claim",
+            claim_id,
+            "--note",
+            "task for next-step rights briefing",
+        ),
+        "task",
+    )
+    run_cli(
+        context,
+        "confirm-atomic-task",
+        "--task",
+        task_id,
+        "--deliverable",
+        "Bridge retry debugging route is captured.",
+        "--done",
+        "The route and permissions are visible in next-step.",
+        "--verify",
+        "Targeted CLI checks pass.",
+        "--boundary",
+        "Only bridge retry debugging scope.",
+        "--blocker-policy",
+        "Stop and record an open question when route evidence is missing.",
+    )
+    run_cli(
+        context,
+        "record-permission",
+        "--scope",
+        "demo.bridge",
+        "--applies-to",
+        "task",
+        "--task",
+        task_id,
+        "--granted-by",
+        "user",
+        "--grant",
+        "bounded-edit",
+        "--note",
+        "explicit bounded edit approval for bridge debugging",
+    )
+    permission_id = only_record_id(context, "permission")
+    grant_payload = append_claim_step_grant(context, claim_ref=claim_id, mode="edit", action_kind="write")
 
     brief = run_cli(context, "brief-context", "--task", "debug bridge check-r1 retry").stdout
     assert "Context Brief" in brief
@@ -7149,6 +7217,7 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     assert "TEP Next Step" in next_step
     assert "intent: edit" in next_step
     assert "hydrate-context" in next_step
+    assert "- rights: always=`next_step, lookup`" in next_step
     next_step_payload = json.loads(
         run_cli(context, "next-step", "--intent", "edit", "--task", "debug bridge check-r1 retry", "--format", "json").stdout
     )
@@ -7156,6 +7225,9 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     assert next_step_payload["route_graph"]["graph_version"] == 1
     assert next_step_payload["api_contract"]["normal_entrypoint"] == "lookup"
     assert next_step_payload["start_briefing"]["briefing_is_proof"] is False
+    assert next_step_payload["start_briefing"]["permission_snapshot"]["always_allowed"] == ["next_step", "lookup"]
+    assert next_step_payload["start_briefing"]["permission_snapshot"]["active_permission_refs"][0]["id"] == permission_id
+    assert next_step_payload["start_briefing"]["permission_snapshot"]["current_grants"][0]["id"] == grant_payload["grant"]["id"]
     assert next_step_payload["reason_pressure"]["pressure_is_proof"] is False
     assert next_step_payload["route_steps"][0].startswith("validate-task-decomposition ")
     assert any(step.startswith("lookup ") for step in next_step_payload["route_steps"])

@@ -84,6 +84,12 @@ Required output:
     "briefing_is_proof": false,
     "current_step_ref": "STEP-*|",
     "current_branch": "main|",
+    "permission_snapshot": {
+      "snapshot_is_authorization": false,
+      "always_allowed": ["next_step", "lookup"],
+      "current_grants": [],
+      "active_permission_refs": []
+    },
     "recent_steps": [],
     "recent_actions": [],
     "checks": []
@@ -111,6 +117,10 @@ Rules:
 - `start_briefing` and `reason_pressure` are navigation/control metadata that
   help the agent check recent actions, branches, and whether to create, extend,
   or fork `STEP-*` before substantial work.
+- `start_briefing.permission_snapshot` is advisory only. It should expose the
+  currently visible rights, always include `next_step` and `lookup`, and remind
+  the agent that protected actions still validate against runtime grant state at
+  use time.
 
 ### `lookup`
 
