@@ -142,6 +142,19 @@ def test_schema_migration_plan_is_read_only_and_each_change_has_module(tmp_path:
     assert "record_version" not in stored
 
 
+def test_schema_migration_reports_unknown_selected_migration(tmp_path: Path) -> None:
+    context = tmp_path / ".tep_context"
+    (context / "records").mkdir(parents=True)
+
+    report = build_schema_migration_report(context, migration_ids=["missing-migration"]).to_payload()
+
+    assert report["planned_actions"] == []
+    assert report["applied"] is False
+    assert report["unresolved"] == [
+        {"path": "", "reason": "unknown_schema_migration", "migration_id": "missing-migration"}
+    ]
+
+
 def test_schema_migration_apply_rewrites_only_after_validation(tmp_path: Path) -> None:
     context = tmp_path / ".tep_context"
     map_file = context / "records" / "map" / "MAP-20260423-demo.json"

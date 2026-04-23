@@ -71,6 +71,8 @@ Progress:
 - Added schema migration service/MCP tools:
   `schema_migration_plan` is read-only, `schema_migration_apply` writes only
   after all planned record rewrites pass post-migration validation.
+- Added dev/CI CLI mirror as `schema-migration plan|apply`; this is not a
+  normal agent front door.
 
 ## Milestone 3: Core Validators
 

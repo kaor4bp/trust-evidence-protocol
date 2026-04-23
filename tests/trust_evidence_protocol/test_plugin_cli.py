@@ -1427,6 +1427,7 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert "working-context create|fork|show|close|check-drift" in commands_help
     assert "curator-pool build --workspace WSP-*" in commands_help
     assert "workspace-admission check --repo path [--format json]" in commands_help
+    assert "schema-migration plan [--migration ID] [--format json]" in commands_help
 
     configured = run_cli(
         context,
@@ -1614,6 +1615,71 @@ def test_runtime_help_budget_task_modes_and_precedents(tmp_path: Path) -> None:
     assert f"Switched current task to {second_id}" in switched
     assert load_record(context, "task", third_id)["status"] == "paused"
     assert load_record(context, "task", second_id)["status"] == "active"
+
+
+def test_schema_migration_cli_plans_and_applies_record_shape_changes(tmp_path: Path) -> None:
+    context = tmp_path / ".tep_context"
+    map_file = context / "records" / "map" / "MAP-20260423-demo.json"
+    map_file.parent.mkdir(parents=True, exist_ok=True)
+    map_file.write_text(
+        json.dumps(
+            {
+                "id": "MAP-20260423-demo",
+                "record_type": "map",
+                "schema_version": "0.4",
+                "scope": "pytest.map",
+                "note": "Legacy map record requiring schema migration.",
+                "level": "L1",
+                "map_kind": "evidence_patch",
+                "status": "active",
+                "summary": "Legacy MAP shape.",
+                "scope_refs": {"workspace_refs": [], "project_refs": [], "task_refs": [], "wctx_refs": []},
+                "anchor_refs": ["CLM-20260423-demo"],
+                "derived_from_refs": [],
+                "source_set_fingerprint": "sha256:legacy-map",
+                "up_refs": [],
+                "down_refs": [],
+                "adjacent_map_refs": [],
+                "contradicts_map_refs": [],
+                "refines_map_refs": [],
+                "supersedes_refs": [],
+                "tension_refs": [],
+                "unknown_links": [],
+                "proof_routes": [
+                    {
+                        "route_kind": "claim_support",
+                        "route_refs": ["CLM-20260423-demo", "SRC-20260423-demo"],
+                        "required_drilldown": True,
+                    }
+                ],
+                "signals": {},
+                "map_is_proof": False,
+                "generated_by": "map_refresh",
+                "generated_at": "2026-04-23T00:00:00+03:00",
+                "updated_at": "2026-04-23T00:00:00+03:00",
+                "stale_policy": "source_set_changed",
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    planned = run_cli(context, "schema-migration", "plan", "--format", "json")
+    plan = json.loads(planned.stdout)
+    assert plan["mode"] == "dry-run"
+    assert plan["applied"] is False
+    assert plan["planned_actions"][0]["migration_id"] == "20260423_map_record_v1"
+    assert "record_version" not in json.loads(map_file.read_text(encoding="utf-8"))
+
+    applied = run_cli(context, "schema-migration", "apply", "--format", "json")
+    report = json.loads(applied.stdout)
+    assert report["mode"] == "apply"
+    assert report["applied"] is True
+    stored = json.loads(map_file.read_text(encoding="utf-8"))
+    assert stored["contract_version"] == "0.4"
+    assert stored["record_version"] == 1
+    assert "schema_version" not in stored
 
 
 def test_configure_runtime_backend_presets_make_backend_sets_explicit(tmp_path: Path) -> None:

@@ -284,3 +284,27 @@ def build_schema_migration_report(
         unresolved=unresolved,
         applied=bool(apply and not unresolved),
     )
+
+
+def migration_report_text_lines(report: dict[str, Any]) -> list[str]:
+    mode = str(report.get("mode") or "dry-run")
+    is_schema_migration = report.get("source") == report.get("target")
+    title = "TEP 0.4 Schema Migration Report" if is_schema_migration else "TEP 0.4 Migration Report"
+    lines = [
+        title,
+        f"mode: {mode}",
+        f"source: {report['source']}",
+        f"target: {report['target']}",
+        f"preserved_refs: {len(report['preserved_refs'])}",
+        f"revoked_grants: {len(report['revoked_grants'])}",
+        f"planned_actions: {len(report['planned_actions'])}",
+        f"unresolved: {len(report['unresolved'])}",
+        f"applied: {str(bool(report.get('applied'))).lower()}",
+    ]
+    if report["unresolved"]:
+        lines.append("unresolved_items:")
+        for item in report["unresolved"][:8]:
+            reason = item.get("reason", "unknown")
+            path = item.get("path", "")
+            lines.append(f"- {reason}: {path}".rstrip())
+    return lines

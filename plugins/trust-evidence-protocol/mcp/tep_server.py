@@ -38,7 +38,11 @@ from tep_runtime.context_root import resolve_context_root  # noqa: E402
 from tep_runtime.evidence_service import record_evidence_service, record_evidence_text  # noqa: E402
 from tep_runtime.io import context_write_lock  # noqa: E402
 from tep_runtime.lookup_service import build_lookup_service_payload, lookup_text_lines  # noqa: E402
-from tep_runtime.migrations import build_migration_dry_run_report, build_schema_migration_report  # noqa: E402
+from tep_runtime.migrations import (  # noqa: E402
+    build_migration_dry_run_report,
+    build_schema_migration_report,
+    migration_report_text_lines,
+)
 from tep_runtime.reason_service import (  # noqa: E402
     reason_review_service,
     reason_review_text,
@@ -1551,27 +1555,7 @@ def tool_cleanup_archives(args: JsonObject) -> tuple[bool, str]:
 
 
 def migration_report_text(report: JsonObject) -> str:
-    mode = str(report.get("mode") or "dry-run")
-    is_schema_migration = report.get("source") == report.get("target")
-    title = "TEP 0.4 Schema Migration Report" if is_schema_migration else "TEP 0.4 Migration Report"
-    lines = [
-        title,
-        f"mode: {mode}",
-        f"source: {report['source']}",
-        f"target: {report['target']}",
-        f"preserved_refs: {len(report['preserved_refs'])}",
-        f"revoked_grants: {len(report['revoked_grants'])}",
-        f"planned_actions: {len(report['planned_actions'])}",
-        f"unresolved: {len(report['unresolved'])}",
-        f"applied: {str(bool(report.get('applied'))).lower()}",
-    ]
-    if report["unresolved"]:
-        lines.append("unresolved_items:")
-        for item in report["unresolved"][:8]:
-            reason = item.get("reason", "unknown")
-            path = item.get("path", "")
-            lines.append(f"- {reason}: {path}".rstrip())
-    return "\n".join(lines)
+    return "\n".join(migration_report_text_lines(report))
 
 
 def schema_migration_ids(args: JsonObject) -> list[str] | None:

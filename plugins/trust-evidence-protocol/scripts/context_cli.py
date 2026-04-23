@@ -366,6 +366,7 @@ from tep_runtime.cli_common import (
     validate_mutated_records,
 )
 from tep_runtime import lookup_service
+from tep_runtime.migrations import build_schema_migration_report, migration_report_text_lines
 from tep_runtime.code_index import (
     annotation_snapshot,
     code_entry_freshness,
@@ -1052,6 +1053,18 @@ def cmd_workspace_admission_check(root: Path, repo: Path, output_format: str) ->
     else:
         for line in workspace_admission_text_lines(payload):
             print(line)
+    return 0
+
+
+def cmd_schema_migration(root: Path, *, apply: bool, migration_ids: list[str], output_format: str) -> int:
+    report = build_schema_migration_report(root, apply=apply, migration_ids=migration_ids).to_payload()
+    if output_format == "json":
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        for line in migration_report_text_lines(report):
+            print(line)
+    if report["unresolved"]:
+        return 1
     return 0
 
 
@@ -3032,6 +3045,7 @@ def cmd_help(topic: str) -> int:
             "record-input ... | record-run --command ... | record-support --thought ... --kind file-line|command-output|user-confirmation | classify-input --input INP-* --derived-record REF",
             "curator-pool build --workspace WSP-* [--project PRJ-*] [--task TASK-*] --kind health|duplicates|conflicts|modeling|flow|staleness --query ... | curator-pool show --pool CURP-* [--format json]",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
+            "schema-migration plan [--migration ID] [--format json] | schema-migration apply [--migration ID] [--format json]",
             "start-task --type investigation --scope ... --title ... --note ...",
             "validate-task-decomposition --task TASK-* | confirm-atomic-task --task TASK-* ... | decompose-task --task TASK-* --subtask scope|title|deliverable|done|verify|boundary",
             "validate-plan-decomposition --plan PLN-* | confirm-atomic-plan --plan PLN-* | decompose-plan --plan PLN-* --subplan scope|title|step|success|claim1,claim2",
@@ -3061,6 +3075,7 @@ def cmd_help(topic: str) -> int:
             "PRM-*/RST-*/GLD-* authorize, constrain, or guide action but do not prove truth",
             "TASK-* captures execution focus and task_type for precedent review",
             "WCTX-* captures pinned operational context, assumptions, and focus; it is not proof",
+            "MAP-* captures durable cognitive map cells for navigation; it is not proof",
             "CLM.logic captures typed predicate atoms/rules as a machine-checkable claim projection",
             "PRP-*/PLN-*/DEBT-* preserve critique, intended work, and unresolved obligations",
             "topic_index/*.json is generated navigation/prefilter data only",
@@ -8375,6 +8390,23 @@ def parse_args() -> argparse.Namespace:
     cleanup_restore.add_argument("--dry-run", action="store_true")
     cleanup_restore.add_argument("--apply", action="store_true")
     cleanup_restore.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    schema_migration = subparsers.add_parser(
+        "schema-migration",
+        help="Plan/apply record schema migrations. Dev/migration command; normal agents should use MCP front doors.",
+    )
+    schema_migration_subparsers = schema_migration.add_subparsers(dest="schema_migration_command", required=True)
+    schema_migration_plan = schema_migration_subparsers.add_parser(
+        "plan",
+        help="Read-only plan for registered record schema migrations.",
+    )
+    schema_migration_plan.add_argument("--migration", dest="migration_ids", action="append", default=[])
+    schema_migration_plan.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    schema_migration_apply = schema_migration_subparsers.add_parser(
+        "apply",
+        help="Apply registered record schema migrations after clean post-migration validation.",
+    )
+    schema_migration_apply.add_argument("--migration", dest="migration_ids", action="append", default=[])
+    schema_migration_apply.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     topic_index = subparsers.add_parser(
         "topic-index",
         help="Build generated lexical topic navigation indexes over canonical records.",
@@ -9918,6 +9950,15 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 archive_ref=args.archive_ref,
                 dry_run=args.dry_run,
                 apply=args.apply,
+                output_format=args.output_format,
+            )
+        )
+    if args.command == "schema-migration":
+        raise SystemExit(
+            cmd_schema_migration(
+                root,
+                apply=args.schema_migration_command == "apply",
+                migration_ids=args.migration_ids,
                 output_format=args.output_format,
             )
         )

@@ -64,3 +64,16 @@ schema_migration_apply  # mutating, writes only after clean validation
 
 The tools return the standard 0.4 migration report shape. For schema
 migrations, `source` and `target` are the same context root.
+
+## CLI Surface
+
+CLI is dev/migration/CI-only:
+
+```text
+context_cli.py schema-migration plan [--migration MIGRATION-ID] [--format json]
+context_cli.py schema-migration apply [--migration MIGRATION-ID] [--format json]
+```
+
+`plan` exits non-zero when unresolved migration blockers exist. `apply` also
+exits non-zero and writes nothing unless the full post-migration validation
+passes.
