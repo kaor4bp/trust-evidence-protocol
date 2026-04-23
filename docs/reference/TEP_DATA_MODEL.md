@@ -630,9 +630,11 @@ A probe result is navigation metadata until backed by canonical records.
 
 ## Reason Authorization Ledger
 
-`runtime/reasoning/reasons.jsonl` is an append-only runtime ledger for justified
-agent reasoning. Protected actions are one consumer of that ledger, not the
-ledger's only purpose.
+`runtime/reasoning/agents/AGENT-*/reasons.jsonl` is an append-only runtime
+ledger for justified reasoning by one local agent identity. Protected actions
+are one consumer of that ledger, not the ledger's only purpose.
+`runtime/reasoning/reasons.jsonl` is legacy migration input only and is not
+written by the 0.4 runtime.
 
 Ledger entries are not canonical truth records. They are runtime control
 evidence:
@@ -644,8 +646,9 @@ evidence:
 
 The ledger is not a free-form record store. The append-only ledger validator
 accepts current `REASON-*` and `GRANT-*` entries, plus legacy `AUTH/USE` entries
-for old contexts. `REASON-*` chain snapshots may cite only supported evidence
-chain roles: `fact`, `observation`, `hypothesis`, `exploration_context`,
+for old contexts. Current entries must carry the same `agent_identity_ref` as
+their enclosing ledger path. `REASON-*` chain snapshots may cite only supported
+evidence chain roles: `fact`, `observation`, `hypothesis`, `exploration_context`,
 `permission`, `requested_permission`, `restriction`, `guideline`, `proposal`,
 `task`, `working_context`, `project`, `model`, `flow`, and `open_question`.
 Generated/backend/navigation ids such as `CIX-*`, `BCK-*`, `backend:*`, or

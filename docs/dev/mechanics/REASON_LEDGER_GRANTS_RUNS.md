@@ -2,16 +2,25 @@
 
 ## Responsibility
 
-This mechanic turns validated reasoning into an append-only task-local ledger
-and uses that ledger to authorize protected actions.
+This mechanic turns validated reasoning into an append-only task-local,
+agent-owned ledger and uses that ledger to authorize protected actions.
 
 ## Ledger Shape
 
-`REASON-*` records reasoning progression.
+`REASON-*` records reasoning progression under the local agent identity.
+The 0.4 runtime writes one ledger per agent:
+
+```text
+runtime/reasoning/agents/AGENT-*/reasons.jsonl
+runtime/reasoning/agents/AGENT-*/seal.json
+```
+
+The old shared `runtime/reasoning/reasons.jsonl` path is migration input only.
 
 Rules:
 
 - task-local
+- agent-owned; current entries carry the ledger `agent_identity_ref`
 - workspace/project/task bound
 - parented DAG
 - branch labels for alternatives

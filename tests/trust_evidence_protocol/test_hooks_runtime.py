@@ -2314,7 +2314,7 @@ def test_pre_tool_hook_blocks_direct_reason_ledger_writes(tmp_path: Path) -> Non
 
     blocked = hook_json(
         HOOK_DIR / "pre_tool_use_guard.py",
-        hook_payload(context, "echo '{}' >> .codex_context/runtime/reasoning/reasons.jsonl"),
+        hook_payload(context, f"echo '{{}}' >> {context.name}/runtime/reasoning/agents/AGENT-20260423-demo/reasons.jsonl"),
     )
     assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert "Direct TEP reasoning runtime writes are blocked" in blocked["hookSpecificOutput"]["permissionDecisionReason"]

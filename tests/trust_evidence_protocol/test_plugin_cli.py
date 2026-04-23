@@ -5651,6 +5651,14 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
     assert access_match, decision.stdout
     reason_id = reason_match.group(1)
     access_id = access_match.group(1)
+    agent_secret = json.loads((context / "runtime" / "agent_identity" / "local_agent_key.json").read_text(encoding="utf-8"))
+    agent_ref = agent_secret["agent_identity_ref"]
+    ledger = context / "runtime" / "reasoning" / "agents" / agent_ref / "reasons.jsonl"
+    assert ledger.exists()
+    assert not (context / "runtime" / "reasoning" / "reasons.jsonl").exists()
+    ledger_entries = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert ledger_entries
+    assert {entry["agent_identity_ref"] for entry in ledger_entries} == {agent_ref}
     current = run_cli(context, "reason-current")
     assert reason_id in current.stdout
     assert access_id in current.stdout
@@ -5685,7 +5693,6 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
     assert reused.returncode == 1
     assert "used" in reused.stdout or "no matching" in reused.stdout
 
-    ledger = context / "runtime" / "reasoning" / "reasons.jsonl"
     ledger.write_text(ledger.read_text(encoding="utf-8").replace("execute a reasoned action", "tampered action", 1), encoding="utf-8")
     tampered = run_cli(context, "reason-current", check=False)
     assert tampered.returncode == 1

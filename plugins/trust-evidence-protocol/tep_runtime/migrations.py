@@ -6,7 +6,7 @@ from typing import Any
 
 from .contracts import MigrationReport
 from .io import context_write_lock, parse_json_file, write_json_file
-from .paths import reasons_ledger_path
+from .paths import legacy_reasons_ledger_path
 from .schema_migrations import registered_schema_migrations
 from .schemas import validate_record
 
@@ -64,7 +64,7 @@ def collect_legacy_record_refs(root: Path) -> tuple[list[str], list[dict[str, An
 
 
 def collect_legacy_grant_refs(root: Path) -> tuple[list[str], list[dict[str, Any]]]:
-    ledger = reasons_ledger_path(root)
+    ledger = legacy_reasons_ledger_path(root)
     if not ledger.is_file():
         return [], []
 

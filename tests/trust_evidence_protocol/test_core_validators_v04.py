@@ -14,13 +14,15 @@ if plugin_root not in sys.path:
 
 from tep_runtime.core_validators import validate_active_focus, validate_core_graph  # noqa: E402
 from tep_runtime.agent_identity import sign_working_context_payload  # noqa: E402
-from tep_runtime.paths import reasoning_seal_path, reasons_ledger_path  # noqa: E402
+from tep_runtime.paths import legacy_reasons_ledger_path, reasoning_seal_path  # noqa: E402
 from tep_runtime.reason_ledger import (  # noqa: E402
     append_reason_entry,
     chain_payload_hash,
     command_hash,
+    current_reasons_ledger_path,
     normalize_cwd,
     validate_grant_run_lifecycle,
+    validate_reason_ledger,
 )
 from tep_runtime.state_validation import validate_records_state  # noqa: E402
 
@@ -333,6 +335,23 @@ def test_v04_active_focus_requires_active_compatible_records(tmp_path: Path) -> 
 def test_reason_ledger_state_validation_is_read_only_when_empty(tmp_path: Path) -> None:
     assert messages(validate_records_state(tmp_path, {})) == []
     assert not reasoning_seal_path(tmp_path).exists()
+    assert not (tmp_path / "runtime" / "reasoning" / "agents").exists()
+
+
+def test_reason_ledger_write_path_creates_per_agent_files(tmp_path: Path) -> None:
+    (tmp_path / "settings.json").write_text(
+        json.dumps({"reasoning": {"pow": {"enabled": False}}}),
+        encoding="utf-8",
+    )
+    validation = validate_reason_ledger(tmp_path)
+
+    assert validation["ok"]
+    ledger = current_reasons_ledger_path(tmp_path)
+    assert ledger is not None
+    assert ledger.exists()
+    assert ledger.parent.name.startswith("AGENT-")
+    assert (ledger.parent / "seal.json").exists()
+    assert not legacy_reasons_ledger_path(tmp_path).exists()
 
 
 def test_reason_ledger_state_validation_detects_tamper(tmp_path: Path) -> None:
@@ -357,9 +376,13 @@ def test_reason_ledger_state_validation_detects_tamper(tmp_path: Path) -> None:
         },
     )
     assert entry is not None, error
+    assert entry["agent_identity_ref"].startswith("AGENT-")
+    assert entry["agent_key_fingerprint"].startswith("sha256:")
+    assert not legacy_reasons_ledger_path(tmp_path).exists()
     assert messages(validate_records_state(tmp_path, {})) == []
 
-    ledger = reasons_ledger_path(tmp_path)
+    ledger = current_reasons_ledger_path(tmp_path)
+    assert ledger is not None
     ledger.write_text(
         ledger.read_text(encoding="utf-8").replace("ledger validation", "tampered validation", 1),
         encoding="utf-8",

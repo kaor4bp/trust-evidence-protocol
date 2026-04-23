@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -19,12 +20,35 @@ def reasoning_runtime_dir(root: Path) -> Path:
     return runtime_dir(root) / "reasoning"
 
 
-def reasons_ledger_path(root: Path) -> Path:
+def _safe_agent_ref(agent_ref: str) -> str:
+    value = str(agent_ref or "").strip()
+    if not value:
+        raise ValueError("agent_ref is required for an agent-scoped reasoning ledger path")
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", value)
+
+
+def agent_reasoning_runtime_dir(root: Path, agent_ref: str) -> Path:
+    return reasoning_runtime_dir(root) / "agents" / _safe_agent_ref(agent_ref)
+
+
+def legacy_reasons_ledger_path(root: Path) -> Path:
     return reasoning_runtime_dir(root) / "reasons.jsonl"
 
 
-def reasoning_seal_path(root: Path) -> Path:
+def legacy_reasoning_seal_path(root: Path) -> Path:
     return reasoning_runtime_dir(root) / "seal.json"
+
+
+def reasons_ledger_path(root: Path, agent_ref: str | None = None) -> Path:
+    if agent_ref:
+        return agent_reasoning_runtime_dir(root, agent_ref) / "reasons.jsonl"
+    return legacy_reasons_ledger_path(root)
+
+
+def reasoning_seal_path(root: Path, agent_ref: str | None = None) -> Path:
+    if agent_ref:
+        return agent_reasoning_runtime_dir(root, agent_ref) / "seal.json"
+    return legacy_reasoning_seal_path(root)
 
 
 def hypotheses_index_path(root: Path) -> Path:

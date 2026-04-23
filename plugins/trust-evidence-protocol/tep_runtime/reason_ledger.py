@@ -7,15 +7,23 @@ import hmac
 import json
 import secrets
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from .agent_identity import agent_key_fingerprint, load_local_agent_secret, load_or_create_local_agent_secret
 from .errors import ValidationError
 from .hydration import compute_context_fingerprint
 from .hypotheses import active_hypothesis_entry_by_claim
 from .io import write_json_file
-from .paths import reasoning_runtime_dir, reasoning_seal_path, reasons_ledger_path
+from .paths import (
+    legacy_reasoning_seal_path,
+    legacy_reasons_ledger_path,
+    reasoning_runtime_dir,
+    reasoning_seal_path,
+    reasons_ledger_path,
+)
 from .policy import is_mutating_action_kind
 from .records import load_records
 from .reasoning import decision_validation_payload
@@ -33,6 +41,15 @@ GRANT_ENTRY_TYPES = {"grant", "access_granted", "auth_granted"}
 LEGACY_ACCESS_ENTRY_TYPES = {"access_granted", "auth_granted"}
 USE_ENTRY_TYPES = {"access_used", "auth_reserved"}
 POW_ALGORITHM = "sha256-leading-zero-bits"
+
+
+@dataclass(frozen=True)
+class LedgerScope:
+    agent_ref: str
+    path: Path
+    seal_path: Path
+    secret: str
+    legacy: bool = False
 
 
 def _now() -> datetime:
@@ -72,7 +89,7 @@ def _entry_material(entry: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value
         for key, value in entry.items()
-        if key not in {"entry_hash", "ledger_hash", "seal"}
+        if key not in {"entry_hash", "ledger_hash", "seal"} and not str(key).startswith("_")
     }
 
 
@@ -84,7 +101,7 @@ def _pow_material(entry: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value
         for key, value in entry.items()
-        if key not in {"entry_hash", "ledger_hash", "seal", "pow"}
+        if key not in {"entry_hash", "ledger_hash", "seal", "pow"} and not str(key).startswith("_")
     }
 
 
@@ -190,17 +207,44 @@ def normalize_cwd(cwd: str | Path | None) -> str:
         return value
 
 
-def ensure_reasoning_secret(root: Path) -> str:
-    path = reasoning_seal_path(root)
-    secret = load_reasoning_secret(root)
-    if secret:
-        return secret
+def _current_agent_secret_payload(root: Path, *, create: bool) -> dict[str, Any]:
+    if create:
+        records, _ = load_records(root)
+        return load_or_create_local_agent_secret(root, records, _now().isoformat(timespec="seconds"))
+    return load_local_agent_secret(root)
+
+
+def _current_agent_metadata(root: Path, *, create: bool) -> dict[str, str]:
+    payload = _current_agent_secret_payload(root, create=create)
+    agent_ref = str(payload.get("agent_identity_ref", "")).strip()
+    secret = str(payload.get("secret", "")).strip()
+    if not agent_ref or not secret:
+        return {}
+    return {
+        "agent_identity_ref": agent_ref,
+        "agent_key_fingerprint": agent_key_fingerprint(secret),
+    }
+
+
+def _read_reasoning_secret_file(path: Path) -> str:
+    if not path.exists():
+        return ""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return str(payload.get("secret", "")).strip()
+
+
+def _write_reasoning_secret_file(path: Path, *, agent_ref: str) -> str:
     secret = secrets.token_hex(32)
-    payload = {
+    payload: dict[str, Any] = {
         "version": 1,
         "created_at": _now().isoformat(timespec="seconds"),
         "secret": secret,
     }
+    if agent_ref:
+        payload["agent_identity_ref"] = agent_ref
     path.parent.mkdir(parents=True, exist_ok=True)
     write_json_file(path, payload)
     try:
@@ -210,17 +254,40 @@ def ensure_reasoning_secret(root: Path) -> str:
     return secret
 
 
-def load_reasoning_secret(root: Path) -> str:
-    """Read the local ledger seal secret without creating it."""
+def current_reasoning_agent_ref(root: Path, *, create: bool = False) -> str:
+    return str(_current_agent_metadata(root, create=create).get("agent_identity_ref", "")).strip()
 
-    path = reasoning_seal_path(root)
-    if not path.exists():
+
+def current_reasons_ledger_path(root: Path, *, create_agent: bool = False) -> Path | None:
+    agent_ref = current_reasoning_agent_ref(root, create=create_agent)
+    if not agent_ref:
+        return None
+    return reasons_ledger_path(root, agent_ref)
+
+
+def ensure_reasoning_secret(root: Path, agent_ref: str | None = None) -> str:
+    if not agent_ref:
+        agent_ref = current_reasoning_agent_ref(root, create=True)
+    if not agent_ref:
         return ""
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    path = reasoning_seal_path(root, agent_ref)
+    secret = load_reasoning_secret(root, agent_ref)
+    if secret:
+        reasons_ledger_path(root, agent_ref).touch(exist_ok=True)
+        return secret
+    secret = _write_reasoning_secret_file(path, agent_ref=agent_ref)
+    reasons_ledger_path(root, agent_ref).touch(exist_ok=True)
+    return secret
+
+
+def load_reasoning_secret(root: Path, agent_ref: str | None = None) -> str:
+    """Read the local agent ledger seal secret without creating it."""
+
+    if not agent_ref:
+        agent_ref = current_reasoning_agent_ref(root, create=False)
+    if not agent_ref:
         return ""
-    return str(payload.get("secret", "")).strip()
+    return _read_reasoning_secret_file(reasoning_seal_path(root, agent_ref))
 
 
 def signed_chain_summary(chain_payload: dict[str, Any]) -> dict[str, Any]:
@@ -260,8 +327,7 @@ def current_task_node_count(chain_payload: dict[str, Any], task_ref: str) -> int
     )
 
 
-def read_reason_entries(root: Path) -> tuple[list[dict[str, Any]], list[str]]:
-    path = reasons_ledger_path(root)
+def _read_reason_entries_file(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
     if not path.exists():
         return [], []
     entries: list[dict[str, Any]] = []
@@ -281,25 +347,124 @@ def read_reason_entries(root: Path) -> tuple[list[dict[str, Any]], list[str]]:
         if not isinstance(payload, dict):
             errors.append(f"{path}:{index}: entry must be an object")
             continue
+        payload["_ledger_path"] = str(path)
         entries.append(payload)
     return entries, errors
 
 
-def validate_reason_ledger(root: Path, *, create_secret: bool = True) -> dict[str, Any]:
-    entries, errors = read_reason_entries(root)
-    secret = ensure_reasoning_secret(root) if create_secret else load_reasoning_secret(root)
+def _read_reason_entries_for_scope(scope: LedgerScope) -> tuple[list[dict[str, Any]], list[str]]:
+    entries, errors = _read_reason_entries_file(scope.path)
+    for entry in entries:
+        entry["_ledger_agent_ref"] = scope.agent_ref
+        entry["_ledger_legacy"] = scope.legacy
+    return entries, errors
+
+
+def _read_only_ledger_scopes(root: Path) -> list[LedgerScope]:
+    scopes: list[LedgerScope] = []
+    seen: set[Path] = set()
+    agents_root = reasoning_runtime_dir(root) / "agents"
+    if agents_root.is_dir():
+        for agent_dir in sorted(path for path in agents_root.iterdir() if path.is_dir()):
+            agent_ref = agent_dir.name
+            path = reasons_ledger_path(root, agent_ref)
+            seal_path = reasoning_seal_path(root, agent_ref)
+            if not path.exists() and not seal_path.exists():
+                continue
+            scopes.append(LedgerScope(agent_ref, path, seal_path, _read_reasoning_secret_file(seal_path)))
+            seen.add(path)
+    current_agent = current_reasoning_agent_ref(root, create=False)
+    if current_agent:
+        path = reasons_ledger_path(root, current_agent)
+        if path not in seen and path.exists():
+            seal_path = reasoning_seal_path(root, current_agent)
+            scopes.append(LedgerScope(current_agent, path, seal_path, _read_reasoning_secret_file(seal_path)))
+            seen.add(path)
+    legacy_path = legacy_reasons_ledger_path(root)
+    legacy_seal = legacy_reasoning_seal_path(root)
+    if legacy_path.exists() or legacy_seal.exists():
+        scopes.append(LedgerScope("", legacy_path, legacy_seal, _read_reasoning_secret_file(legacy_seal), legacy=True))
+    return scopes
+
+
+def _write_ledger_scope(root: Path, agent_ref: str | None = None) -> LedgerScope | None:
+    if not agent_ref:
+        agent_ref = current_reasoning_agent_ref(root, create=True)
+    if not agent_ref:
+        return None
+    secret = ensure_reasoning_secret(root, agent_ref)
+    return LedgerScope(agent_ref, reasons_ledger_path(root, agent_ref), reasoning_seal_path(root, agent_ref), secret)
+
+
+def _ledger_scopes(root: Path, *, create_secret: bool, agent_ref: str | None = None) -> list[LedgerScope]:
+    if create_secret:
+        scope = _write_ledger_scope(root, agent_ref)
+        return [scope] if scope else []
+    if agent_ref:
+        seal_path = reasoning_seal_path(root, agent_ref)
+        return [LedgerScope(agent_ref, reasons_ledger_path(root, agent_ref), seal_path, _read_reasoning_secret_file(seal_path))]
+    return _read_only_ledger_scopes(root)
+
+
+def read_reason_entries(root: Path, *, agent_ref: str | None = None) -> tuple[list[dict[str, Any]], list[str]]:
+    scopes = _ledger_scopes(root, create_secret=False, agent_ref=agent_ref)
+    if not scopes:
+        return [], []
+    entries: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for scope in scopes:
+        scope_entries, scope_errors = _read_reason_entries_for_scope(scope)
+        entries.extend(scope_entries)
+        errors.extend(scope_errors)
+    return entries, errors
+
+
+def validate_reason_ledger(root: Path, *, create_secret: bool = True, agent_ref: str | None = None) -> dict[str, Any]:
+    scopes = _ledger_scopes(root, create_secret=create_secret, agent_ref=agent_ref)
+    if not scopes:
+        return {"ok": True, "entries": [], "errors": [], "head_hash": ZERO_LEDGER_HASH}
+    all_entries: list[dict[str, Any]] = []
+    errors: list[str] = []
+    head_hash = ZERO_LEDGER_HASH
+    global_ids: set[str] = set()
+    for scope in scopes:
+        entries, read_errors = _read_reason_entries_for_scope(scope)
+        errors.extend(read_errors)
+        all_entries.extend(entries)
+        scope_errors, head_hash = _validate_reason_ledger_scope(scope, entries, global_ids)
+        errors.extend(scope_errors)
+    return {
+        "ok": not errors,
+        "entries": all_entries,
+        "errors": errors,
+        "head_hash": head_hash,
+    }
+
+
+def _validate_reason_ledger_scope(
+    scope: LedgerScope,
+    entries: list[dict[str, Any]],
+    global_ids: set[str],
+) -> tuple[list[str], str]:
+    errors: list[str] = []
+    secret = scope.secret
     if entries and not secret:
-        errors.append("reason seal secret missing; ledger cannot be fully validated")
+        errors.append(f"{scope.path}: reason seal secret missing; ledger cannot be fully validated")
     previous = ZERO_LEDGER_HASH
-    ids: set[str] = set()
     for index, entry in enumerate(entries, start=1):
         entry_id = str(entry.get("id", "")).strip()
         prefix = entry_id.split("-", 1)[0] if "-" in entry_id else ""
         if prefix not in LEDGER_ID_PREFIXES:
             errors.append(f"entry {index}: missing REASON-/GRANT-* id")
-        elif entry_id in ids:
+        elif entry_id in global_ids:
             errors.append(f"{entry_id}: duplicate id")
-        ids.add(entry_id)
+        global_ids.add(entry_id)
+        entry_agent_ref = str(entry.get("agent_identity_ref", "")).strip()
+        if not scope.legacy and int(entry.get("version", 1) or 1) >= 2:
+            if not entry_agent_ref:
+                errors.append(f"{entry_id or index}: missing agent_identity_ref")
+            elif entry_agent_ref != scope.agent_ref:
+                errors.append(f"{entry_id or index}: agent_identity_ref mismatch for ledger {scope.agent_ref}")
         if str(entry.get("prev_ledger_hash", "")).strip() != previous:
             errors.append(f"{entry_id or index}: prev_ledger_hash mismatch")
         expected_entry_hash = _entry_hash(entry)
@@ -322,12 +487,7 @@ def validate_reason_ledger(root: Path, *, create_secret: bool = True) -> dict[st
             elif str(entry.get("chain_hash", "")).strip() != chain_payload_hash(chain_payload):
                 errors.append(f"{entry_id or index}: chain_hash mismatch")
         previous = str(entry.get("ledger_hash", "")).strip()
-    return {
-        "ok": not errors,
-        "entries": entries,
-        "errors": errors,
-        "head_hash": previous,
-    }
+    return errors, previous
 
 
 def validate_reason_ledger_state(root: Path) -> list[ValidationError]:
@@ -336,9 +496,8 @@ def validate_reason_ledger_state(root: Path) -> list[ValidationError]:
     validation = validate_reason_ledger(root, create_secret=False)
     if validation["ok"]:
         return []
-    path = reasons_ledger_path(root)
-    if not path.exists():
-        path = reasoning_seal_path(root)
+    ledger_path = next((str(entry.get("_ledger_path", "")).strip() for entry in validation.get("entries", [])), "")
+    path = Path(ledger_path) if ledger_path else reasoning_runtime_dir(root)
     return [ValidationError(path, message) for message in validation["errors"]]
 
 
@@ -470,9 +629,10 @@ def validate_grant_run_lifecycle(root: Path, records: dict[str, dict]) -> list[V
         max_runs = int(grant.get("max_runs", grant.get("max_uses", 1)) or 1)
         use_count = use_counts.get(grant_ref, 0) + (1 if grant_ref in legacy_used else 0)
         if max_runs > 0 and use_count > max_runs:
+            grant_path = Path(str(grant.get("_ledger_path", "")).strip()) if str(grant.get("_ledger_path", "")).strip() else reasoning_runtime_dir(root)
             errors.append(
                 ValidationError(
-                    use_paths.get(grant_ref, reasons_ledger_path(root)),
+                    use_paths.get(grant_ref, grant_path),
                     f"grant_ref {grant_ref} consumed {use_count} times; max_runs={max_runs}",
                 )
             )
@@ -502,7 +662,11 @@ def append_reason_entry(
     if not validation["ok"]:
         return None, "; ".join(validation["errors"])
     entries = validation["entries"]
-    secret = ensure_reasoning_secret(root)
+    agent = _current_agent_metadata(root, create=True)
+    agent_ref = str(agent.get("agent_identity_ref", "")).strip()
+    if not agent_ref:
+        return None, "local agent identity is required for reason ledger entries"
+    secret = ensure_reasoning_secret(root, agent_ref)
     entry = {
         "id": _next_ledger_id(entries, id_prefix),
         "record_type": "reason",
@@ -511,6 +675,8 @@ def append_reason_entry(
         "prev_ledger_hash": validation["head_hash"],
         **payload,
     }
+    entry["agent_identity_ref"] = agent_ref
+    entry["agent_key_fingerprint"] = str(agent.get("agent_key_fingerprint", "")).strip()
     try:
         entry["pow"] = _mine_pow(root, entry)
     except RuntimeError as exc:
@@ -520,7 +686,7 @@ def append_reason_entry(
     entry["entry_hash"] = entry_hash
     entry["seal"] = seal
     entry["ledger_hash"] = _ledger_hash(str(entry["prev_ledger_hash"]), entry_hash, seal)
-    path = reasons_ledger_path(root)
+    path = reasons_ledger_path(root, agent_ref)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(_canonical_json(entry) + "\n")
