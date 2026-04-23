@@ -76,6 +76,8 @@ Progress:
 - Added dedicated `AGENT-*` and `WCTX-*` schema migrations for `record_version=1`.
   They backfill structural 0.4 fields, but block unsafe identity/ownership
   changes and never synthesize private keys or owner signatures.
+- Bumped plugin manifests, MCP server version, and package metadata to `0.4.0`;
+  isolated local install smoke passes without publishing.
 
 ## Milestone 3: Core Validators
 

@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.3.0"
+SERVER_VERSION = "0.4.0"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 plugin_root = str(PLUGIN_ROOT)
@@ -819,7 +819,7 @@ TOOLS: list[JsonObject] = [
     },
     {
         "name": "map_drilldown",
-        "description": "Return proof-route drilldown hints for a map or record ref. Routes are not proof.",
+        "description": "Return navigation drilldown hints for a map or record ref. Routes are not proof.",
         "inputSchema": schema(
             {
                 "context": context_property(),

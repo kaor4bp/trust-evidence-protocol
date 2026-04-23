@@ -29,7 +29,7 @@ segment, not when `patch` appears inside a read-only file path such as
 `patches/fix.patch`.
 
 File output is allowed without strictness escalation only when every detected
-output target is inside the canonical `.codex_context/artifacts/` store. This
+output target is inside the canonical `.tep_context/artifacts/` store. This
 keeps screenshots, copied logs, and other diagnostic payloads cheap to capture
 while still blocking ordinary writes to source files, `/tmp`, or arbitrary
 workspace paths under `proof-only`.

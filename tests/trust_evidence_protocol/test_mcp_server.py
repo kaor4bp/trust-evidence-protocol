@@ -87,12 +87,19 @@ def load_mcp_server_module():
 def test_mcp_manifest_declares_readonly_server() -> None:
     plugin_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_manifest["mcpServers"] == "./.mcp.json"
+    assert plugin_manifest["version"] == "0.4.0"
+
+    claude_manifest = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    assert claude_manifest["version"] == plugin_manifest["version"]
 
     manifest = json.loads((PLUGIN_ROOT / ".mcp.json").read_text(encoding="utf-8"))
     server = manifest["mcpServers"]["trust-evidence-protocol"]
     assert server["command"] == "python3"
     assert server["args"] == ["mcp/tep_server.py"]
     assert MCP_SERVER.exists()
+
+    module = load_mcp_server_module()
+    assert module.SERVER_VERSION == plugin_manifest["version"]
 
 
 def test_mcp_migration_dry_run_uses_service_without_writing_target(tmp_path: Path) -> None:

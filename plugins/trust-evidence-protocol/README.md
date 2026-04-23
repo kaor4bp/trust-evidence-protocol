@@ -6,7 +6,7 @@ The skill defines reasoning discipline; the plugin provides commands, validation
 
 Responsibilities:
 
-- resolve a TEP context root, targeting global `~/.tep_context` with legacy `.codex_context` fallback
+- resolve a TEP context root, targeting global `~/.tep_context` without legacy runtime fallback
 - honor workdir-local `.tep` anchor files that select the global context root plus current workspace/project focus
 - bootstrap a strict context layout
 - provide canonical JSON record templates
@@ -36,9 +36,9 @@ Non-responsibilities:
 
 Current implementation:
 
-- `templates/codex_context/` contains the canonical `.codex_context` README and JSON record templates
-- `scripts/bootstrap_codex_context.py` creates the strict storage layout
-- `scripts/validate_codex_context.py` validates record files and reference integrity
+- `templates/codex_context/` contains the compatibility template set for the canonical `.tep_context` layout
+- `scripts/bootstrap_codex_context.py` creates the strict `.tep_context` storage layout; the script name is retained as a compatibility wrapper
+- `scripts/validate_codex_context.py` validates `.tep_context` record files and reference integrity; the script name is retained as a compatibility wrapper
 - `scripts/context_cli.py` exposes explicit operational commands
 - `mcp/tep_server.py` exposes bounded context lookup tools over MCP stdio
 - `.mcp.json` declares the local MCP server for clients that support plugin MCP discovery
@@ -63,7 +63,8 @@ Full command reference:
 - `docs/reference/plugin-commands.md`: command reference for hydration, review, strictness, records, projects, tasks, and hypotheses
 
 The preferred live context root is `~/.tep_context`.
-Legacy repo-local `.codex_context` roots remain supported for migration and tests.
+Legacy repo-local `.codex_context` roots remain supported only as explicit
+migration inputs and test fixtures.
 
 Local workdirs may contain a `.tep` JSON anchor.
 The anchor is local configuration, not canonical memory and not proof.
@@ -85,51 +86,49 @@ Context-root resolution order is:
 
 1. explicit `--context`
 2. `TEP_CONTEXT_ROOT`
-3. nearest `.tep.context_root`
+3. nearest `.tep` anchor `context_root`
 4. global `~/.tep_context`
-5. nearest legacy `.codex_context`
-6. global `~/.tep_context` fallback
 
 The only canonical storage layer is:
 
-- `.codex_context/records/`
-- `.codex_context/artifacts/`
+- `.tep_context/records/`
+- `.tep_context/artifacts/`
 
 Canonical records are stored as one JSON object per file.
 The normal provenance chain is `INP/FILE/ART/RUN -> SRC -> CLM`; `ART-*` is the artifact file id, while `FILE-*` and `RUN-*` are metadata records.
 
 Generated navigation layer:
 
-- `.codex_context/code_index/entries/CIX-*.json`
+- `.tep_context/code_index/entries/CIX-*.json`
   - code map entries for files, directories, globs, symbols, and logical areas
   - stores AST/regex/outline metadata, manual features, annotations, and navigation links
   - may be rebuilt or refreshed at any time
   - not a source of truth and not proof
-- `.codex_context/topic_index/*.json`
+- `.tep_context/topic_index/*.json`
   - generated lexical topic maps over canonical records
   - helps search, grouping, context assembly, and contradiction-candidate prefiltering
   - may be rebuilt at any time
   - not a source of truth and not proof
-- `.codex_context/logic_index/*.json`
+- `.tep_context/logic_index/*.json`
   - generated predicate projection over optional `CLM.logic` blocks
   - indexes typed symbols, atoms, rules, predicates, and symbol usage
   - helps mechanical conflict-candidate detection without asking an agent to reason over prose
   - may be rebuilt at any time
   - not a source of truth and not proof
-- `.codex_context/attention_index/*.json`
+- `.tep_context/attention_index/*.json`
   - generated attention map over topic clusters, record taps, cold zones, bridges, and curiosity probes
   - helps an agent choose what to inspect next without reading the whole context
   - may be rebuilt at any time
   - not a source of truth and not proof
-- `.codex_context/views/curiosity/*.html`
+- `.tep_context/views/curiosity/*.html`
   - generated human-facing curiosity graph snapshots written by `curiosity-map --html`
   - uses `vis-network` from a CDN for pan/zoom, physics layout, cluster grouping, search, focus buttons, and selection details
   - safe to show to a user for orientation
   - not a source of truth and not proof
-- `.codex_context/activity/taps.jsonl`
+- `.tep_context/activity/taps.jsonl`
   - append-only activity signals such as retrieved, opened, cited, decisive, updated, challenged, or contradicted
   - not evidence, not proof, and not claim support
-- `.codex_context/activity/access.jsonl`
+- `.tep_context/activity/access.jsonl`
   - append-only lookup telemetry from MCP, CLI, and hooks
   - tracks compact lookup usage, raw claim-file reads, and per-record access counts
   - feeds generated attention heatmaps and `telemetry-report`
@@ -137,7 +136,7 @@ Generated navigation layer:
 
 Additional transient index:
 
-- `.codex_context/hypotheses.jsonl`
+- `.tep_context/hypotheses.jsonl`
   - index of active tentative `CLM-*` records
   - not a second source of truth
 
@@ -188,7 +187,7 @@ Supplying `--input INP-*` links captured prompt provenance to the derived record
 mechanically. Use separate `record-source` / `record-claim` only for advanced
 comparison, logic, migration, or source-only staging.
 
-`.codex_context/settings.json` is the policy layer for:
+`.tep_context/settings.json` is the policy layer for:
 
 - `allowed_freedom`
 - `current_workspace_ref`
@@ -369,10 +368,10 @@ Persistence rule:
 
 Write boundary:
 
-- Canonical records under `.codex_context/records/` must be created or updated through plugin commands. Prefer `record-support` / `record-evidence` for evidence writes; use low-level `record-source` and `record-claim` only for plugin development, migration, comparison logic, or source-only staging.
+- Canonical records under `.tep_context/records/` must be created or updated through plugin commands. Prefer `record-support` / `record-evidence` for evidence writes; use low-level `record-source` and `record-claim` only for plugin development, migration, comparison logic, or source-only staging.
 - Captured prompt provenance should use `record-input`; an `INP-*` is not proof until later classified into `SRC-*`, `CLM-*`, `GLD-*`, `TASK-*`, or another appropriate record.
-- Do not write `.codex_context/records/*.json`, indexes, settings, or generated views with shell redirection, `tee`, ad hoc scripts, or manual JSON edits when a plugin command exists.
-- Diagnostic payloads may be written directly only under `.codex_context/artifacts/`; this is for screenshots, logs, copied command output, and similar raw material.
+- Do not write `.tep_context/records/*.json`, indexes, settings, or generated views with shell redirection, `tee`, ad hoc scripts, or manual JSON edits when a plugin command exists.
+- Diagnostic payloads may be written directly only under `.tep_context/artifacts/`; this is for screenshots, logs, copied command output, and similar raw material.
 - After writing a raw artifact, use `record-support --kind artifact` or `record-evidence --kind artifact` when the artifact should support future reasoning.
 - The artifact-write exception does not grant permission to write source files, `/tmp`, arbitrary workspace paths, or canonical records.
 - CIX entries may point to canonical records, and some canonical records may point to CIX entries with `code_index_refs`, but those links are scope/navigation only.
@@ -449,7 +448,7 @@ Rules:
 Use:
 
 ```bash
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context <command>
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .tep_context <command>
 ```
 
 Commands:
@@ -546,7 +545,7 @@ Commands:
   - if the agent has a reasoned objection or alternative and the user chooses another path, preserve the constructive critique as `PRP-*` instead of repeatedly arguing or silently dropping it
 
 - `brief-context --task "..."`
-  - prints a compact task-oriented reasoning brief from the current `.codex_context`
+  - prints a compact task-oriented reasoning brief from the current `.tep_context`
   - accepts `--detail full` for the expanded sectioned brief
   - surfaces relevant primary `MODEL-*` / `FLOW-*`, candidate claims, fallback historical claims, active hypotheses, open questions, applicable permissions, active guidelines, active restrictions, active proposals, plans, and debt
   - filters relevance sections by `settings.json.current_project_ref` when a current project is set
@@ -613,7 +612,7 @@ Commands:
   - before sizeable code/test edits, the agent should show the selected guideline ids plus short quotes/rules
 
 - `topic-index build --method lexical`
-  - rebuilds `.codex_context/topic_index/records.json`, `topics.json`, `by_record.json`, `by_topic.json`, and reports
+  - rebuilds `.tep_context/topic_index/records.json`, `topics.json`, `by_record.json`, `by_topic.json`, and reports
   - writes `topic_index/conflict_candidates.md` as a review prefilter
   - does not create facts, claims, or contradictions
 
@@ -630,7 +629,7 @@ Commands:
   - candidate output is not proof and does not replace `scan-conflicts`
 
 - `curiosity-map --mode research|theory|code --volume compact|normal|wide --html`
-  - writes a standalone HTML visual graph to `.codex_context/views/curiosity/`
+  - writes a standalone HTML visual graph to `.tep_context/views/curiosity/`
   - renders from `map_graph.format=tep.map_graph.v1` instead of rebuilding its own graph model
   - includes interactive pan/zoom, search, focus controls, topic/topology clusters, heat/cold zones, established bridges, bridge pressure, candidate probes, and prompt list
   - includes `map_graph.format=tep.map_graph.v1`, a generated typed graph with record nodes, weighted relation edges, `topic` and `topology` cluster layers, and navigation-only probes
@@ -652,7 +651,7 @@ Commands:
   - does not mutate the original probed claims
 
 - `logic-index build`
-  - rebuilds `.codex_context/logic_index/atoms.json`, `symbols.json`, `rules.json`, `by_predicate.json`, `by_symbol.json`, `variable_graph.json`, and reports
+  - rebuilds `.tep_context/logic_index/atoms.json`, `symbols.json`, `rules.json`, `by_predicate.json`, `by_symbol.json`, `variable_graph.json`, and reports
   - validates that factual atoms reference introduced typed symbols through source-backed `CLM-*` records
   - writes `logic_index/conflict_candidates.md` as a predicate-level review prefilter
   - writes `logic_index/vocabulary_smells.md` as a generated pressure report for orphan symbols, duplicate-like symbols, single-use predicates, and weak/generic rule variables
@@ -711,7 +710,7 @@ Commands:
   - does not write a zip, mutate records, or delete files
 
 - `cleanup-archive --apply [--format text|json]`
-  - writes `.codex_context/archives/ARC-*.zip` plus `.manifest.json`
+  - writes `.tep_context/archives/ARC-*.zip` plus `.manifest.json`
   - includes `manifest.json` and the original record paths inside the zip
   - does not mutate canonical records and does not delete archived originals
 
@@ -728,7 +727,7 @@ Commands:
 - `init-code-index [--root <repo>]`
   - initializes generated `CIX-*` code-index entries from `git ls-files`
   - indexes Python with AST metadata, JS/TS with lightweight import/symbol regexes, and Markdown with heading/link/code-block outline metadata
-  - writes `.codex_context/code_index/entries/`, `by_path.json`, `by_ref.json`, and `summary.md`
+  - writes `.tep_context/code_index/entries/`, `by_path.json`, `by_ref.json`, and `summary.md`
   - stores file targets as paths relative to the resolved project root, not relative to the agent cwd or `.tep` anchor directory
   - defaults to tracked files only; use `--include-untracked` deliberately
   - bounded by `--max-files` and `--max-bytes-per-file`
@@ -983,7 +982,7 @@ Guideline disclosure for code edits:
 
 - `start-task --scope ... --title ... --note ... [--project PRJ-*] [--execution-mode manual|autonomous] [--autonomous]`
   - creates a canonical `TASK-*` record
-  - stores the active execution focus in `.codex_context/settings.json.current_task_ref`
+  - stores the active execution focus in `.tep_context/settings.json.current_task_ref`
   - attaches the current project automatically when `settings.json.current_project_ref` is set
   - defaults to `execution_mode=manual`; `--autonomous` is a shortcut for `--execution-mode autonomous`
   - refuses to replace an already active current task; use `complete-task` or `stop-task` first
@@ -1033,7 +1032,7 @@ Guideline disclosure for code edits:
   - attaches the current project automatically when `settings.json.current_project_ref` is set
   - accepts `--project PRJ-*` and `--task TASK-*` for explicit local scoping
   - defaults `captured_at` to now and auto-generates `independence_group` if omitted
-  - refuses to write into an already invalid `.codex_context`
+  - refuses to write into an already invalid `.tep_context`
   - refreshes `index.md`, `backlog.md`, and generated review files
 
 - `record-input`
@@ -1069,14 +1068,14 @@ Guideline disclosure for code edits:
   - accepts optional `claim_kind`, `confidence`, `red_flags`, and structured `comparison`
   - attaches the current project automatically when `settings.json.current_project_ref` is set
   - accepts `--project PRJ-*` and `--task TASK-*` for explicit local scoping
-  - refuses to write into an already invalid `.codex_context`
+  - refuses to write into an already invalid `.tep_context`
   - refreshes `index.md`, `backlog.md`, and generated review files
 
 - `record-plan`
   - creates a canonical `PLN-*` record
   - requires explicit `priority`, `justified_by`, `steps`, `success_criteria`, and `note`
   - attaches the current project automatically and accepts explicit `--project` / `--task`
-  - refuses to write into an already invalid `.codex_context`
+  - refuses to write into an already invalid `.tep_context`
   - refreshes `index.md`, `backlog.md`, and generated review files
 
 - `record-debt`
@@ -1084,11 +1083,11 @@ Guideline disclosure for code edits:
   - requires explicit `priority`, `evidence_refs`, and `note`
   - can link scheduled debt to `PLN-*` via `--plan-ref`
   - attaches the current project automatically and accepts explicit `--project` / `--task`
-  - refuses to write into an already invalid `.codex_context`
+  - refuses to write into an already invalid `.tep_context`
   - refreshes `index.md`, `backlog.md`, and generated review files
 
 - `change-strictness <proof-only|evidence-authorized|implementation-choice>`
-  - validates the current context against the requested strictness before writing `.codex_context/settings.json`
+  - validates the current context against the requested strictness before writing `.tep_context/settings.json`
   - updates the generated `index.md` and `backlog.md`
   - stores the current runtime `allowed_freedom` for the context
   - in `proof-only`, new mutating durable actions are rejected
@@ -1099,7 +1098,7 @@ Guideline disclosure for code edits:
   - approval requests are one-shot; after successful escalation the request is marked `used`
 
 - `request-strictness-change <evidence-authorized|implementation-choice> --reason "..."`
-  - creates a pending strictness approval request in `.codex_context/strictness_requests.jsonl`
+  - creates a pending strictness approval request in `.tep_context/strictness_requests.jsonl`
   - prints the exact user reply the agent must ask for: `TEP-APPROVE REQ-*`
   - does not change `allowed_freedom` by itself
   - for `implementation-choice`, still requires `--permission PRM-*`
@@ -1145,7 +1144,7 @@ Guideline disclosure for code edits:
   - attaches the current project automatically and accepts explicit `--project` / `--task`
 
 - `record-artifact --path <file>`
-  - copies a payload file into `.codex_context/artifacts/`
+  - copies a payload file into `.tep_context/artifacts/`
   - preserves the payload as the canonical artifact, without creating a separate record type
   - prints a root-relative artifact ref such as `artifacts/ART-YYYYMMDD-xxxxxxxx__name.txt`
   - can be used before `record-support --kind artifact` when you need to ingest logs, snapshots, or outputs first
@@ -1439,7 +1438,7 @@ Important limit:
 
 - official Codex hooks still do not provide complete enforcement across non-Bash tools, and `PreToolUse` currently only sees `Bash`, so this remains a strong guardrail rather than a total boundary
 
-Hook modes are configured in `.codex_context/settings.json` under:
+Hook modes are configured in `.tep_context/settings.json` under:
 
 ```json
 {

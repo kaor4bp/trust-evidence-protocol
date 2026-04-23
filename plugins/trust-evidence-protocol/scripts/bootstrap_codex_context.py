@@ -108,7 +108,7 @@ Runtime state:
 Transient hypothesis index:
 - `hypotheses.jsonl`
 
-Templates live in the plugin, not in `.codex_context`.
+Templates live in the plugin, not in `.tep_context`.
 """
     write_text(target / "index.md", index_content, force=force)
 
@@ -216,12 +216,12 @@ Do not treat it as a source of truth.
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Bootstrap a strict .codex_context layout.")
+    parser = argparse.ArgumentParser(description="Bootstrap a strict .tep_context layout.")
     parser.add_argument(
         "target",
         nargs="?",
-        default=".codex_context",
-        help="Target .codex_context directory (default: ./.codex_context)",
+        default=".tep_context",
+        help="Target .tep_context directory (default: ./.tep_context)",
     )
     parser.add_argument(
         "--force",
@@ -235,7 +235,7 @@ def main() -> None:
     args = parse_args()
     target = Path(args.target).expanduser().resolve()
     bootstrap(target, force=args.force)
-    print(f"Bootstrapped strict Codex context: {target}")
+    print(f"Bootstrapped strict TEP context: {target}")
 
 
 if __name__ == "__main__":

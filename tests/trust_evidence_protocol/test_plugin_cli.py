@@ -48,6 +48,21 @@ def bootstrap_context(tmp_path: Path) -> Path:
     return context
 
 
+def test_bootstrap_default_creates_tep_context(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [sys.executable, str(BOOTSTRAP)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Bootstrapped strict TEP context" in result.stdout
+    assert (tmp_path / ".tep_context" / "records" / "curator_pool").is_dir()
+    assert not (tmp_path / ".codex_context").exists()
+
+
 def only_record_id(context: Path, record_type: str) -> str:
     files = sorted((context / "records" / record_type).glob("*.json"))
     assert len(files) == 1, [file.name for file in files]
