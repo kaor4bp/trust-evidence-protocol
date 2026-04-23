@@ -25,7 +25,7 @@ Responsibilities:
 - provide one `lookup` front door that routes agents to fact, code, theory, research, or policy lookup instead of making them guess between overlapping tools
 - return an API contract from lookup routes (`next_allowed_commands`, `route_graph`, `evidence_profile`, and `output_contract`) so agents choose from a mechanical path instead of reconstructing protocol prose
 - provide `record-support` / `record-evidence` as the default mechanical support-capture path so agents can preserve quotes, command output, file lines, artifacts, and user confirmations without hand-authoring `FILE/RUN/SRC/CLM` records
-- keep append-only `REASON-*` reasoning ledger entries for task-scoped reasoning steps, reviewed access, and one-shot protected action grants
+- keep append-only `STEP-*` claim-step ledger entries and `GRANT-*` one-shot protected action grants
 - push agents to preserve reusable discoveries, rules, actions, plans, debt, questions, models, flows, and proposals as records
 
 Non-responsibilities:
@@ -148,16 +148,16 @@ Additional transient index:
 
 `runtime/` is generated runtime bookkeeping, not a source of truth.
 `runtime/reasoning/agents/AGENT-*/reasons.jsonl` is the append-only sealed
-per-agent `REASON-*` reasoning ledger.
-It is not truth storage, but protected actions use reviewed `REASON-*` access grants as their authority.
-Agents should treat the current `REASON-*` as their task cursor, not only as a
+per-agent `STEP/GRANT` reasoning ledger.
+It is not truth storage, but protected actions use reviewed `STEP-*` access grants as their authority.
+Agents should treat the current `STEP-*` as their task cursor, not only as a
 permission prelude. `next-step` and `lookup` surface `start_briefing` and
 `reason_pressure` so the agent sees the current branch, recent reasoning steps,
 recent actions/runs, and the cheapest path to extend or fork the ledger before
 substantial work.
 Direct writes to the ledger or seal are blocked by hooks and detected by ledger validation.
-Same-mode continuation cannot mechanically duplicate the direct parent chain; extend the evidence chain or fork a named alternative branch.
-Final answers for an active task require a reviewed `REASON-* mode=final`.
+Same-mode continuation cannot mechanically duplicate the direct parent claim; advance through an explicit relation `CLM-*` or fork a named alternative branch.
+Final answers for an active task require a reviewed `STEP-* mode=final`.
 Autonomous `TEP TASK OUTCOME: done` additionally requires a fresh `GRANT-* mode=final`.
 
 Agents must not read raw `records/claim/*.json` as the normal discovery path.
@@ -165,9 +165,9 @@ Use MCP `claim_graph` or CLI `claim-graph --query "..."` to get matching
 current `CLM-*` anchors and compact linked source/support edges, then expand
 only the specific proof-critical records with `record_detail` or
 `linked_records`. Codex/Claude hooks block normal Bash reads of raw claim JSON.
-When a current `REASON-*` exists, `lookup` defaults to chain extension mode:
+When a current `STEP-*` exists, `lookup` defaults to chain extension mode:
 it proposes records that can become new chain nodes and filters out refs already
-present in the current reason chain. If no new proof-capable nodes are found,
+present in the current claim-step chain. If no new proof-capable nodes are found,
 the route explicitly falls back to revisiting existing nodes and recording a
 fact-compatible hypothesis or open question.
 Use an explicit escape-hatch prefix such as `TEP_RAW_RECORD_MODE=plugin-dev`,
@@ -314,8 +314,8 @@ Prompt capture mechanics:
 - The hook rehydrates after a successful capture so prompt provenance does not leave the next agent turn mechanically stale.
 - `review-context` writes `review/inputs.md` and warns when any `INP-*` has no valid classification link.
 - `preflight-task --mode final` blocks final responses while any `INP-*` lacks both valid `derived_record_refs` and incoming `input_refs`.
-- `preflight-task --mode planning` blocks planning continuation for an active task until a current valid `REASON-*` exists for `planning`.
-- `preflight-task --mode final` blocks final responses for an active task until the current context has a reviewed `REASON-* mode=final`.
+- `preflight-task --mode planning` blocks planning continuation for an active task until a current valid `STEP-*` exists for `planning`.
+- `preflight-task --mode final` blocks final responses for an active task until the current context has a reviewed `STEP-* mode=final`.
 - `preflight-task --mode planning|edit|action|final` blocks when a hydrated current `TASK-*` has not been explicitly confirmed with `confirm-task --task TASK-*`.
 - Task confirmation is tied to the focus tuple, not every record write; unrelated `SRC/CLM/ACT` writes do not require repeated confirmation, but task/workspace/project focus changes do.
 
@@ -886,10 +886,10 @@ Commands:
   - blocks `hypothesis` and `exploration_context` nodes as decisive proof for permission, edit, test, model, flow, and final decisions
   - requires `requested_permission` nodes for permission-mode chains
   - returns `valid_for`, `invalid_for`, hypothesis refs, blockers, warnings, and recommended follow-up commands
-  - with `--emit-permit`, creates a `REASON-*` step and a one-shot `GRANT-*`
-  - `reason-step --mode final --chain evidence-chain.json --why "final answer"` creates the final reasoning ledger step without granting protected access
+  - this command is read-only in 0.4.7; ledger advancement uses `reason-step --claim CLM-*`
+  - `reason-step --mode final --claim CLM-* --relation-claim CLM-* --why "final answer"` creates the final `STEP-*` claim-step without granting protected access
   - protected actions use the reviewed `GRANT-*`, not the loose chain file itself
-  - emitted grants require exactly one current `TASK-*` node in the chain and bind to one mode, optional action kind, current workspace/project/task, chain hash, and context fingerprint
+  - grants bind to one reviewed `STEP-*`, mode, optional action kind, current workspace/project/task, claim-step hash, and context fingerprint
   - grant TTL defaults to `settings.chain_permits.ttl_seconds = 300`; `--ttl-seconds` may request a shorter window but cannot exceed settings
 
 Reasoning checkpoint disclosure:
@@ -1263,7 +1263,7 @@ Current prioritization behavior:
 - use `pause-task`, `resume-task`, or `switch-task` instead of silently continuing in the wrong task context
 - use `review-precedents` before repeating a substantial task type to inspect similar past tasks and linked plans/debt/actions/open questions
 - when a `Stop` hook is configured and the current active task is autonomous, the final answer must include one exact marker: `TEP TASK OUTCOME: done`, `TEP TASK OUTCOME: blocked`, or `TEP TASK OUTCOME: user-question`
-- autonomous `done` requires both `REASON-* mode=final` and `GRANT-* mode=final`; interrupted or non-terminal continuation is resumable and does not require a final reason yet
+- autonomous `done` requires both `STEP-* mode=final` and `GRANT-* mode=final`; interrupted or non-terminal continuation is resumable and does not require a final reason yet
 - the Stop hook validates that marker with `task-outcome-check`; the marker is not accepted as a bare self-declaration
 
 ## Projects And Restrictions

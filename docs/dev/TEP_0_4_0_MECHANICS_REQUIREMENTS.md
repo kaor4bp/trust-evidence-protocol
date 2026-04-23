@@ -169,17 +169,17 @@ Raw record reads are abnormal. They remain possible for plugin development,
 migration, debugging, or forensics, but normal agents should use lookup, graph,
 record detail, linked records, MCP tools, and map views.
 
-When a current `REASON-*` exists, lookup defaults to chain-extension mode:
+When a current `STEP-*` exists, lookup defaults to chain-extension mode:
 
-- exclude refs already present in the current reason chain
-- propose records that can become new chain nodes
+- exclude refs already present in the current claim-step chain
+- propose records that can become connected CLM successors
 - include task node when useful
 - report how many existing refs were excluded
 - if no new proof-capable nodes are found, explicitly suggest the fallback:
   revisit existing nodes and record a fact-compatible hypothesis or open
   question
 
-This prevents agents from reusing the same chain as a reusable permit.
+This prevents agents from reusing the same claim as a reusable permit.
 
 ## 7. Evidence Chains
 
@@ -257,38 +257,40 @@ If old facts appear contradicted by current runtime observations, "fact is
 stale" is itself only a hypothesis until supported. The agent cannot stack a new
 system theory on top of an unsupported staleness hypothesis.
 
-## 9. Reason Ledger
+## 9. Claim-Step Ledger
 
-`REASON-*` is the append-only task-local ledger of justified reasoning.
+`STEP-* entry_type=claim_step` is the append-only task-local ledger of justified
+reasoning over connected `CLM-*` records.
 
 It is not a loose permit. It is the record of how the agent's reasoning
 progressed.
 
 Rules:
 
-- Each `REASON-*` belongs to the current task/workspace/project focus.
-- A new reason step continues from the latest task step unless explicit parents
-  are provided.
-- Explicit parent refs and branch labels create forks.
-- A reason step cannot parent across another task.
-- Same-mode continuation cannot duplicate the direct parent chain hash on the
-  same branch.
-- If the agent wants to continue, it must extend the chain with new support or
-  fork a named alternative branch.
+- Each `STEP-*` belongs to the current task/workspace/project/WCTX focus and the
+  local agent identity that owns that WCTX.
+- A same-branch continuation must name a previous step, previous claim, next
+  claim, and explicit relation `CLM-*`.
+- Branch labels create independent forks; a step cannot continue from another
+  task.
+- Same-mode continuation cannot duplicate the direct parent claim on the same
+  branch.
+- If the agent wants to continue, it must advance through a connected relation
+  `CLM-*` or fork a named alternative branch.
 - The ledger is hash-chained, sealed, and contains weak proof-of-work metadata.
 - Direct runtime ledger edits are blocked by hooks and detected by validation.
 
 Planning and finalization:
 
-- `preflight-task --mode planning` requires a current valid `REASON-*` for the
+- `preflight-task --mode planning` requires a current valid `STEP-*` for the
   active task.
-- `preflight-task --mode final` requires `REASON-* mode=final`.
-- Autonomous `TEP TASK OUTCOME: done` requires both `REASON-* mode=final` and
+- `preflight-task --mode final` requires `STEP-* mode=final`.
+- Autonomous `TEP TASK OUTCOME: done` requires both `STEP-* mode=final` and
   `GRANT-* mode=final`.
 - Read-only lookup/reasoning remains available without a reason step so the
-  agent can gather material before constructing a chain.
+  agent can gather material before constructing CLM transitions.
 
-If the agent is interrupted before finalization, absence of `REASON-* mode=final`
+If the agent is interrupted before finalization, absence of `STEP-* mode=final`
 is a resumable state, not corruption.
 
 ## 10. Grants, Runs, And Protected Actions
@@ -298,7 +300,7 @@ is a resumable state, not corruption.
 Path:
 
 ```text
-REASON-* -> GRANT-* -> RUN-* / protected write
+STEP-* -> GRANT-* -> RUN-* / protected write
 ```
 
 Rules:
@@ -525,9 +527,9 @@ instruction during beta.
 - The short skill describes the mental model without becoming the command
   manual.
 - `lookup` is the normal entry point and returns chain-extension candidates by
-  default when a current reason exists.
-- Planning continuation requires a valid current `REASON-*`.
-- Final answers require `REASON-* mode=final`.
+  default when a current `STEP-*` exists.
+- Planning continuation requires a valid current `STEP-*`.
+- Final answers require `STEP-* mode=final`.
 - Autonomous `done` requires final reason and final grant.
 - Protected mutation creates/link-checks `GRANT-*` and `RUN-*`.
 - Runtime claims require runtime provenance.

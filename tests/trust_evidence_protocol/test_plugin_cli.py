@@ -131,6 +131,111 @@ def user_confirmed_theory_claim(context: Path, scope: str, statement: str) -> st
     )
 
 
+def current_wctx_ref(context: Path, query: str = "current working context") -> str:
+    for path in sorted((context / "records" / "working_context").glob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("status") == "active":
+            return path.stem
+    task_ref = str(json.loads((context / "settings.json").read_text(encoding="utf-8")).get("current_task_ref") or "")
+    workspace_files = sorted((context / "records" / "workspace").glob("*.json"))
+    if workspace_files:
+        workspace_id = workspace_files[0].stem
+    else:
+        workspace_id = recorded_id(
+            run_cli(
+                context,
+                "record-workspace",
+                "--workspace-key",
+                "pytest",
+                "--title",
+                "Pytest Workspace",
+                "--root-ref",
+                str(context.parent),
+                "--root-ref",
+                "/tmp",
+                "--note",
+                "workspace for claim-step helper",
+            ),
+            "workspace",
+        )
+    run_cli(context, "assign-workspace", "--workspace", workspace_id, "--all-unassigned", "--note", "claim-step helper scope")
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    anchor_args = ["init-anchor", "--directory", str(context.parent), "--workspace", workspace_id, "--force"]
+    if task_ref:
+        anchor_args.extend(["--task", task_ref])
+    run_cli(context, *anchor_args)
+    args = [
+        "working-context",
+        "create",
+        "--scope",
+        "pytest",
+        "--title",
+        query,
+        "--note",
+        "working context for claim-step helper",
+    ]
+    if task_ref:
+        args.extend(["--task", task_ref])
+    return recorded_id(run_cli(context, *args), "working_context")
+
+
+def append_claim_step(
+    context: Path,
+    *,
+    claim_ref: str,
+    mode: str,
+    action_kind: str | None = None,
+    branch: str | None = None,
+    why: str = "test claim step",
+) -> dict:
+    args = [
+        "reason-step",
+        "--mode",
+        mode,
+        "--claim",
+        claim_ref,
+        "--wctx",
+        current_wctx_ref(context, f"{mode} claim step"),
+        "--branch",
+        branch or mode,
+        "--why",
+        why,
+        "--format",
+        "json",
+    ]
+    if action_kind:
+        args.extend(["--kind", action_kind])
+    return json.loads(run_cli(context, *args).stdout)
+
+
+def append_claim_step_grant(
+    context: Path,
+    *,
+    claim_ref: str,
+    mode: str,
+    action_kind: str | None = None,
+    branch: str | None = None,
+    ttl_seconds: str | None = None,
+    why: str = "test claim step grant",
+) -> dict:
+    step = append_claim_step(
+        context,
+        claim_ref=claim_ref,
+        mode=mode,
+        action_kind=action_kind,
+        branch=branch,
+        why=why,
+    )
+    review_args = ["reason-review", "--reason", step["id"], "--mode", mode, "--grant", "--format", "json"]
+    if action_kind:
+        review_args.extend(["--kind", action_kind])
+    if ttl_seconds:
+        review_args.extend(["--ttl-seconds", ttl_seconds])
+    payload = json.loads(run_cli(context, *review_args).stdout)
+    payload["reason"] = step
+    return payload
+
+
 def test_record_evidence_creates_source_claim_and_classifies_input(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     input_id = recorded_id(
@@ -5213,7 +5318,7 @@ def test_returning_to_proof_only_allows_historical_mutating_actions(tmp_path: Pa
         ),
         encoding="utf-8",
     )
-    run_cli(context, "validate-decision", "--mode", "edit", "--kind", "edit", "--chain", str(chain), "--emit-permit")
+    append_claim_step_grant(context, claim_ref=claim_id, mode="edit", action_kind="edit")
     run_cli(
         context,
         "record-action",
@@ -5385,23 +5490,10 @@ def test_evidence_authorized_allows_bounded_mutating_action_with_valid_chain(tmp
     assert missing_permit.returncode == 1
     assert "fresh valid GRANT-*" in missing_permit.stdout
 
-    permit_result = run_cli(
-        context,
-        "validate-decision",
-        "--mode",
-        "edit",
-        "--kind",
-        "edit",
-        "--chain",
-        str(chain),
-        "--emit-permit",
-    )
-    assert "## Reason Grant" in permit_result.stdout
-    assert "## Chain Permit" not in permit_result.stdout
-    assert "## Signed Chain" in permit_result.stdout
-    assert "chain_hash" in permit_result.stdout
-    assert f"- fact `{claim_id}`: \"Bounded edit is supported by runtime evidence.\"" in permit_result.stdout
-    assert f"- task `{task_id}`: \"Bounded evidence-authorized edit\"" in permit_result.stdout
+    permit_payload = append_claim_step_grant(context, claim_ref=claim_id, mode="edit", action_kind="edit")
+    assert permit_payload["reason"]["entry_type"] == "claim_step"
+    assert permit_payload["grant"]["reason_ref"] == permit_payload["reason"]["id"]
+    assert permit_payload["grant"]["chain_hash"] == permit_payload["reason"]["claim_step_hash"]
 
     run_cli(
         context,
@@ -5477,18 +5569,19 @@ def test_grant_requires_current_task_node_and_uses_configured_ttl(tmp_path: Path
 
     no_task = run_cli(
         context,
-        "validate-decision",
+        "reason-step",
         "--mode",
         "edit",
+        "--claim",
+        claim_id,
         "--kind",
         "write",
-        "--chain",
-        str(fact_only_chain),
-        "--emit-permit",
+        "--why",
+        "attempt a claim step without active task",
         check=False,
     )
     assert no_task.returncode == 1
-    assert "reason steps require an active TASK-*" in no_task.stdout
+    assert "claim steps require an active TASK-*" in no_task.stdout
 
     run_cli(
         context,
@@ -5503,21 +5596,6 @@ def test_grant_requires_current_task_node_and_uses_configured_ttl(tmp_path: Path
         "active task for grant",
     )
     task_id = only_record_id(context, "task")
-
-    missing_task_node = run_cli(
-        context,
-        "validate-decision",
-        "--mode",
-        "edit",
-        "--kind",
-        "write",
-        "--chain",
-        str(fact_only_chain),
-        "--emit-permit",
-        check=False,
-    )
-    assert missing_task_node.returncode == 1
-    assert f"exactly one task node matching current TASK-* {task_id}" in missing_task_node.stdout
 
     task_chain = context.parent / "task-chain.json"
     task_chain.write_text(
@@ -5535,29 +5613,19 @@ def test_grant_requires_current_task_node_and_uses_configured_ttl(tmp_path: Path
     )
     configured = run_cli(context, "configure-runtime", "--chain-permit", "ttl_seconds=60")
     assert "chain_permits.ttl_seconds=60" in configured.stdout
-    grant_payload = json.loads(
-        run_cli(
-            context,
-            "validate-decision",
-            "--mode",
-            "edit",
-            "--kind",
-            "write",
-            "--chain",
-            str(task_chain),
-            "--emit-permit",
-            "--ttl-seconds",
-            "3600",
-            "--format",
-            "json",
-        ).stdout
+    grant_payload = append_claim_step_grant(
+        context,
+        claim_ref=claim_id,
+        mode="edit",
+        action_kind="write",
+        ttl_seconds="3600",
     )
     grant = grant_payload["grant"]
     assert grant["task_ref"] == task_id
     assert grant["mode"] == "edit"
     assert grant["action_kind"] == "write"
     assert grant["reason_ref"] == grant_payload["reason"]["id"]
-    assert grant_payload["reason"]["signed_chain"]["node_count"] == 2
+    assert grant_payload["reason"]["entry_type"] == "claim_step"
     issued = datetime.fromisoformat(grant["issued_at"])
     expires = datetime.fromisoformat(grant["expires_at"])
     assert 30 <= (expires - issued).total_seconds() <= 60
@@ -5636,23 +5704,9 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
         encoding="utf-8",
     )
 
-    decision = run_cli(
-        context,
-        "validate-decision",
-        "--mode",
-        "edit",
-        "--kind",
-        "write",
-        "--chain",
-        str(chain),
-        "--emit-permit",
-    )
-    reason_match = re.search(r"reason: `(REASON-\d{8}-[0-9a-f]{8})`", decision.stdout)
-    access_match = re.search(r"grant: `(GRANT-\d{8}-[0-9a-f]{8})`", decision.stdout)
-    assert reason_match, decision.stdout
-    assert access_match, decision.stdout
-    reason_id = reason_match.group(1)
-    access_id = access_match.group(1)
+    permit = append_claim_step_grant(context, claim_ref=claim_id, mode="edit", action_kind="write")
+    reason_id = permit["reason"]["id"]
+    access_id = permit["grant"]["id"]
     agent_secret_files = sorted((context / "runtime" / "agent_identity" / "agents").glob("*.json"))
     assert agent_secret_files
     agent_secret = json.loads(agent_secret_files[0].read_text(encoding="utf-8"))
@@ -5697,7 +5751,7 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
     assert reused.returncode == 1
     assert "used" in reused.stdout or "no matching" in reused.stdout
 
-    ledger.write_text(ledger.read_text(encoding="utf-8").replace("execute a reasoned action", "tampered action", 1), encoding="utf-8")
+    ledger.write_text(ledger.read_text(encoding="utf-8").replace(claim_id, "CLM-20260423-tampered", 1), encoding="utf-8")
     tampered = run_cli(context, "reason-current", check=False)
     assert tampered.returncode == 1
     assert "tampered" in tampered.stdout
@@ -5706,45 +5760,10 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
 def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
-    source_id = recorded_id(
-        run_cli(
-            context,
-            "record-source",
-            "--scope",
-            "demo.reason-ledger",
-            "--source-kind",
-            "runtime",
-            "--critique-status",
-            "accepted",
-            "--origin-kind",
-            "command",
-            "--origin-ref",
-            "pytest reason ledger",
-            "--quote",
-            "reasoning can be recorded as a validated ledger step",
-            "--note",
-            "reason ledger source",
-        ),
-        "source",
-    )
-    claim_id = recorded_id(
-        run_cli(
-            context,
-            "record-claim",
-            "--scope",
-            "demo.reason-ledger",
-            "--plane",
-            "runtime",
-            "--status",
-            "supported",
-            "--statement",
-            "Reasoning can be recorded as a validated ledger step.",
-            "--source",
-            source_id,
-            "--note",
-            "reason ledger claim",
-        ),
-        "claim",
+    claim_id = user_confirmed_theory_claim(
+        context,
+        "demo.reason-ledger",
+        "Reasoning can be recorded as a validated claim-step ledger entry.",
     )
     task_id = recorded_id(
         run_cli(
@@ -5761,71 +5780,41 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
         ),
         "task",
     )
-    chain = context.parent / "ledger-chain.json"
-    chain.write_text(
-        json.dumps(
-            {
-                "task": "record reason ledger branches",
-                "nodes": [
-                    {"role": "fact", "ref": claim_id, "quote": "Reasoning can be recorded as a validated ledger step."},
-                    {"role": "task", "ref": task_id, "quote": "Record reason ledger branches"},
-                ],
-                "edges": [{"from": claim_id, "to": task_id, "relation": "supports reasoning ledger work"}],
-            }
-        ),
-        encoding="utf-8",
-    )
 
+    wctx_ref = current_wctx_ref(context, "reason ledger branches")
     first = json.loads(
         run_cli(
             context,
             "reason-step",
             "--mode",
             "planning",
-            "--chain",
-            str(chain),
+            "--claim",
+            claim_id,
+            "--wctx",
+            wctx_ref,
             "--why",
             "establish the first reasoning checkpoint",
             "--format",
             "json",
         ).stdout
     )
-    assert first["parent_refs"] == []
+    assert first["prev_step_ref"] == ""
     assert first["branch"] == "main"
     assert first["justification_valid"] is True
     assert first["decision_chain_valid"] is True
     assert first["decision_valid"] is True
-    assert first["signed_chain"]["nodes"][0]["ref"] == claim_id
-
-    test_decision = json.loads(
-        run_cli(context, "validate-decision", "--mode", "test", "--chain", str(chain), "--format", "json").stdout
-    )
-    assert test_decision["decision_chain_valid"] is True
-    assert "test" in test_decision["valid_for"]
-
-    invalid_decision = run_cli(
-        context,
-        "reason-step",
-        "--mode",
-        "permission",
-        "--chain",
-        str(chain),
-        "--why",
-        "try to append a reason without a permission-valid chain",
-        check=False,
-    )
-    assert invalid_decision.returncode == 1
-    assert "justification_valid=`False`" in invalid_decision.stdout
-    assert "decision_chain_valid=`False`" in invalid_decision.stdout
-    assert "requires a requested_permission node" in invalid_decision.stdout
+    assert first["claim_ref"] == claim_id
+    assert first["task_ref"] == task_id
 
     duplicate = run_cli(
         context,
         "reason-step",
         "--mode",
         "planning",
-        "--chain",
-        str(chain),
+        "--claim",
+        claim_id,
+        "--wctx",
+        wctx_ref,
         "--why",
         "mechanically repeat the previous checkpoint",
         "--format",
@@ -5833,9 +5822,14 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
         check=False,
     )
     assert duplicate.returncode == 1
-    assert "duplicate parent" in duplicate.stdout
+    assert "relation_claim_ref must reference relation CLM-*" in duplicate.stdout
 
-    source2_id = recorded_id(
+    claim2_id = user_confirmed_theory_claim(
+        context,
+        "demo.reason-ledger",
+        "Reasoning should advance through an explicit relation CLM.",
+    )
+    relation_source_id = recorded_id(
         run_cli(
             context,
             "record-source",
@@ -5846,52 +5840,42 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
             "--critique-status",
             "accepted",
             "--origin-kind",
-            "command",
+            "user",
             "--origin-ref",
-            "pytest reason ledger continuation",
+            "pytest relation",
             "--quote",
-            "reasoning should advance with a changed chain",
+            "the first reasoning claim supports the continuation claim",
             "--note",
-            "reason ledger continuation source",
+            "reason ledger relation source",
         ),
         "source",
     )
-    claim2_id = recorded_id(
+    relation_claim_id = recorded_id(
         run_cli(
             context,
             "record-claim",
             "--scope",
             "demo.reason-ledger",
             "--plane",
-            "runtime",
+            "theory",
             "--status",
             "supported",
             "--statement",
-            "Reasoning should advance with a changed chain.",
+            f"{claim_id} supports {claim2_id}.",
             "--source",
-            source2_id,
+            relation_source_id,
+            "--claim-kind",
+            "relation",
+            "--relation-kind",
+            "supports",
+            "--relation-subject",
+            claim_id,
+            "--relation-object",
+            claim2_id,
             "--note",
-            "reason ledger continuation claim",
+            "reason ledger relation claim",
         ),
         "claim",
-    )
-    chain2 = context.parent / "reason-chain-2.json"
-    chain2.write_text(
-        json.dumps(
-            {
-                "task": "record reason ledger branches",
-                "nodes": [
-                    {"role": "fact", "ref": claim_id, "quote": "Reasoning can be recorded as a validated ledger step."},
-                    {"role": "fact", "ref": claim2_id, "quote": "Reasoning should advance with a changed chain."},
-                    {"role": "task", "ref": task_id, "quote": "Record reason ledger branches"},
-                ],
-                "edges": [
-                    {"from": claim_id, "to": task_id, "relation": "supports reasoning ledger work"},
-                    {"from": claim2_id, "to": task_id, "relation": "supports reasoning progression"},
-                ],
-            }
-        ),
-        encoding="utf-8",
     )
     second = json.loads(
         run_cli(
@@ -5899,15 +5883,24 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
             "reason-step",
             "--mode",
             "planning",
-            "--chain",
-            str(chain2),
+            "--claim",
+            claim2_id,
+            "--prev-step",
+            first["id"],
+            "--prev-claim",
+            claim_id,
+            "--relation-claim",
+            relation_claim_id,
+            "--wctx",
+            wctx_ref,
             "--why",
             "continue from the previous checkpoint with new support",
             "--format",
             "json",
         ).stdout
     )
-    assert second["parent_refs"] == [first["id"]]
+    assert second["prev_step_ref"] == first["id"]
+    assert second["relation_claim_ref"] == relation_claim_id
 
     fork = json.loads(
         run_cli(
@@ -5915,10 +5908,10 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
             "reason-step",
             "--mode",
             "planning",
-            "--chain",
-            str(chain),
-            "--parent",
-            first["id"],
+            "--claim",
+            claim_id,
+            "--wctx",
+            wctx_ref,
             "--branch",
             "alternative",
             "--why",
@@ -5927,14 +5920,14 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
             "json",
         ).stdout
     )
-    assert fork["parent_refs"] == [first["id"]]
+    assert fork["prev_step_ref"] == ""
     assert fork["branch"] == "alternative"
 
     current = run_cli(context, "reason-current").stdout
-    assert "## Recent Reason Steps" in current
-    assert f"reason `{first['id']}` branch=`main` parents=`none`" in current
-    assert f"reason `{second['id']}` branch=`main` parents=`{first['id']}`" in current
-    assert f"reason `{fork['id']}` branch=`alternative` parents=`{first['id']}`" in current
+    assert "## Recent Claim Steps" in current
+    assert f"step `{first['id']}` branch=`main` prev=`none`" in current
+    assert f"step `{second['id']}` branch=`main` prev=`{first['id']}`" in current
+    assert f"step `{fork['id']}` branch=`alternative` prev=`none`" in current
 
     run_cli(context, "pause-task", "--note", "switch to another task for parent-scope validation")
     other_task_id = recorded_id(
@@ -5952,35 +5945,27 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
         ),
         "task",
     )
-    other_chain = context.parent / "other-ledger-chain.json"
-    other_chain.write_text(
-        json.dumps(
-            {
-                "task": "other reason task",
-                "nodes": [
-                    {"role": "fact", "ref": claim_id, "quote": "Reasoning can be recorded as a validated ledger step."},
-                    {"role": "task", "ref": other_task_id, "quote": "Other reason task"},
-                ],
-                "edges": [{"from": claim_id, "to": other_task_id, "relation": "supports separate task"}],
-            }
-        ),
-        encoding="utf-8",
-    )
     cross_task_parent = run_cli(
         context,
         "reason-step",
         "--mode",
         "planning",
-        "--chain",
-        str(other_chain),
-        "--parent",
+        "--claim",
+        claim2_id,
+        "--prev-step",
         first["id"],
+        "--prev-claim",
+        claim_id,
+        "--relation-claim",
+        relation_claim_id,
+        "--wctx",
+        current_wctx_ref(context, "other reason task"),
         "--why",
         "try to reuse a parent from another task",
         check=False,
     )
     assert cross_task_parent.returncode == 1
-    assert f"parent reason {first['id']} belongs to another TASK-*" in cross_task_parent.stdout
+    assert f"previous step {first['id']} belongs to another TASK-*" in cross_task_parent.stdout
 
 
 def test_claim_step_ledger_follows_relation_clm_and_blocks_overlaps(tmp_path: Path) -> None:
@@ -6553,7 +6538,7 @@ def test_evidence_authorized_model_and_flow_require_grants(tmp_path: Path) -> No
         ),
         encoding="utf-8",
     )
-    run_cli(context, "validate-decision", "--mode", "model", "--chain", str(model_chain), "--emit-permit")
+    append_claim_step_grant(context, claim_ref=claim_id, mode="model")
 
     model_id = recorded_id(
         run_cli(
@@ -6635,7 +6620,7 @@ def test_evidence_authorized_model_and_flow_require_grants(tmp_path: Path) -> No
         ),
         encoding="utf-8",
     )
-    run_cli(context, "validate-decision", "--mode", "flow", "--chain", str(flow_chain), "--emit-permit")
+    append_claim_step_grant(context, claim_ref=claim_id, mode="flow")
 
     flow_id = recorded_id(
         run_cli(

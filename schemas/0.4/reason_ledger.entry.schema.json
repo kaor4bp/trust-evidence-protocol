@@ -40,8 +40,6 @@
       "additionalProperties": true
     },
     "chain_hash": {"type": "string"},
-    "signed_chain": {"type": "object", "additionalProperties": true},
-    "chain_payload": {"type": "object", "additionalProperties": true},
     "claim_ref": {"type": "string", "pattern": "^CLM-"},
     "prev_claim_ref": {"type": "string", "pattern": "^CLM-"},
     "relation_claim_ref": {"type": "string", "pattern": "^CLM-"},

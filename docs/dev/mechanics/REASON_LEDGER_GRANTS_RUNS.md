@@ -7,7 +7,7 @@ agent-owned ledger and uses that ledger to authorize protected actions.
 
 ## Ledger Shape
 
-`REASON-*` records reasoning progression under the local agent identity.
+`STEP-* entry_type=claim_step` records reasoning progression under the local agent identity.
 The 0.4 runtime writes one ledger per agent:
 
 ```text
@@ -20,20 +20,19 @@ Rules:
 - task-local
 - agent-owned; current entries carry the ledger `agent_identity_ref`
 - workspace/project/task bound
-- parented DAG
+- claim-step chain
 - branch labels for alternatives
 - no cross-task parents
-- direct same-mode continuation cannot reuse the same parent chain hash on the
-  same branch
+- direct same-mode continuation cannot reuse the same parent claim on the same
+  branch; it must advance through an explicit relation `CLM-*`
 - hash-chain seal and weak proof-of-work detect rewriting
 
 The ledger is not canonical truth. It is runtime control evidence. A valid
 ledger proves that the agent produced an untampered, owner-bound, mode-valid
-public justification chain. It does not prove semantic correctness, optimality,
+CLM traversal. It does not prove semantic correctness, optimality,
 or that no better interpretation was available.
-Current reason steps carry `justification_valid` and `decision_chain_valid` for
-that mode-valid public-chain result; `decision_valid` is only a compatible API
-alias.
+Current claim steps carry `justification_valid` and `decision_chain_valid` for
+that mode-valid CLM traversal; `decision_valid` is only a compatible API alias.
 
 The ledger also functions as task-local working-memory pressure. Each step
 forces the agent to attach its next move to cited facts, observations, marked
@@ -47,10 +46,10 @@ reason steps, recent actions/runs, and whether the next cheap move is lookup or
 
 ## Planning And Final Gates
 
-- Planning continuation requires a current valid `REASON-*` for the active task.
-- Meaningful test/verification runs should have a current `REASON-* mode=test`
+- Planning continuation requires a current valid `STEP-*` for the active task.
+- Meaningful test/verification runs should have a current `STEP-* mode=test`
   unless they are trivial local probes with no task consequence.
-- Final response requires `REASON-* mode=final`.
+- Final response requires `STEP-* mode=final`.
 - Autonomous `done` requires final reason and `GRANT-* mode=final`.
 - Lookup/read/reasoning can happen before a reason step so the agent can gather
   material.
@@ -61,7 +60,7 @@ reason steps, recent actions/runs, and whether the next cheap move is lookup or
 `GRANT-*` is authorization, not reasoning.
 
 ```text
-REASON-* -> GRANT-* -> RUN-* / protected write
+STEP-* -> GRANT-* -> RUN-* / protected write
 ```
 
 Grant checks bind mode, action kind, workspace/project/task, context

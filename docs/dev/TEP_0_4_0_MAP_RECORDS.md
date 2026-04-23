@@ -62,7 +62,7 @@ Rules:
 - `MAP-*` may point to `MODEL-*`/`FLOW-*` as anchors, but must not pretend to be
   confirmed model/flow knowledge.
 - `WCTX-*` may keep active map session state and selected `MAP-*` refs.
-- `REASON-*` may cite a `MAP-*` only as navigation context. Proof routes must
+- `STEP-*` may cite a `MAP-*` only as navigation context. Proof routes must
   drill down to proof-capable records.
 
 ## Common MAP Schema Shape
@@ -284,7 +284,7 @@ Typical anchors:
 - `TASK-*`
 - `WCTX-*`
 - `PLAN-*`
-- `REASON-*`
+- `STEP-*`
 - `OPEN-*`
 - `PRP-*`
 
@@ -386,7 +386,7 @@ Rules:
 - `map_drilldown` expands a selected `L2`/`L3` cell through bounded `down_refs`
   and returns the lower-level `proof_routes` with `source_map_ref`,
   `via_map_refs`, and `expanded_from_map_ref` metadata.
-- If the current `REASON-*` branch exists, lookup should prefer map cells that
+- If the current `STEP-*` branch exists, lookup should prefer map cells that
   add new chain nodes or expose unresolved tensions.
 
 Example lookup ordering:
@@ -433,8 +433,8 @@ MAP-* -> MODEL/FLOW promotion support
 MAP-* -> GRANT justification without chain drill-down
 ```
 
-`MAP-*` may appear in `REASON-*` as navigation context if the reason step also
-contains proof-capable chain nodes or explicitly states that it is exploratory.
+`MAP-*` may appear near a `STEP-*` as navigation context if the claim step also
+advances through proof-capable CLM records or explicitly states that it is exploratory.
 
 ## Curiosity And Pressure Signals
 

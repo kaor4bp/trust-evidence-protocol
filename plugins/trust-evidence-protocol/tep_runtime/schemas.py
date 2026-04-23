@@ -164,7 +164,7 @@ MAP_REF_KEYS = (
 )
 MAP_SCOPE_REF_KEYS = ("workspace_refs", "project_refs", "task_refs", "wctx_refs")
 MAP_L2_ANCHOR_PREFIXES = ("CLM-", "MODEL-", "FLOW-")
-MAP_L3_CONTEXT_PREFIXES = ("TASK-", "WCTX-", "PLN-", "REASON-")
+MAP_L3_CONTEXT_PREFIXES = ("TASK-", "WCTX-", "PLN-", "STEP-")
 
 
 def artifact_ref_exists(record_path: Path, artifact_ref: str) -> bool:

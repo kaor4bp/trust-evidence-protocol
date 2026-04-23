@@ -22,11 +22,11 @@ starter or extension, fallback route, and proof boundary reminders.
 
 ## Chain Extension Mode
 
-When a current `REASON-*` exists, lookup should default to extension mode:
+When a current `STEP-*` exists, lookup should default to extension mode:
 
-- inspect the current reason chain
+- inspect the current claim-step chain
 - exclude refs already present in that chain
-- search for records that can become new chain nodes
+- search for records that can become connected CLM successors
 - include current task node when useful
 - report excluded count and new candidate count
 - return fallback when no new proof-capable node exists

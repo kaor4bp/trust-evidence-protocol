@@ -69,7 +69,7 @@ def build_start_briefing(root: Path, records: dict[str, dict], *, intent: str = 
     task_steps = [
         entry
         for entry in entries
-        if str(entry.get("entry_type", "")).strip() in {"step", "claim_step"}
+        if str(entry.get("entry_type", "")).strip() == "claim_step"
         and (not task_ref or str(entry.get("task_ref", "")).strip() == task_ref)
     ]
     current = latest_reason_step(entries, task_ref) if validation.get("ok") else None

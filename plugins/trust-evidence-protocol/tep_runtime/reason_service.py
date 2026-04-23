@@ -6,19 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .hypotheses import active_hypothesis_entry_by_claim
 from .reason_ledger import (
     create_claim_step,
-    create_reason_step,
     grant_reason_access,
     reason_access_text_lines,
     validate_reason_ledger,
-)
-from .reasoning import (
-    decision_validation_text_lines,
-    decision_validation_payload,
-    evidence_chain_report_lines,
-    validate_evidence_chain_payload,
 )
 
 
@@ -26,7 +18,6 @@ def reason_step_service(
     root: Path,
     records: dict[str, dict],
     *,
-    chain_payload: dict[str, Any] | None = None,
     claim_ref: str | None = None,
     prev_claim_ref: str | None = None,
     relation_claim_ref: str | None = None,
@@ -36,45 +27,24 @@ def reason_step_service(
     mode: str,
     action_kind: str | None,
     why: str,
-    parent_refs: list[str] | None = None,
     branch: str = "main",
-    icon: str = "TEP",
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """Validate a public chain or CLM transition and append one ledger step."""
+    """Validate a CLM transition and append one STEP-* claim-step ledger entry."""
 
-    if claim_ref:
-        return create_claim_step(
-            root,
-            records,
-            claim_ref=claim_ref,
-            prev_claim_ref=prev_claim_ref,
-            relation_claim_ref=relation_claim_ref,
-            prev_step_ref=prev_step_ref,
-            wctx_ref=wctx_ref,
-            intent=intent,
-            mode=mode,
-            action_kind=action_kind,
-            reason=why,
-            branch=branch,
-        )
-    if not isinstance(chain_payload, dict):
-        return None, "chain_payload must be an object"
-    hypothesis_entries = active_hypothesis_entry_by_claim(root, records)
-    validation = validate_evidence_chain_payload(records, hypothesis_entries, chain_payload)
-    if validation.errors:
-        return None, "\n".join(evidence_chain_report_lines(validation, chain_payload, icon))
-    decision = decision_validation_payload(records, hypothesis_entries, chain_payload, mode)
-    if not decision.get("decision_chain_valid", decision.get("decision_valid")):
-        return None, "\n".join(decision_validation_text_lines(decision, icon))
-    return create_reason_step(
+    if not claim_ref:
+        return None, "reason-step requires --claim CLM-*; evidence-chain based ledger steps were removed in 0.4.7"
+    return create_claim_step(
         root,
-        chain_payload=chain_payload,
-        decision_payload=decision,
+        records,
+        claim_ref=claim_ref,
+        prev_claim_ref=prev_claim_ref,
+        relation_claim_ref=relation_claim_ref,
+        prev_step_ref=prev_step_ref,
+        wctx_ref=wctx_ref,
         intent=intent,
         mode=mode,
         action_kind=action_kind,
-        why=why,
-        parent_refs=parent_refs or [],
+        reason=why,
         branch=branch,
     )
 
@@ -119,12 +89,10 @@ def reason_review_service(
 
 
 def reason_step_text(reason: dict[str, Any], mode: str, action_kind: str | None) -> str:
-    if reason.get("entry_type") == "claim_step":
-        return (
-            f"Recorded claim step {reason['id']} claim={reason.get('claim_ref')} "
-            f"prev={reason.get('prev_claim_ref') or 'none'} mode={mode} kind={(action_kind or '') or 'none'}"
-        )
-    return f"Recorded reason {reason['id']} status={reason.get('status')} mode={mode} kind={(action_kind or '') or 'none'}"
+    return (
+        f"Recorded claim step {reason['id']} claim={reason.get('claim_ref')} "
+        f"prev={reason.get('prev_claim_ref') or 'none'} mode={mode} kind={(action_kind or '') or 'none'}"
+    )
 
 
 def reason_review_text(payload: dict[str, Any], reason_ref: str, grant: bool) -> str:

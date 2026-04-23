@@ -84,7 +84,6 @@ from tep_runtime.code_index import (
 from tep_runtime.reason_ledger import (
     chain_payload_hash,
     create_claim_step,
-    create_reason_step,
     decision_reason_status,
     final_reason_status,
     grant_reason_access,

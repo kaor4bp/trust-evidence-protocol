@@ -124,14 +124,10 @@ python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context augment-chain --file evidence-chain.json --format json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-evidence-chain --file evidence-chain.json
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-decision --mode planning --chain evidence-chain.json
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-step --mode edit --kind write --chain evidence-chain.json --why "why this action follows from the current reasoning"
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-review --reason REASON-* --mode edit --kind write --grant --command "exact bash command" --cwd /abs/repo
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-step --mode edit --kind write --claim CLM-* --relation-claim CLM-* --why "why this action follows from the current reasoning"
+python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-review --reason STEP-* --mode edit --kind write --grant --command "exact bash command" --cwd /abs/repo
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-check-grant --mode edit --kind write --command "exact bash command" --cwd /abs/repo
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context reason-current
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-decision --mode edit --kind write --chain evidence-chain.json --emit-permit
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-decision --mode model --chain evidence-chain.json --emit-permit
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-decision --mode flow --chain evidence-chain.json --emit-permit
-python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context validate-decision --mode final --chain evidence-chain.json --emit-permit
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context working-context check-drift --task "..."
 python3 plugins/trust-evidence-protocol/scripts/context_cli.py --context .codex_context workspace-admission check --repo /abs/repo --format json
 ```
@@ -175,15 +171,15 @@ Use `augment-chain` when you already have record refs but need the plugin to fil
 Use `validate-evidence-chain` before asking permission, recording a mutating `ACT-*`, or presenting a user-facing proof chain.
 Use `validate-decision` after evidence-chain validation when deciding whether that chain is sufficient for planning, permission, edit, test, model, flow, proposal, final, curiosity, or debugging mode.
 Read `justification_valid` / `decision_chain_valid` from `validate-decision` JSON output for the mode-specific public-chain result; `decision_valid` remains a compatible alias only.
-Use `reason-step` to append a task-scoped `REASON-*` reasoning step when the agent changes direction or needs protected access.
+Use `reason-step` to append a task-scoped `STEP-*` claim-step when the agent changes direction or needs protected access.
 Use `reason-step --mode test` before meaningful verification runs so tests are connected to the current public reasoning branch instead of appearing as detached shell activity.
-Use `reason-review --reason REASON-* --mode edit --kind <action-kind> --grant --command "..." --cwd ...` before protected mutating Bash in `evidence-authorized` or `implementation-choice`; the PreToolUse hook requires a command-bound `GRANT-*`.
-Use `validate-decision --emit-permit --mode edit --kind <action-kind>` as a shortcut for write-API gates; for Bash hooks, follow it with a command-bound `reason-review`.
+Use `reason-review --reason STEP-* --mode edit --kind <action-kind> --grant --command "..." --cwd ...` before protected mutating Bash in `evidence-authorized` or `implementation-choice`; the PreToolUse hook requires a command-bound `GRANT-*`.
+`validate-decision` is read-only; use `reason-step` plus `reason-review` to mutate the ledger.
 Reason authorization output includes ids, mode, action kind, expiry, command hash, and max runs so the agent can show the user what it actually requested.
-`GRANT-*` requires exactly one current `TASK-*` node in the chain and binds to one mode, optional action kind, current workspace/project/task, chain hash, context fingerprint, and, for Bash, exact command hash plus cwd.
+`GRANT-*` binds to one reviewed `STEP-*`, one mode, optional action kind, current workspace/project/task, claim-step hash, context fingerprint, and, for Bash, exact command hash plus cwd.
 Grant TTL defaults to `settings.chain_permits.ttl_seconds = 300`; `--ttl-seconds` may request a shorter window but cannot exceed settings.
-Use the same grant before write-API commitments in `evidence-authorized` or `implementation-choice`: mutating `record-action` checks a matching edit grant and chain hash; working/stable/contested `record-model` and `record-flow` check `mode=model` or `mode=flow` grant.
-Use `reason-review --reason REASON-* --mode final --grant` before marking an autonomous task `done`; Stop/final guards reject `done` without a fresh final grant.
+Use the same grant before write-API commitments in `evidence-authorized` or `implementation-choice`: mutating `record-action` checks a matching edit grant; working/stable/contested `record-model` and `record-flow` check `mode=model` or `mode=flow` grant.
+Use `reason-review --reason STEP-* --mode final --grant` before marking an autonomous task `done`; Stop/final guards reject `done` without a fresh final grant.
 Use `telemetry-report --format json` to inspect reason pressure counters such as `reason_grant_missing_count`, `reason_grant_expired_count`, and `reason_grant_authorized_count`.
 Use `task-outcome-check` before declaring an autonomous task `done`, `blocked`, or `user-question`; the Stop hook uses the same check, so a marker without linked obligations can still be rejected.
 If a chain uses `role=hypothesis`, first record it as `CLM-* status=tentative` and add it with `hypothesis add`; proof modes still must not rely on hypothesis nodes.

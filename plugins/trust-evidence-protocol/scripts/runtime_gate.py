@@ -315,8 +315,8 @@ def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bo
         if outcome == "done":
             final_reason = final_reason_status(root, context_fingerprint=current_fingerprint)
             if not final_reason.get("ok"):
-                print(f"Autonomous TASK-* cannot be marked done without a final REASON-*: {final_reason.get('message')}")
-                print("Run: context_cli.py reason-step --mode final --chain evidence-chain.json --why \"final answer\"")
+                print(f"Autonomous TASK-* cannot be marked done without a final STEP-*: {final_reason.get('message')}")
+                print('Run: context_cli.py reason-step --mode final --claim CLM-* --relation-claim CLM-* --why "final answer"')
                 return 1
             permit = validate_reason_access(
                 root,
@@ -330,7 +330,7 @@ def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bo
                     "Autonomous TASK-* cannot be marked done without a fresh valid GRANT-* "
                     f"for mode=final: {permit.get('reason')}"
                 )
-                print("Run: context_cli.py reason-review --reason REASON-* --mode final --grant")
+                print("Run: context_cli.py reason-review --reason STEP-* --mode final --grant")
                 return 1
         print(f"Autonomous task stop accepted: {outcome}")
         return 0
@@ -557,8 +557,8 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
     if mode == "planning" and isinstance(current_task, dict) and current_task.get("id"):
         planning_reason = decision_reason_status(root, mode="planning", context_fingerprint=current_fingerprint)
         if not planning_reason.get("ok"):
-            print(f"Planning blocked: missing valid REASON-* for current TASK-*: {planning_reason.get('message')}")
-            print("Run lookup/reasoning as needed, then: context_cli.py reason-step --mode planning --chain evidence-chain.json --why \"planning continuation\"")
+            print(f"Planning blocked: missing valid STEP-* for current TASK-*: {planning_reason.get('message')}")
+            print('Run lookup/reasoning as needed, then: context_cli.py reason-step --mode planning --claim CLM-* --relation-claim CLM-* --why "planning continuation"')
             return 1
 
     if mode == "final":
@@ -587,8 +587,8 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
         if isinstance(current_task, dict) and current_task.get("id"):
             final_reason = final_reason_status(root, context_fingerprint=current_fingerprint)
             if not final_reason.get("ok"):
-                print(f"Final response blocked: missing final REASON-*: {final_reason.get('message')}")
-                print("Run: context_cli.py reason-step --mode final --chain evidence-chain.json --why \"final answer\"")
+                print(f"Final response blocked: missing final STEP-*: {final_reason.get('message')}")
+                print('Run: context_cli.py reason-step --mode final --claim CLM-* --relation-claim CLM-* --why "final answer"')
                 return 1
         if (
             isinstance(current_task, dict)
@@ -607,7 +607,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
                     "Final response for an autonomous TASK-* requires a fresh valid GRANT-* "
                     f"for mode=final: {permit.get('reason')}"
                 )
-                print("Run: context_cli.py reason-review --reason REASON-* --mode final --grant")
+                print("Run: context_cli.py reason-review --reason STEP-* --mode final --grant")
                 return 1
 
     if status == "hydrated-with-conflicts" and mode == "planning":
@@ -668,7 +668,7 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
                 f"for mode=edit kind={action_kind!r}: {permit.get('reason')}"
             )
             print(
-                "Run: context_cli.py reason-review --reason REASON-* "
+                "Run: context_cli.py reason-review --reason STEP-* "
                 f"--mode edit --kind {action_kind} --grant"
             )
             return 1

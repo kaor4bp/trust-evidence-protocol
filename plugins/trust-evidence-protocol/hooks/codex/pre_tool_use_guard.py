@@ -109,7 +109,7 @@ def main() -> int:
                 message.splitlines()[0],
                 permission_context=(
                     "Create a command-bound grant first: "
-                    "reason-review --reason REASON-* --mode edit "
+                    "reason-review --reason STEP-* --mode edit "
                     f"--kind {action_kind} --grant --command <exact-command> --cwd <cwd>"
                 ),
             )

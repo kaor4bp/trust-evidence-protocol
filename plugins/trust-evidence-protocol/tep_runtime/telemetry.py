@@ -191,7 +191,7 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
                 "rejected_count": len(permit_rejected_events),
                 "message": "Chain permit gates are forcing agents to validate reasoning before protected actions.",
                 "recommended_tools": ["next_step", "validate_decision", "augment_chain"],
-                "next_action": "If missing permit events dominate, route agents through next-step and validate-decision --emit-permit earlier.",
+                "next_action": "If missing permit events dominate, route agents through next-step, reason-step, and reason-review earlier.",
             }
         )
     if reason_grant_missing_events or reason_grant_expired_events or reason_grant_rejected_events:

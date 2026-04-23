@@ -24,7 +24,7 @@ Consistent across lookup, evidence chains, reason ledger, and task preflight.
 Required implementation pressure:
 
 - lookup proposes new chain nodes by default
-- `REASON-*` direct same-mode duplicate chain is rejected
+- `STEP-*` direct same-mode duplicate claim reuse is rejected
 - planning/final preflight requires valid reason
 - fallback is fork/new hypothesis/open question, not old-chain reuse
 

@@ -16,7 +16,6 @@ from tep_runtime.core_validators import validate_active_focus, validate_core_gra
 from tep_runtime.agent_identity import agent_identity_scope, sign_working_context_payload  # noqa: E402
 from tep_runtime.reason_ledger import (  # noqa: E402
     append_reason_entry,
-    chain_payload_hash,
     command_hash,
     current_reasons_ledger_path,
     normalize_cwd,
@@ -361,21 +360,27 @@ def test_reason_ledger_state_validation_detects_tamper(tmp_path: Path) -> None:
         json.dumps({"reasoning": {"pow": {"enabled": False}}}),
         encoding="utf-8",
     )
-    chain_payload = {
-        "task": "ledger validation",
-        "nodes": [{"role": "task", "ref": "TASK-20260423-a0000012", "quote": "validate ledger"}],
-        "edges": [],
-    }
     with agent_identity_scope("ledger-tamper-agent-token"):
         entry, error = append_reason_entry(
             tmp_path,
             {
-                "entry_type": "step",
+                "version": 3,
+                "entry_type": "claim_step",
                 "status": "reviewed",
+                "workspace_ref": WORKSPACE_REF,
+                "project_ref": "PRJ-20260423-a0000011",
                 "task_ref": "TASK-20260423-a0000012",
+                "wctx_ref": "WCTX-20260423-a0000014",
+                "claim_ref": "CLM-20260423-a0000015",
+                "prev_claim_ref": "",
+                "relation_claim_ref": "",
+                "prev_step_ref": "",
                 "mode": "edit",
-                "chain_hash": chain_payload_hash(chain_payload),
-                "chain_payload": chain_payload,
+                "justification_valid": True,
+                "decision_chain_valid": True,
+                "decision_valid": True,
+                "valid_for": ["edit"],
+                "claim_step_hash": "pytest-step-hash",
             },
         )
     assert entry is not None, error
@@ -388,7 +393,7 @@ def test_reason_ledger_state_validation_detects_tamper(tmp_path: Path) -> None:
         ledger = current_reasons_ledger_path(tmp_path)
     assert ledger is not None
     ledger.write_text(
-        ledger.read_text(encoding="utf-8").replace("ledger validation", "tampered validation", 1),
+        ledger.read_text(encoding="utf-8").replace("pytest-step-hash", "tampered-step-hash", 1),
         encoding="utf-8",
     )
 
@@ -413,7 +418,7 @@ def grant_for_run(root: Path, *, command: str = "echo hi", max_runs: int = 1) ->
                 "entry_type": "grant",
                 "status": "active",
                 "grant_type": "exact_command",
-                "reason_ref": "REASON-20260423-a0000013",
+                "reason_ref": "STEP-20260423-a0000013",
                 "workspace_ref": WORKSPACE_REF,
                 "project_ref": "PRJ-20260423-a0000011",
                 "task_ref": "TASK-20260423-a0000012",

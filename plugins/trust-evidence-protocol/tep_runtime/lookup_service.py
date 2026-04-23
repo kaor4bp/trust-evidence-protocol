@@ -444,20 +444,11 @@ def current_lookup_step_context(root: Path) -> dict:
     reason = latest_reason_step(validation.get("entries", []), task_ref)
     if not reason:
         return {"ok": True, "step_ref": "", "used_refs": set(), "message": "no current STEP-*"}
-    if str(reason.get("entry_type", "")).strip() == "claim_step":
-        used_refs = {
-            str(reason.get(key, "")).strip()
-            for key in ("prev_claim_ref", "claim_ref", "relation_claim_ref")
-            if str(reason.get(key, "")).strip()
-        }
-    else:
-        chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
-        nodes = chain_payload.get("nodes", []) if isinstance(chain_payload.get("nodes"), list) else []
-        used_refs = {
-            str(node.get("ref", "")).strip()
-            for node in nodes
-            if isinstance(node, dict) and str(node.get("ref", "")).strip()
-        }
+    used_refs = {
+        str(reason.get(key, "")).strip()
+        for key in ("prev_claim_ref", "claim_ref", "relation_claim_ref")
+        if str(reason.get(key, "")).strip()
+    }
     return {
         "ok": True,
         "step_ref": str(reason.get("id", "")).strip(),

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-from .common import ACTION_KINDS, CONTRACT_VERSION, compact_object_schema, jsonable, loose_object
+from .common import ACTION_KINDS, CONTRACT_VERSION, compact_object_schema, jsonable
 
 
 REASON_MODES = ("planning", "edit", "test", "debugging", "permission", "final", "curiosity")
@@ -40,8 +40,6 @@ class ReasonLedgerEntry:
     version: int = 2
     record_type: str = "reason"
     chain_hash: str | None = None
-    signed_chain: Mapping[str, Any] = field(default_factory=dict)
-    chain_payload: Mapping[str, Any] = field(default_factory=dict)
     contract_version: str = CONTRACT_VERSION
 
     def to_payload(self) -> dict[str, Any]:
@@ -117,8 +115,6 @@ REASON_LEDGER_ENTRY_SCHEMA = compact_object_schema(
             "type": "boolean",
             "description": "Compatibility alias for decision_chain_valid; new clients should read justification_valid/decision_chain_valid.",
         },
-        "signed_chain": loose_object("Public compact chain summary sealed into the ledger entry."),
-        "chain_payload": loose_object("Full public chain payload used to compute chain_hash."),
         "claim_ref": {"type": "string", "pattern": "^CLM-"},
         "prev_claim_ref": {"type": "string", "pattern": "^CLM-"},
         "relation_claim_ref": {"type": "string", "pattern": "^CLM-"},

@@ -122,8 +122,6 @@ def test_reason_ledger_contract_preserves_hash_seal_and_pow_fields() -> None:
             "digest": "000abc",
         },
         chain_hash="sha256:chain",
-        signed_chain={"node_count": 1, "edge_count": 0},
-        chain_payload={"nodes": [], "edges": []},
     ).to_payload()
 
     assert entry["contract_version"] == "0.4"

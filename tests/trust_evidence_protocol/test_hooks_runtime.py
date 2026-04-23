@@ -65,7 +65,7 @@ def run_runtime(
 ) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         [sys.executable, str(RUNTIME_GATE), "--context", str(context), *args],
-        cwd=cwd or REPO_ROOT,
+        cwd=cwd or context.parent,
         env={**os.environ, "TEP_AGENT_SECRET_TOKEN": "pytest-hooks-agent-token"},
         capture_output=True,
         text=True,
@@ -113,6 +113,112 @@ def recorded_id(result: subprocess.CompletedProcess[str], record_type: str) -> s
     match = re.search(rf"(?:Recorded {record_type}|Started {record_type}) ([A-Z]+-\d{{8}}-[0-9a-f]{{8}})", result.stdout)
     assert match, result.stdout
     return match.group(1)
+
+
+def current_wctx_ref(context: Path, query: str = "current working context") -> str:
+    for path in sorted((context / "records" / "working_context").glob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("status") == "active":
+            return path.stem
+    task_ref = str(json.loads((context / "settings.json").read_text(encoding="utf-8")).get("current_task_ref") or "")
+    workspace_files = sorted((context / "records" / "workspace").glob("*.json"))
+    if workspace_files:
+        workspace_id = workspace_files[0].stem
+    else:
+        workspace_id = recorded_id(
+            run_cli(
+                context,
+                "record-workspace",
+                "--workspace-key",
+                "pytest",
+                "--title",
+                "Pytest Workspace",
+                "--root-ref",
+                str(context.parent),
+                "--root-ref",
+                "/tmp",
+                "--note",
+                "workspace for claim-step helper",
+            ),
+            "workspace",
+        )
+    run_cli(context, "assign-workspace", "--workspace", workspace_id, "--all-unassigned", "--note", "claim-step helper scope")
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    anchor_args = ["init-anchor", "--directory", str(context.parent), "--workspace", workspace_id, "--force"]
+    if task_ref:
+        anchor_args.extend(["--task", task_ref])
+    run_cli(context, *anchor_args)
+    args = [
+        "working-context",
+        "create",
+        "--scope",
+        "pytest",
+        "--title",
+        query,
+        "--note",
+        "working context for claim-step helper",
+    ]
+    if task_ref:
+        args.extend(["--task", task_ref])
+    return recorded_id(run_cli(context, *args), "working_context")
+
+
+def append_claim_step(
+    context: Path,
+    *,
+    claim_ref: str,
+    mode: str,
+    action_kind: str | None = None,
+    branch: str | None = None,
+    why: str = "test claim step",
+) -> dict:
+    args = [
+        "reason-step",
+        "--mode",
+        mode,
+        "--claim",
+        claim_ref,
+        "--wctx",
+        current_wctx_ref(context, f"{mode} claim step"),
+        "--branch",
+        branch or mode,
+        "--why",
+        why,
+        "--format",
+        "json",
+    ]
+    if action_kind:
+        args.extend(["--kind", action_kind])
+    return json.loads(run_cli(context, *args).stdout)
+
+
+def append_claim_step_grant(
+    context: Path,
+    *,
+    claim_ref: str,
+    mode: str,
+    action_kind: str | None = None,
+    command: str | None = None,
+    cwd: Path | None = None,
+    branch: str | None = None,
+) -> dict:
+    step = append_claim_step(
+        context,
+        claim_ref=claim_ref,
+        mode=mode,
+        action_kind=action_kind,
+        branch=branch,
+    )
+    args = ["reason-review", "--reason", step["id"], "--mode", mode, "--grant", "--format", "json"]
+    if action_kind:
+        args.extend(["--kind", action_kind])
+    if command:
+        args.extend(["--command", command])
+    if cwd:
+        args.extend(["--cwd", str(cwd)])
+    payload = json.loads(run_cli(context, *args).stdout)
+    payload["reason"] = step
+    return payload
 
 
 def strictness_approval(context: Path, value: str, permission_id: str | None = None) -> tuple[str, str]:
@@ -430,7 +536,7 @@ def test_final_preflight_requires_final_reason_for_active_task(tmp_path: Path) -
         "--task",
         task_id,
         "--deliverable",
-        "Final answer is backed by a REASON step.",
+        "Final answer is backed by a STEP claim-step.",
         "--done",
         "Final preflight accepts the final reason.",
         "--verify",
@@ -447,37 +553,22 @@ def test_final_preflight_requires_final_reason_for_active_task(tmp_path: Path) -
 
     blocked_planning = run_runtime(context, "preflight-task", "--mode", "planning", check=False)
     assert blocked_planning.returncode == 1
-    assert "missing valid REASON-*" in blocked_planning.stdout
-    run_cli(
-        context,
-        "reason-step",
-        "--mode",
-        "planning",
-        "--chain",
-        str(final_chain),
-        "--why",
-        "plan final response from the validated task facts",
-    )
+    assert "missing valid STEP-*" in blocked_planning.stdout
+    append_claim_step(context, claim_ref=claim_id, mode="planning", why="plan final response from the validated task facts")
+    run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "final reason focus after step")
     planning = run_runtime(context, "preflight-task", "--mode", "planning")
     assert "Preflight passed for planning" in planning.stdout
 
     blocked = run_runtime(context, "preflight-task", "--mode", "final", check=False)
     assert blocked.returncode == 1
-    assert "missing final REASON-*" in blocked.stdout
+    assert "missing final STEP-*" in blocked.stdout
 
-    reason = json.loads(
-        run_cli(
-            context,
-            "reason-step",
-            "--mode",
-            "final",
-            "--chain",
-            str(final_chain),
-            "--why",
-            "final answer is supported by the validated chain",
-            "--format",
-            "json",
-        ).stdout
+    reason = append_claim_step(
+        context,
+        claim_ref=claim_id,
+        mode="final",
+        why="final answer is supported by the validated claim",
     )
     assert reason["mode"] == "final"
     current = run_cli(context, "reason-current").stdout
@@ -598,17 +689,15 @@ def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    run_cli(
+    append_claim_step(
         context,
-        "reason-step",
-        "--mode",
-        "planning",
-        "--chain",
-        str(planning_chain),
-        "--why",
-        "continue planning after user-confirmed task focus",
+        claim_ref=claim_id,
+        mode="planning",
+        branch="planning-initial",
+        why="continue planning after user-confirmed task focus",
     )
     run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "task focus after planning step")
     planning = run_runtime(context, "preflight-task", "--mode", "planning")
     assert "Preflight passed for planning" in planning.stdout
 
@@ -670,17 +759,15 @@ def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    run_cli(
+    append_claim_step(
         context,
-        "reason-step",
-        "--mode",
-        "planning",
-        "--chain",
-        str(planning_chain2),
-        "--why",
-        "continue planning after unrelated records changed the context fingerprint",
+        claim_ref=claim2_id,
+        mode="planning",
+        branch="planning-refresh",
+        why="continue planning after unrelated records changed the context fingerprint",
     )
     run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "task focus after planning refresh")
     still_confirmed = run_runtime(context, "preflight-task", "--mode", "planning")
     assert "Preflight passed for planning" in still_confirmed.stdout
 
@@ -699,6 +786,15 @@ def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:
 
     settings = json.loads((context / "settings.json").read_text(encoding="utf-8"))
     assert settings["current_task_ref"] is None
+    run_cli(
+        context,
+        "init-anchor",
+        "--directory",
+        str(context.parent),
+        "--workspace",
+        settings["current_workspace_ref"],
+        "--force",
+    )
 
     hydrate_after = run_runtime(context, "hydrate-context")
     assert "Current task:" not in hydrate_after.stdout
@@ -830,26 +926,20 @@ def test_autonomous_task_stop_guard_requires_terminal_outcome(tmp_path: Path) ->
         check=False,
     )
     assert no_final_permit.returncode == 1
-    assert "final REASON-*" in no_final_permit.stdout
+    assert "final STEP-*" in no_final_permit.stdout
     final_preflight_block = run_runtime(context, "preflight-task", "--mode", "final", check=False)
     assert final_preflight_block.returncode == 1
-    assert "missing final REASON-*" in final_preflight_block.stdout
+    assert "missing final STEP-*" in final_preflight_block.stdout
 
-    final_reason = json.loads(
-        run_cli(
-            context,
-            "reason-step",
-            "--mode",
-            "final",
-            "--chain",
-            str(final_chain),
-            "--why",
-            "autonomous final response is ready for grant review",
-            "--format",
-            "json",
-        ).stdout
+    final_reason = append_claim_step(
+        context,
+        claim_ref=claim_id,
+        mode="final",
+        why="autonomous final response is ready for grant review",
     )
     assert final_reason["mode"] == "final"
+    run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "autonomous final focus after step")
     missing_grant_preflight = run_runtime(context, "preflight-task", "--mode", "final", check=False)
     assert missing_grant_preflight.returncode == 1
     assert "fresh valid GRANT-*" in missing_grant_preflight.stdout
@@ -1830,36 +1920,16 @@ def test_pre_and_post_tool_hooks_track_mutating_bash_commands(tmp_path: Path) ->
         ),
         encoding="utf-8",
     )
-    permit = json.loads(
-        run_cli(
-            context,
-            "validate-decision",
-            "--mode",
-            "edit",
-            "--kind",
-            "delete",
-            "--chain",
-            str(chain),
-            "--emit-permit",
-            "--format",
-            "json",
-        ).stdout
-    )
-    run_cli(
+    append_claim_step_grant(
         context,
-        "reason-review",
-        "--reason",
-        permit["reason"]["id"],
-        "--mode",
-        "edit",
-        "--kind",
-        "delete",
-        "--grant",
-        "--command",
-        "rm -rf /tmp/example",
-        "--cwd",
-        str(tmp_path),
+        claim_ref=claim_id,
+        mode="edit",
+        action_kind="delete",
+        command="rm -rf /tmp/example",
+        cwd=tmp_path,
     )
+    run_runtime(context, "hydrate-context")
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "hook tracking focus after grant")
 
     allow_result = run_script(
         HOOK_DIR / "pre_tool_use_guard.py",
@@ -2050,29 +2120,19 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         ),
         encoding="utf-8",
     )
-    permit = json.loads(
-        run_cli(
-            context,
-            "validate-decision",
-            "--mode",
-            "edit",
-            "--kind",
-            "write",
-            "--chain",
-            str(chain),
-            "--emit-permit",
-            "--format",
-            "json",
-        ).stdout
+    permit = append_claim_step_grant(
+        context,
+        claim_ref=claim_id,
+        mode="edit",
+        action_kind="write",
+        branch="first-write",
     )
-    assert permit["decision_valid"] is True
-    assert permit["decision_chain_valid"] is True
-    assert permit["justification_valid"] is True
+    assert permit["reason"]["decision_valid"] is True
+    assert permit["reason"]["decision_chain_valid"] is True
+    assert permit["reason"]["justification_valid"] is True
     assert permit["grant"]["mode"] == "edit"
     assert permit["grant"]["action_kind"] == "write"
-    assert permit["reason"]["signed_chain"]["node_count"] == 2
-    assert permit["reason"]["signed_chain"]["nodes"][0]["ref"] == claim_id
-    assert permit["reason"]["signed_chain"]["nodes"][0]["quote"] == "Bounded hook mutation is supported."
+    assert permit["reason"]["claim_ref"] == claim_id
     run_cli(
         context,
         "record-run",
@@ -2156,35 +2216,14 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         ),
         encoding="utf-8",
     )
-    permit2 = json.loads(
-        run_cli(
-            context,
-            "validate-decision",
-            "--mode",
-            "edit",
-            "--kind",
-            "write",
-            "--chain",
-            str(chain2),
-            "--emit-permit",
-            "--format",
-            "json",
-        ).stdout
-    )
-    run_cli(
+    append_claim_step_grant(
         context,
-        "reason-review",
-        "--reason",
-        permit2["reason"]["id"],
-        "--mode",
-        "edit",
-        "--kind",
-        "write",
-        "--grant",
-        "--command",
-        "echo hi > /tmp/example",
-        "--cwd",
-        str(tmp_path),
+        claim_ref=claim2_id,
+        mode="edit",
+        action_kind="write",
+        command="echo hi > /tmp/example",
+        cwd=tmp_path,
+        branch="second-write",
     )
     run_runtime(context, "hydrate-context")
     run_runtime(context, "confirm-task", "--task", task_id, "--note", "hook test focus confirmed after second grant")

@@ -231,8 +231,6 @@ def load_valid_context_readonly(root: Path) -> tuple[dict[str, dict], int]:
 
 
 def command_requires_write_lock(args) -> bool:
-    if args.command == "validate-decision":
-        return bool(getattr(args, "emit_permit", False))
     if args.command == "cleanup-archive":
         return bool(getattr(args, "apply", False))
     if args.command == "cleanup-restore":

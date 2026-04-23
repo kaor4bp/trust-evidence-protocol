@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.4.6"
+SERVER_VERSION = "0.4.7"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 plugin_root = str(PLUGIN_ROOT)
@@ -1350,7 +1350,6 @@ def tool_reason_step(args: JsonObject) -> tuple[bool, str]:
         reason, error = reason_step_service(
             root,
             records,
-            chain_payload=None,
             claim_ref=claim_ref or None,
             prev_claim_ref=str(args.get("prev_claim_ref") or "").strip() or None,
             relation_claim_ref=str(args.get("relation_claim_ref") or "").strip() or None,
@@ -1360,9 +1359,7 @@ def tool_reason_step(args: JsonObject) -> tuple[bool, str]:
             mode=str(args.get("mode") or "planning"),
             action_kind=str(args.get("action_kind") or "").strip() or None,
             why=str(args.get("why") or ""),
-            parent_refs=[],
             branch=str(args.get("branch") or "main"),
-            icon=TEP_ICON,
         )
     if error:
         if as_format(args.get("format")) == "json" and isinstance(reason, dict):

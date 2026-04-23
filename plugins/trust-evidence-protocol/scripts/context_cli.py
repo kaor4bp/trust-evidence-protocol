@@ -186,8 +186,6 @@ from context_lib import (
     CHAIN_PERMIT_TTL_MIN_SECONDS,
     DEFAULT_CHAIN_PERMIT_TTL_SECONDS,
     DECISION_MODES,
-    chain_payload_hash,
-    create_reason_step,
     latest_reason_use_for_command,
     latest_reason_step,
     current_project_ref,
@@ -2367,9 +2365,6 @@ def cmd_validate_decision(
     mode: str,
     chain_file: Path,
     output_format: str,
-    emit_permit: bool,
-    action_kind: str | None,
-    ttl_seconds: int | None,
 ) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
@@ -2381,54 +2376,15 @@ def cmd_validate_decision(
         return 1
     hypothesis_entries = active_hypothesis_entry_by_claim(root, records)
     decision = decision_validation_payload(records, hypothesis_entries, payload, mode)
-    if emit_permit:
-        reason, reason_error = create_reason_step(
-            root,
-            chain_payload=payload,
-            decision_payload=decision,
-            intent=mode,
-            mode=mode,
-            action_kind=action_kind,
-            why=f"Validated decision chain for mode={mode} kind={(action_kind or '').strip() or 'none'}",
-            parent_refs=[],
-        )
-        if reason_error:
-            decision = dict(decision)
-            decision.setdefault("blockers", []).append(reason_error)
-            decision["justification_valid"] = False
-            decision["decision_chain_valid"] = False
-            decision["decision_valid"] = False
-        else:
-            grant, grant_error = grant_reason_access(
-                root,
-                reason_ref=str(reason.get("id", "")),
-                mode=mode,
-                action_kind=action_kind,
-                ttl_seconds=ttl_seconds,
-            )
-            if grant_error:
-                decision = dict(decision)
-                decision.setdefault("blockers", []).append(grant_error)
-                decision["justification_valid"] = False
-                decision["decision_chain_valid"] = False
-                decision["decision_valid"] = False
-            else:
-                decision = dict(decision)
-                decision["reason"] = reason
-                decision["grant"] = grant
     if output_format == "json":
         print(json.dumps(decision, indent=2, ensure_ascii=False))
     else:
-        lines = decision_validation_text_lines(decision, TEP_ICON)
-        if decision.get("grant"):
-            lines.extend(["", *reason_access_text_lines(decision["grant"])])
-        print("\n".join(lines))
+        print("\n".join(decision_validation_text_lines(decision, TEP_ICON)))
     return 0 if decision.get("decision_chain_valid", decision.get("decision_valid")) else 1
 
 
 def cmd_reason_step(
     root: Path,
-    chain_file: Path | None,
     intent: str,
     mode: str,
     action_kind: str | None,
@@ -2438,24 +2394,15 @@ def cmd_reason_step(
     relation_claim_ref: str | None,
     prev_step_ref: str | None,
     wctx_ref: str | None,
-    parent_refs: list[str],
     branch: str,
     output_format: str,
 ) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
-    payload = None
-    if chain_file is not None:
-        try:
-            payload = json.loads(chain_file.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            print(f"{chain_file}: {exc}")
-            return 1
     reason, error = reason_step_service(
         root,
         records,
-        chain_payload=payload,
         claim_ref=claim_ref,
         prev_claim_ref=prev_claim_ref,
         relation_claim_ref=relation_claim_ref,
@@ -2465,9 +2412,7 @@ def cmd_reason_step(
         mode=mode,
         action_kind=action_kind,
         why=why,
-        parent_refs=parent_refs,
         branch=branch,
-        icon=TEP_ICON,
     )
     if error:
         if output_format == "json" and isinstance(reason, dict):
@@ -3322,20 +3267,11 @@ def current_lookup_step_context(root: Path) -> dict:
     reason = latest_reason_step(validation.get("entries", []), task_ref)
     if not reason:
         return {"ok": True, "step_ref": "", "used_refs": set(), "message": "no current STEP-*"}
-    if str(reason.get("entry_type", "")).strip() == "claim_step":
-        used_refs = {
-            str(reason.get(key, "")).strip()
-            for key in ("prev_claim_ref", "claim_ref", "relation_claim_ref")
-            if str(reason.get(key, "")).strip()
-        }
-    else:
-        chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
-        nodes = chain_payload.get("nodes", []) if isinstance(chain_payload.get("nodes"), list) else []
-        used_refs = {
-            str(node.get("ref", "")).strip()
-            for node in nodes
-            if isinstance(node, dict) and str(node.get("ref", "")).strip()
-        }
+    used_refs = {
+        str(reason.get(key, "")).strip()
+        for key in ("prev_claim_ref", "claim_ref", "relation_claim_ref")
+        if str(reason.get(key, "")).strip()
+    }
     return {
         "ok": True,
         "step_ref": str(reason.get("id", "")).strip(),
@@ -8126,16 +8062,10 @@ def cmd_record_action(
         if cmd_validate_evidence_chain(root, evidence_chain) != 0:
             print(f"{strictness} mutating action blocked by invalid evidence chain")
             return 1
-        try:
-            chain_payload = json.loads(evidence_chain.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            print(f"{evidence_chain}: {exc}")
-            return 1
         permit = validate_reason_access(
             root,
             mode="edit",
             action_kind=kind,
-            chain_hash_value=chain_payload_hash(chain_payload),
             telemetry={"channel": "cli", "tool": "record-action"},
         )
         if not permit.get("ok"):
@@ -8144,7 +8074,7 @@ def cmd_record_action(
                 f"for mode=edit kind={kind!r}: {permit.get('reason')}"
             )
             print(
-                "Run: reason-review --reason REASON-* "
+                "Run: reason-review --reason STEP-* "
                 f"--mode edit --kind {kind} --grant"
             )
             return 1
@@ -8214,7 +8144,7 @@ def cmd_record_model(
                 f"{strictness} model updates require a fresh valid GRANT-* "
                 f"for mode=model: {permit.get('reason')}"
             )
-            print("Run: reason-review --reason REASON-* --mode model --grant")
+            print("Run: reason-review --reason STEP-* --mode model --grant")
             return 1
         grant_ref = str(permit.get("access", {}).get("id", "")).strip()
     else:
@@ -8371,7 +8301,7 @@ def cmd_record_flow(
                 f"{strictness} flow updates require a fresh valid GRANT-* "
                 f"for mode=flow: {permit.get('reason')}"
             )
-            print("Run: reason-review --reason REASON-* --mode flow --grant")
+            print("Run: reason-review --reason STEP-* --mode flow --grant")
             return 1
         grant_ref = str(permit.get("access", {}).get("id", "")).strip()
     else:
@@ -9027,19 +8957,11 @@ def parse_args() -> argparse.Namespace:
     validate_decision.add_argument("--mode", required=True, choices=sorted(DECISION_MODES))
     validate_decision.add_argument("--chain", dest="chain_file", required=True)
     validate_decision.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
-    validate_decision.add_argument("--kind", dest="action_kind")
-    validate_decision.add_argument("--emit-permit", action="store_true")
-    validate_decision.add_argument(
-        "--ttl-seconds",
-        type=int,
-        help=f"Request a shorter grant TTL; capped by settings chain_permits.ttl_seconds (default {DEFAULT_CHAIN_PERMIT_TTL_SECONDS}).",
-    )
     reason_step = subparsers.add_parser(
         "reason-step",
         help="Append a STEP-* claim-step to the task-scoped ledger.",
     )
-    reason_step.add_argument("--chain", type=Path)
-    reason_step.add_argument("--claim", dest="claim_ref")
+    reason_step.add_argument("--claim", dest="claim_ref", required=True)
     reason_step.add_argument("--prev-claim", dest="prev_claim_ref")
     reason_step.add_argument("--relation-claim", dest="relation_claim_ref")
     reason_step.add_argument("--prev-step", dest="prev_step_ref")
@@ -9048,7 +8970,6 @@ def parse_args() -> argparse.Namespace:
     reason_step.add_argument("--mode", choices=sorted(DECISION_MODES), default="planning")
     reason_step.add_argument("--kind", dest="action_kind")
     reason_step.add_argument("--why", required=True)
-    reason_step.add_argument("--parent", dest="parent_refs", action="append", default=[])
     reason_step.add_argument("--branch", default="main")
     reason_step.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     reason_review = subparsers.add_parser(
@@ -10581,17 +10502,12 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 mode=args.mode,
                 chain_file=Path(args.chain_file).expanduser().resolve(),
                 output_format=args.output_format,
-                emit_permit=args.emit_permit,
-                action_kind=args.action_kind,
-                ttl_seconds=args.ttl_seconds,
             )
         )
     if args.command == "reason-step":
-        chain_file = Path(args.chain).expanduser().resolve() if args.chain else None
         raise SystemExit(
             cmd_reason_step(
                 root,
-                chain_file=chain_file,
                 intent=args.intent,
                 mode=args.mode,
                 action_kind=args.action_kind,
@@ -10601,7 +10517,6 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 relation_claim_ref=args.relation_claim_ref,
                 prev_step_ref=args.prev_step_ref,
                 wctx_ref=args.wctx_ref,
-                parent_refs=args.parent_refs,
                 branch=args.branch,
                 output_format=args.output_format,
             )

@@ -218,7 +218,7 @@ map_open -> map_view -> map_move -> map_drilldown -> map_checkpoint
 Map session state is stored in `WCTX-*` operational context. A session may track
 the current zone, allowed moves, suggested candidates, inspected candidates,
 chain-used candidates, dismissed candidates, deferred candidates, and sampled
-`REASON-*` or aggregate `CLM-*` refs used to explain inquiry pressure.
+`STEP-*` or aggregate `CLM-*` refs used to explain inquiry pressure.
 
 `MAP-*` records are shared; the WCTX session is personal to the owning agent.
 Another agent must fork/adopt WCTX before reusing personal map position or

@@ -23,7 +23,6 @@ from .claim_relations import PROOF_RELATION_KINDS, NAVIGATION_RELATION_KINDS, re
 from .claims import claim_is_archived
 from .errors import ValidationError
 from .hydration import compute_context_fingerprint
-from .hypotheses import active_hypothesis_entry_by_claim
 from .io import write_json_file
 from .paths import (
     reasoning_runtime_dir,
@@ -32,21 +31,17 @@ from .paths import (
 )
 from .policy import is_mutating_action_kind
 from .records import load_records
-from .reasoning import PROOF_DECISION_MODES, UNCERTAIN_DECISION_MODES, decision_validation_payload
+from .reasoning import PROOF_DECISION_MODES, UNCERTAIN_DECISION_MODES
 from .scopes import current_project_ref, current_task_ref, current_workspace_ref
 from .settings import chain_permit_ttl_seconds, load_effective_settings
 from .validation import safe_list
 from .telemetry import append_access_event
 
 
-REASON_ENTRY_VERSION = 2
 CLAIM_STEP_ENTRY_VERSION = 3
-REASON_SIGNED_CHAIN_NODE_LIMIT = 8
 ZERO_LEDGER_HASH = "sha256:0"
-LEDGER_ID_PREFIXES = {"STEP", "REASON", "GRANT", "AUTH", "USE"}
-GRANT_ENTRY_TYPES = {"grant", "access_granted", "auth_granted"}
-LEGACY_ACCESS_ENTRY_TYPES = {"access_granted", "auth_granted"}
-USE_ENTRY_TYPES = {"access_used", "auth_reserved"}
+LEDGER_ID_PREFIXES = {"STEP", "GRANT"}
+GRANT_ENTRY_TYPES = {"grant"}
 POW_ALGORITHM = "sha256-leading-zero-bits"
 
 
@@ -70,13 +65,6 @@ def _parse_timestamp(value: str) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.astimezone()
     return parsed
-
-
-def _concise(value: str, limit: int) -> str:
-    normalized = " ".join(str(value or "").split())
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: max(0, limit - 3)].rstrip() + "..."
 
 
 def _canonical_json(payload: dict[str, Any]) -> str:
@@ -294,43 +282,6 @@ def load_reasoning_secret(root: Path, agent_ref: str | None = None) -> str:
     if not agent_ref:
         return ""
     return _read_reasoning_secret_file(reasoning_seal_path(root, agent_ref))
-
-
-def signed_chain_summary(chain_payload: dict[str, Any]) -> dict[str, Any]:
-    nodes = chain_payload.get("nodes", [])
-    edges = chain_payload.get("edges", [])
-    node_list = nodes if isinstance(nodes, list) else []
-    edge_list = edges if isinstance(edges, list) else []
-    display_nodes: list[dict[str, str]] = []
-    for node in node_list:
-        if not isinstance(node, dict):
-            continue
-        role = str(node.get("role", "")).strip()
-        ref = str(node.get("ref", "")).strip()
-        quote = _concise(str(node.get("quote", "")), 220)
-        if not (role or ref or quote):
-            continue
-        display_nodes.append({"role": role, "ref": ref, "quote": quote})
-    return {
-        "task": _concise(str(chain_payload.get("task", "")), 180),
-        "node_count": len(node_list),
-        "edge_count": len(edge_list),
-        "nodes": display_nodes[:REASON_SIGNED_CHAIN_NODE_LIMIT],
-        "truncated_node_count": max(0, len(display_nodes) - REASON_SIGNED_CHAIN_NODE_LIMIT),
-    }
-
-
-def current_task_node_count(chain_payload: dict[str, Any], task_ref: str) -> int:
-    nodes = chain_payload.get("nodes", [])
-    if not isinstance(nodes, list):
-        return 0
-    return sum(
-        1
-        for node in nodes
-        if isinstance(node, dict)
-        and str(node.get("role", "")).strip() == "task"
-        and str(node.get("ref", "")).strip() == task_ref
-    )
 
 
 def _active_wctx_ref_for_task(root: Path, records: dict[str, dict], task_ref: str) -> str:
@@ -788,7 +739,7 @@ def _validate_reason_ledger_scope(
         entry_id = str(entry.get("id", "")).strip()
         prefix = entry_id.split("-", 1)[0] if "-" in entry_id else ""
         if prefix not in LEDGER_ID_PREFIXES:
-            errors.append(f"entry {index}: missing STEP-/REASON-/GRANT-* id")
+            errors.append(f"entry {index}: missing STEP-/GRANT-* id")
         elif entry_id in global_ids:
             errors.append(f"{entry_id}: duplicate id")
         global_ids.add(entry_id)
@@ -813,13 +764,10 @@ def _validate_reason_ledger_scope(
             expected_ledger_hash = _ledger_hash(previous, expected_entry_hash, expected_seal)
             if str(entry.get("ledger_hash", "")).strip() != expected_ledger_hash:
                 errors.append(f"{entry_id or index}: ledger_hash mismatch; ledger appears tampered")
-        if str(entry.get("entry_type", "")).strip() == "step" and int(entry.get("version", 1) or 1) >= 2:
-            chain_payload = entry.get("chain_payload")
-            if not isinstance(chain_payload, dict):
-                errors.append(f"{entry_id or index}: reason step missing chain_payload")
-            elif str(entry.get("chain_hash", "")).strip() != chain_payload_hash(chain_payload):
-                errors.append(f"{entry_id or index}: chain_hash mismatch")
-        if str(entry.get("entry_type", "")).strip() == "claim_step":
+        entry_type = str(entry.get("entry_type", "")).strip()
+        if entry_type not in {"claim_step", "grant"}:
+            errors.append(f"{entry_id or index}: unsupported reason ledger entry_type {entry_type or 'none'}")
+        if entry_type == "claim_step":
             if prefix != "STEP":
                 errors.append(f"{entry_id or index}: claim_step entries must use STEP-* ids")
             if int(entry.get("version", 1) or 1) < CLAIM_STEP_ENTRY_VERSION:
@@ -832,6 +780,8 @@ def _validate_reason_ledger_scope(
                 errors.append(f"{entry_id or index}: claim_step missing claim_ref")
             if str(entry.get("prev_claim_ref", "")).strip() and not str(entry.get("relation_claim_ref", "")).strip().startswith("CLM-"):
                 errors.append(f"{entry_id or index}: claim_step with prev_claim_ref requires relation_claim_ref")
+        if entry_type == "grant" and prefix != "GRANT":
+            errors.append(f"{entry_id or index}: grant entries must use GRANT-* ids")
         previous = str(entry.get("ledger_hash", "")).strip()
     return errors, previous
 
@@ -977,12 +927,11 @@ def validate_grant_run_lifecycle(root: Path, records: dict[str, dict]) -> list[V
             if time_error:
                 errors.append(ValidationError(path, f"grant_ref {grant_ref} {time_error}"))
 
-    legacy_used = used_access_refs(validation["entries"])
     for grant_ref, grant in grants.items():
         if not _grant_is_current_v2(grant):
             continue
         max_runs = int(grant.get("max_runs", grant.get("max_uses", 1)) or 1)
-        use_count = use_counts.get(grant_ref, 0) + (1 if grant_ref in legacy_used else 0)
+        use_count = use_counts.get(grant_ref, 0)
         if max_runs > 0 and use_count > max_runs:
             grant_path = Path(str(grant.get("_ledger_path", "")).strip()) if str(grant.get("_ledger_path", "")).strip() else reasoning_runtime_dir(root)
             errors.append(
@@ -1011,7 +960,7 @@ def append_reason_entry(
     root: Path,
     payload: dict[str, Any],
     *,
-    id_prefix: str = "REASON",
+    id_prefix: str = "STEP",
 ) -> tuple[dict[str, Any] | None, str | None]:
     validation = validate_reason_ledger(root)
     if not validation["ok"]:
@@ -1028,7 +977,7 @@ def append_reason_entry(
     entry = {
         "id": _next_ledger_id(entries, id_prefix),
         "record_type": "reason",
-        "version": REASON_ENTRY_VERSION,
+        "version": int(payload.get("version", 2) or 2),
         "created_at": _now().isoformat(timespec="seconds"),
         "prev_ledger_hash": validation["head_hash"],
         **payload,
@@ -1057,7 +1006,7 @@ def reason_by_id(entries: list[dict[str, Any]], reason_ref: str) -> dict[str, An
 
 def latest_reason_step(entries: list[dict[str, Any]], task_ref: str | None = None) -> dict[str, Any] | None:
     for entry in reversed(entries):
-        if str(entry.get("entry_type", "")).strip() not in {"step", "claim_step"}:
+        if str(entry.get("entry_type", "")).strip() != "claim_step":
             continue
         if task_ref and str(entry.get("task_ref", "")).strip() != task_ref:
             continue
@@ -1072,8 +1021,7 @@ def latest_final_reason_step(
     context_fingerprint: str | None = None,
 ) -> dict[str, Any] | None:
     for entry in reversed(entries):
-        entry_type = str(entry.get("entry_type", "")).strip()
-        if entry_type not in {"step", "claim_step"}:
+        if str(entry.get("entry_type", "")).strip() != "claim_step":
             continue
         if str(entry.get("task_ref", "")).strip() != task_ref:
             continue
@@ -1085,10 +1033,6 @@ def latest_final_reason_step(
             continue
         if context_fingerprint and str(entry.get("context_fingerprint", "")).strip() != context_fingerprint:
             continue
-        if entry_type == "step":
-            chain_payload = entry.get("chain_payload") if isinstance(entry.get("chain_payload"), dict) else {}
-            if current_task_node_count(chain_payload, task_ref) != 1:
-                continue
         return entry
     return None
 
@@ -1101,8 +1045,7 @@ def latest_decision_reason_step(
     context_fingerprint: str | None = None,
 ) -> dict[str, Any] | None:
     for entry in reversed(entries):
-        entry_type = str(entry.get("entry_type", "")).strip()
-        if entry_type not in {"step", "claim_step"}:
+        if str(entry.get("entry_type", "")).strip() != "claim_step":
             continue
         if str(entry.get("task_ref", "")).strip() != task_ref:
             continue
@@ -1112,10 +1055,6 @@ def latest_decision_reason_step(
             continue
         if context_fingerprint and str(entry.get("context_fingerprint", "")).strip() != context_fingerprint:
             continue
-        if entry_type == "step":
-            chain_payload = entry.get("chain_payload") if isinstance(entry.get("chain_payload"), dict) else {}
-            if current_task_node_count(chain_payload, task_ref) != 1:
-                continue
         return entry
     return None
 
@@ -1157,17 +1096,13 @@ def decision_reason_status(root: Path, *, mode: str, context_fingerprint: str | 
             "reason": reason,
             "message": "; ".join(f"{error.path}: {error.message}" for error in record_errors),
         }
-    if str(reason.get("entry_type", "")).strip() == "claim_step":
-        decision = validate_claim_step_transition(
-            records,
-            claim_ref=str(reason.get("claim_ref", "")).strip(),
-            prev_claim_ref=str(reason.get("prev_claim_ref", "")).strip(),
-            relation_claim_ref=str(reason.get("relation_claim_ref", "")).strip(),
-            mode=mode,
-        )
-    else:
-        chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
-        decision = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain_payload, mode)
+    decision = validate_claim_step_transition(
+        records,
+        claim_ref=str(reason.get("claim_ref", "")).strip(),
+        prev_claim_ref=str(reason.get("prev_claim_ref", "")).strip(),
+        relation_claim_ref=str(reason.get("relation_claim_ref", "")).strip(),
+        mode=mode,
+    )
     if not _justification_valid(decision):
         blockers = decision.get("blockers", [])
         return {
@@ -1203,17 +1138,13 @@ def final_reason_status(root: Path, *, context_fingerprint: str | None = None) -
                 "reason": reason,
                 "message": "; ".join(f"{error.path}: {error.message}" for error in record_errors),
             }
-        if str(reason.get("entry_type", "")).strip() == "claim_step":
-            decision = validate_claim_step_transition(
-                records,
-                claim_ref=str(reason.get("claim_ref", "")).strip(),
-                prev_claim_ref=str(reason.get("prev_claim_ref", "")).strip(),
-                relation_claim_ref=str(reason.get("relation_claim_ref", "")).strip(),
-                mode="final",
-            )
-        else:
-            chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
-            decision = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain_payload, "final")
+        decision = validate_claim_step_transition(
+            records,
+            claim_ref=str(reason.get("claim_ref", "")).strip(),
+            prev_claim_ref=str(reason.get("prev_claim_ref", "")).strip(),
+            relation_claim_ref=str(reason.get("relation_claim_ref", "")).strip(),
+            mode="final",
+        )
         if not _justification_valid(decision):
             blockers = decision.get("blockers", [])
             return {
@@ -1232,83 +1163,6 @@ def final_reason_status(root: Path, *, context_fingerprint: str | None = None) -
             "valid_for=final, and current context fingerprint"
         ),
     }
-
-
-def create_reason_step(
-    root: Path,
-    *,
-    chain_payload: dict[str, Any],
-    decision_payload: dict[str, Any],
-    intent: str,
-    mode: str,
-    action_kind: str | None,
-    why: str,
-    parent_refs: list[str] | None = None,
-    branch: str = "main",
-) -> tuple[dict[str, Any] | None, str | None]:
-    task_ref = current_task_ref(root)
-    if not task_ref:
-        return None, "reason steps require an active TASK-*"
-    validation = validate_reason_ledger(root)
-    if not validation["ok"]:
-        return None, "; ".join(validation["errors"])
-    entries = validation["entries"]
-    parents = [ref.strip() for ref in parent_refs or [] if ref.strip()]
-    task_steps = [
-        entry
-        for entry in entries
-        if str(entry.get("entry_type", "")).strip() == "step"
-        and str(entry.get("task_ref", "")).strip() == task_ref
-    ]
-    if task_steps and not parents:
-        latest = task_steps[-1]
-        parents = [str(latest.get("id", "")).strip()]
-    for parent in parents:
-        parent_entry = reason_by_id(entries, parent)
-        if not parent_entry:
-            return None, f"missing parent reason {parent}"
-        if str(parent_entry.get("task_ref", "")).strip() != task_ref:
-            return None, f"parent reason {parent} belongs to another TASK-*"
-        parent_mode = str(parent_entry.get("mode", "")).strip()
-        parent_branch = str(parent_entry.get("branch", "main")).strip() or "main"
-        parent_chain_hash = str(parent_entry.get("chain_hash", "")).strip()
-        if parent_mode == mode and parent_branch == (branch.strip() or "main") and parent_chain_hash == chain_payload_hash(chain_payload):
-            return None, (
-                f"reason step would duplicate parent {parent} for mode={mode}; "
-                "extend the chain with a new fact/observation/hypothesis/open question or fork a named branch"
-            )
-    if not _justification_valid(decision_payload):
-        blockers = "; ".join(str(item) for item in decision_payload.get("blockers", []) if str(item).strip())
-        suffix = f": {blockers}" if blockers else ""
-        return None, f"REASON-* requires a justification-valid decision chain for mode={mode}{suffix}"
-    justification_valid = _justification_valid(decision_payload)
-    return append_reason_entry(
-        root,
-        {
-            "entry_type": "step",
-            "status": "reviewed",
-            "workspace_ref": current_workspace_ref(root),
-            "project_ref": current_project_ref(root),
-            "task_ref": task_ref,
-            "parent_refs": parents,
-            "branch": branch.strip() or "main",
-            "intent": intent.strip() or mode,
-            "mode": mode,
-            "action_kind": (action_kind or "").strip(),
-            "why": why.strip(),
-            "justification_valid": justification_valid,
-            "decision_chain_valid": justification_valid,
-            "decision_valid": justification_valid,
-            "valid_for": decision_payload.get("valid_for", []),
-            "blockers": decision_payload.get("blockers", []),
-            "hypothesis_refs": decision_payload.get("hypothesis_refs", []),
-            "exploration_context_refs": decision_payload.get("exploration_context_refs", []),
-            "chain_hash": chain_payload_hash(chain_payload),
-            "signed_chain": signed_chain_summary(chain_payload),
-            "chain_payload": chain_payload,
-            "context_fingerprint": compute_context_fingerprint(root),
-        },
-    )
 
 
 def create_claim_step(
@@ -1337,11 +1191,13 @@ def create_claim_step(
     normalized_prev_claim_ref = (prev_claim_ref or "").strip()
     normalized_relation_ref = (relation_claim_ref or "").strip()
     normalized_prev_step_ref = (prev_step_ref or "").strip()
+    normalized_branch = branch.strip() or "main"
     task_steps = [
         entry
         for entry in entries
         if str(entry.get("entry_type", "")).strip() == "claim_step"
         and str(entry.get("task_ref", "")).strip() == task_ref
+        and (str(entry.get("branch", "main")).strip() or "main") == normalized_branch
     ]
     if task_steps and not normalized_prev_step_ref:
         latest = task_steps[-1]
@@ -1427,7 +1283,7 @@ def create_claim_step(
             "prev_claim_ref": normalized_prev_claim_ref,
             "claim_ref": normalized_claim_ref,
             "relation_claim_ref": normalized_relation_ref,
-            "branch": branch.strip() or "main",
+            "branch": normalized_branch,
             "intent": intent.strip() or mode,
             "mode": mode,
             "action_kind": (action_kind or "").strip(),
@@ -1475,30 +1331,25 @@ def grant_reason_access(
     if reason_agent_ref and reason_agent_ref != current_agent_ref:
         return None, f"{reason_ref} belongs to another agent identity {reason_agent_ref}"
     reason_entry_type = str(reason.get("entry_type", "")).strip()
-    if reason_entry_type not in {"step", "claim_step"}:
-        return None, f"{reason_ref} is not a reason/claim step"
+    if reason_entry_type != "claim_step":
+        return None, f"{reason_ref} is not a STEP-* claim_step"
     if not _justification_valid(reason):
         return None, f"{reason_ref} has not passed decision validation"
     task_ref = current_task_ref(root)
     if not task_ref or str(reason.get("task_ref", "")).strip() != task_ref:
         return None, f"{reason_ref} does not match current TASK-* {task_ref or 'none'}"
-    if reason_entry_type == "step":
-        chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
-        if current_task_node_count(chain_payload, task_ref) != 1:
-            return None, f"grants require exactly one task node matching current TASK-* {task_ref}"
-    else:
-        records, record_errors = load_records(root)
-        if record_errors:
-            return None, "; ".join(f"{error.path}: {error.message}" for error in record_errors)
-        decision = validate_claim_step_transition(
-            records,
-            claim_ref=str(reason.get("claim_ref", "")).strip(),
-            prev_claim_ref=str(reason.get("prev_claim_ref", "")).strip(),
-            relation_claim_ref=str(reason.get("relation_claim_ref", "")).strip(),
-            mode=mode,
-        )
-        if not decision.get("justification_valid"):
-            return None, f"{reason_ref} claim-step chain no longer validates: " + "; ".join(decision.get("blockers", []))
+    records, record_errors = load_records(root)
+    if record_errors:
+        return None, "; ".join(f"{error.path}: {error.message}" for error in record_errors)
+    decision = validate_claim_step_transition(
+        records,
+        claim_ref=str(reason.get("claim_ref", "")).strip(),
+        prev_claim_ref=str(reason.get("prev_claim_ref", "")).strip(),
+        relation_claim_ref=str(reason.get("relation_claim_ref", "")).strip(),
+        mode=mode,
+    )
+    if not decision.get("justification_valid"):
+        return None, f"{reason_ref} claim-step chain no longer validates: " + "; ".join(decision.get("blockers", []))
     normalized_kind = (action_kind or "").strip()
     if mode == "edit" and not normalized_kind:
         return None, "edit grant requires action kind"
@@ -1527,8 +1378,7 @@ def grant_reason_access(
         "mode": mode,
         "action_kind": normalized_kind,
         "chain_hash": str(reason.get("chain_hash") or reason.get("claim_step_hash", "")).strip(),
-        "signed_chain": reason.get("signed_chain", {}),
-        "claim_step_ref": reason_ref if reason_entry_type == "claim_step" else "",
+        "claim_step_ref": reason_ref,
         "claim_ref": str(reason.get("claim_ref", "")).strip(),
         "relation_claim_ref": str(reason.get("relation_claim_ref", "")).strip(),
         "context_fingerprint": compute_context_fingerprint(root),
@@ -1586,14 +1436,6 @@ def append_reason_access_event(
         return
 
 
-def used_access_refs(entries: list[dict[str, Any]]) -> set[str]:
-    return {
-        str(entry.get("auth_ref") or entry.get("access_ref", "")).strip()
-        for entry in entries
-        if str(entry.get("entry_type", "")).strip() in USE_ENTRY_TYPES
-    }
-
-
 def grant_use_count(root: Path, grant_ref: str) -> int:
     records, _ = load_records(root)
     count = 0
@@ -1644,7 +1486,6 @@ def validate_reason_access(
     normalized_command_hash = command_hash(normalized_command) if normalized_command else ""
     normalized_cwd = normalize_cwd(cwd)
     normalized_tool = str(tool or "").strip()
-    legacy_used_refs = used_access_refs(entries)
     failures: list[str] = []
     candidates = [
         entry
@@ -1679,8 +1520,6 @@ def validate_reason_access(
             continue
         max_runs = int(access.get("max_runs", access.get("max_uses", 1)) or 1)
         use_count = grant_use_count(root, access_id)
-        if access_id in legacy_used_refs:
-            use_count += 1
         if max_runs > 0 and use_count >= max_runs:
             failures.append(f"{access_id}: already used")
             continue
@@ -1812,26 +1651,6 @@ def reason_access_text_lines(access: dict[str, Any]) -> list[str]:
         f"- expires_at: `{access.get('expires_at')}`",
         f"- max_runs: `{access.get('max_runs', access.get('max_uses', 1))}`",
     ]
-    signed_chain = access.get("signed_chain")
-    if isinstance(signed_chain, dict):
-        lines.extend(
-            [
-                "",
-                "## Signed Chain",
-                f"- chain_hash: `{str(access.get('chain_hash') or '')[:16]}`",
-                f"- task: {signed_chain.get('task') or 'none'}",
-                f"- nodes: `{signed_chain.get('node_count', 0)}` edges: `{signed_chain.get('edge_count', 0)}`",
-            ]
-        )
-        for node in signed_chain.get("nodes", []):
-            if not isinstance(node, dict):
-                continue
-            lines.append(
-                f"- {node.get('role') or 'node'} `{node.get('ref') or 'none'}`: \"{node.get('quote') or ''}\""
-            )
-        truncated = int(signed_chain.get("truncated_node_count", 0) or 0)
-        if truncated:
-            lines.append(f"- truncated_nodes: `{truncated}`")
     return lines
 
 
@@ -1868,16 +1687,17 @@ def reason_current_text_lines(root: Path) -> tuple[list[str], int]:
     recent_steps = [
         entry
         for entry in entries
-        if str(entry.get("entry_type", "")).strip() == "step"
+        if str(entry.get("entry_type", "")).strip() == "claim_step"
         and (not task_ref or str(entry.get("task_ref", "")).strip() == task_ref)
     ]
     if recent_steps:
-        lines.append("## Recent Reason Steps")
+        lines.append("## Recent Claim Steps")
         for reason in recent_steps[-5:]:
-            parents = ",".join(str(ref).strip() for ref in reason.get("parent_refs", []) if str(ref).strip()) or "none"
             lines.append(
-                f"- reason `{reason.get('id')}` branch=`{reason.get('branch') or 'main'}` parents=`{parents}` "
-                f"status=`{reason.get('status')}` mode=`{reason.get('mode')}` kind=`{reason.get('action_kind') or 'none'}` why={reason.get('why')}"
+                f"- step `{reason.get('id')}` branch=`{reason.get('branch') or 'main'}` "
+                f"prev=`{reason.get('prev_step_ref') or 'none'}` claim=`{reason.get('claim_ref') or 'none'}` "
+                f"relation=`{reason.get('relation_claim_ref') or 'none'}` mode=`{reason.get('mode')}` "
+                f"kind=`{reason.get('action_kind') or 'none'}` reason={reason.get('reason')}"
             )
     for access in accesses[-5:]:
         grant_ref = str(access.get("id", "")).strip()
