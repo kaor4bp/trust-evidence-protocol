@@ -7,6 +7,7 @@ from pathlib import Path
 from .claims import claim_is_fallback
 from .errors import ValidationError
 from .paths import settings_path
+from .record_versions import is_current_record_contract
 from .scopes import current_project_ref, current_task_ref, current_workspace_ref
 from .validation import safe_list
 
@@ -17,7 +18,7 @@ def _path(record: dict) -> Path:
 
 
 def _is_v04(record: dict) -> bool:
-    return str(record.get("contract_version", "")).strip() == "0.4"
+    return is_current_record_contract(record)
 
 
 def _has_tag(record: dict, tag: str) -> bool:

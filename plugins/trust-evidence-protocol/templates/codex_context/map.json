@@ -1,0 +1,53 @@
+{
+  "id": "MAP-YYYYMMDD-xxxxxxxx",
+  "record_type": "map",
+  "contract_version": "0.4",
+  "record_version": 1,
+  "scope": "checkout.payment-timeout",
+  "level": "L1",
+  "map_kind": "evidence_patch",
+  "status": "active",
+  "summary": "Navigation cell around one compact evidence patch.",
+  "scope_refs": {
+    "workspace_refs": ["WSP-YYYYMMDD-xxxxxxxx"],
+    "project_refs": ["PRJ-YYYYMMDD-xxxxxxxx"],
+    "task_refs": [],
+    "wctx_refs": []
+  },
+  "anchor_refs": ["CLM-YYYYMMDD-xxxxxxxx"],
+  "derived_from_refs": [],
+  "source_set_fingerprint": "sha256:...",
+  "up_refs": [],
+  "down_refs": [],
+  "adjacent_map_refs": [],
+  "contradicts_map_refs": [],
+  "refines_map_refs": [],
+  "supersedes_refs": [],
+  "tension_refs": [],
+  "unknown_links": [],
+  "proof_routes": [
+    {
+      "route_kind": "claim_support",
+      "route_refs": ["CLM-YYYYMMDD-xxxxxxxx", "SRC-YYYYMMDD-xxxxxxxx"],
+      "required_drilldown": true
+    }
+  ],
+  "signals": {
+    "tap_smell": {
+      "score": 0.0,
+      "half_life_days": 7.0,
+      "last_updated_at": "2026-01-01T00:00:00Z"
+    },
+    "neglect_pressure": {"score": 0.0},
+    "inquiry_pressure": {"score": 0.0},
+    "promotion_pressure": {"score": 0.0},
+    "staleness_pressure": {"score": 0.0},
+    "conflict_pressure": {"score": 0.0}
+  },
+  "map_is_proof": false,
+  "generated_by": "map_refresh",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z",
+  "stale_policy": "source_set_changed",
+  "note": "MAP records are navigation only. Drill down through proof_routes before using support."
+}

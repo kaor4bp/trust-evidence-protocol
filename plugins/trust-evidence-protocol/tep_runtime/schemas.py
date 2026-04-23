@@ -10,6 +10,7 @@ from .errors import ValidationError
 from .files import FILE_KINDS
 from .ids import WORKING_CONTEXT_ID_PATTERN
 from .logic import validate_claim_logic
+from .record_versions import CURRENT_RECORD_CONTRACT_VERSION, validate_record_version
 from .records import RECORD_TYPE_TO_PREFIX
 from .repo_scope import root_refs_are_absolute
 from .runs import RUN_STATUSES
@@ -118,6 +119,51 @@ REF_KEYS = {
 }
 
 AGENT_IDENTITY_STATUSES = {"active", "revoked", "archived"}
+MAP_LEVELS = {"L1", "L2", "L3"}
+MAP_STATUSES = {"active", "stale", "archived"}
+MAP_KINDS = {
+    "evidence_patch",
+    "mechanism_cell",
+    "pattern_cell",
+    "workflow_cell",
+    "code_area_cell",
+    "risk_cell",
+    "policy_cell",
+    "open_frontier_cell",
+    "task_situation",
+    "debugging_strategy",
+    "implementation_strategy",
+    "curator_strategy",
+    "retrospective_cell",
+    "decision_pressure_cell",
+}
+MAP_GENERATORS = {"lookup", "curiosity_map", "curator", "agent_request", "map_refresh"}
+MAP_STALE_POLICIES = {"anchor_changed", "source_set_changed", "time_window_expired", "manual"}
+MAP_SIGNAL_KEYS = {
+    "tap_smell",
+    "neglect_pressure",
+    "inquiry_pressure",
+    "promotion_pressure",
+    "staleness_pressure",
+    "conflict_pressure",
+}
+MAP_UNKNOWN_LINK_KINDS = {"candidate", "missing", "rejected", "unknown"}
+MAP_UNKNOWN_LINK_STATUSES = {"candidate", "dismissed", "deferred", "confirmed"}
+MAP_UNKNOWN_LINK_SOURCES = {"probe", "bridge", "topic", "curator", "agent"}
+MAP_REF_KEYS = (
+    "anchor_refs",
+    "derived_from_refs",
+    "up_refs",
+    "down_refs",
+    "adjacent_map_refs",
+    "contradicts_map_refs",
+    "refines_map_refs",
+    "supersedes_refs",
+    "tension_refs",
+)
+MAP_SCOPE_REF_KEYS = ("workspace_refs", "project_refs", "task_refs", "wctx_refs")
+MAP_L2_ANCHOR_PREFIXES = ("CLM-", "MODEL-", "FLOW-")
+MAP_L3_CONTEXT_PREFIXES = ("TASK-", "WCTX-", "PLN-", "REASON-")
 
 
 def artifact_ref_exists(record_path: Path, artifact_ref: str) -> bool:
@@ -186,6 +232,7 @@ def validate_record(record_id: str, data: dict) -> list[str]:
         errors.append("scope is required")
     if not str(data.get("note", "")).strip():
         errors.append("note is required")
+    errors.extend(validate_record_version(record_type, data))
 
     if record_type == "agent_identity":
         if not str(data.get("agent_name", "")).strip():
@@ -715,6 +762,118 @@ def validate_record(record_id: str, data: dict) -> list[str]:
                 if "support_refs" in assumption and not isinstance(assumption.get("support_refs"), list):
                     errors.append(f"assumption {index} support_refs must be a list")
 
+    elif record_type == "map":
+        if str(data.get("contract_version", "")).strip() != CURRENT_RECORD_CONTRACT_VERSION:
+            errors.append(f"map contract_version must be {CURRENT_RECORD_CONTRACT_VERSION}")
+        level = str(data.get("level", "")).strip()
+        if level not in MAP_LEVELS:
+            errors.append("invalid map level")
+        if str(data.get("map_kind", "")).strip() not in MAP_KINDS:
+            errors.append("invalid map_kind")
+        if str(data.get("status", "")).strip() not in MAP_STATUSES:
+            errors.append("invalid map status")
+        if not str(data.get("summary", "")).strip():
+            errors.append("summary is required")
+        if not str(data.get("source_set_fingerprint", "")).strip().startswith("sha256:"):
+            errors.append("source_set_fingerprint must start with sha256:")
+        if data.get("map_is_proof") is not False:
+            errors.append("map.map_is_proof must be false")
+        if str(data.get("generated_by", "")).strip() not in MAP_GENERATORS:
+            errors.append("invalid generated_by")
+        if not str(data.get("generated_at", "")).strip():
+            errors.append("generated_at is required")
+        if not str(data.get("updated_at", "")).strip():
+            errors.append("updated_at is required")
+        if str(data.get("stale_policy", "")).strip() not in MAP_STALE_POLICIES:
+            errors.append("invalid stale_policy")
+
+        scope_refs = data.get("scope_refs", {})
+        if not isinstance(scope_refs, dict):
+            errors.append("scope_refs must be an object")
+            scope_refs = {}
+        for key in MAP_SCOPE_REF_KEYS:
+            if key in scope_refs:
+                try:
+                    ensure_list(scope_refs, key)
+                except ValueError as exc:
+                    errors.append(f"scope_refs.{exc}")
+
+        for key in MAP_REF_KEYS:
+            if key in data:
+                try:
+                    ensure_list(data, key)
+                except ValueError as exc:
+                    errors.append(str(exc))
+
+        proof_routes = data.get("proof_routes", [])
+        if not isinstance(proof_routes, list):
+            errors.append("proof_routes must be a list")
+            proof_routes = []
+        for index, route in enumerate(proof_routes, start=1):
+            if not isinstance(route, dict):
+                errors.append(f"proof_routes[{index}] must be an object")
+                continue
+            if not str(route.get("route_kind", "")).strip():
+                errors.append(f"proof_routes[{index}].route_kind is required")
+            if not isinstance(route.get("route_refs", []), list):
+                errors.append(f"proof_routes[{index}].route_refs must be a list")
+            if route.get("required_drilldown") is not True:
+                errors.append(f"proof_routes[{index}].required_drilldown must be true")
+
+        unknown_links = data.get("unknown_links", [])
+        if not isinstance(unknown_links, list):
+            errors.append("unknown_links must be a list")
+            unknown_links = []
+        for index, link in enumerate(unknown_links, start=1):
+            if not isinstance(link, dict):
+                errors.append(f"unknown_links[{index}] must be an object")
+                continue
+            if not str(link.get("from_ref", "")).strip():
+                errors.append(f"unknown_links[{index}].from_ref is required")
+            if not str(link.get("to_ref", "")).strip():
+                errors.append(f"unknown_links[{index}].to_ref is required")
+            if str(link.get("link_kind", "")).strip() not in MAP_UNKNOWN_LINK_KINDS:
+                errors.append(f"unknown_links[{index}].link_kind is invalid")
+            if str(link.get("status", "")).strip() not in MAP_UNKNOWN_LINK_STATUSES:
+                errors.append(f"unknown_links[{index}].status is invalid")
+            if str(link.get("source_signal", "")).strip() not in MAP_UNKNOWN_LINK_SOURCES:
+                errors.append(f"unknown_links[{index}].source_signal is invalid")
+
+        signals = data.get("signals", {})
+        if not isinstance(signals, dict):
+            errors.append("signals must be an object")
+            signals = {}
+        for key in MAP_SIGNAL_KEYS:
+            if key not in signals:
+                continue
+            signal = signals.get(key)
+            if not isinstance(signal, dict):
+                errors.append(f"signals.{key} must be an object")
+                continue
+            score = signal.get("score")
+            if score is not None and (isinstance(score, bool) or not isinstance(score, (int, float))):
+                errors.append(f"signals.{key}.score must be numeric")
+            half_life_days = signal.get("half_life_days")
+            if half_life_days is not None and (
+                isinstance(half_life_days, bool)
+                or not isinstance(half_life_days, (int, float))
+                or half_life_days <= 0
+            ):
+                errors.append(f"signals.{key}.half_life_days must be positive")
+
+        anchors = safe_list(data, "anchor_refs")
+        derived = safe_list(data, "derived_from_refs")
+        down_refs = safe_list(data, "down_refs")
+        if level == "L1" and not anchors and not proof_routes:
+            errors.append("L1 map must define anchor_refs or proof_routes")
+        if level == "L2" and not down_refs and not any(ref.startswith(MAP_L2_ANCHOR_PREFIXES) for ref in anchors):
+            errors.append("L2 map must define down_refs or CLM/MODEL/FLOW anchor_refs")
+        if level == "L3":
+            scoped_context = bool(safe_list(scope_refs, "task_refs") or safe_list(scope_refs, "wctx_refs"))
+            contextual_refs = anchors + derived + down_refs
+            if not scoped_context and not any(ref.startswith(MAP_L3_CONTEXT_PREFIXES) for ref in contextual_refs):
+                errors.append("L3 map must be scoped to TASK/WCTX/PLN/REASON context")
+
     elif record_type == "curator_pool":
         if not str(data.get("title", "")).strip():
             errors.append("title is required")
@@ -1179,6 +1338,59 @@ def validate_refs(records: dict[str, dict]) -> list[ValidationError]:
                     for ref in safe_list(assumption, "support_refs"):
                         if ref not in records:
                             errors.append(ValidationError(path, f"missing assumption {index} support_ref: {ref}"))
+
+        if data.get("record_type") == "map":
+            scope_refs = data.get("scope_refs", {})
+            if isinstance(scope_refs, dict):
+                scope_ref_types = {
+                    "workspace_refs": "workspace",
+                    "project_refs": "project",
+                    "task_refs": "task",
+                    "wctx_refs": "working_context",
+                }
+                for key, expected_type in scope_ref_types.items():
+                    for ref in safe_list(scope_refs, key):
+                        if ref not in records:
+                            errors.append(ValidationError(path, f"missing map scope ref in {key}: {ref}"))
+                        elif records[ref].get("record_type") != expected_type:
+                            errors.append(ValidationError(path, f"map scope ref {ref} must reference a {expected_type} record"))
+
+            level = str(data.get("level", "")).strip()
+            map_link_fields = (
+                "up_refs",
+                "down_refs",
+                "adjacent_map_refs",
+                "contradicts_map_refs",
+                "refines_map_refs",
+                "supersedes_refs",
+            )
+            for key in map_link_fields:
+                for ref in safe_list(data, key):
+                    if ref not in records:
+                        if str(ref).startswith("MAP-"):
+                            errors.append(ValidationError(path, f"missing map ref in {key}: {ref}"))
+                        continue
+                    if records[ref].get("record_type") != "map":
+                        errors.append(ValidationError(path, f"map {key} ref {ref} must reference a map record"))
+
+            for ref in safe_list(data, "up_refs"):
+                target = records.get(ref)
+                if not target or target.get("record_type") != "map":
+                    continue
+                target_level = str(target.get("level", "")).strip()
+                if level == "L1" and target_level not in {"L2", "L3"}:
+                    errors.append(ValidationError(path, f"map up_ref {ref} must point from L1 to L2/L3"))
+                if level == "L2" and target_level != "L3":
+                    errors.append(ValidationError(path, f"map up_ref {ref} must point from L2 to L3"))
+            for ref in safe_list(data, "down_refs"):
+                target = records.get(ref)
+                if not target or target.get("record_type") != "map":
+                    continue
+                target_level = str(target.get("level", "")).strip()
+                if level == "L2" and target_level != "L1":
+                    errors.append(ValidationError(path, f"map down_ref {ref} must point from L2 to L1"))
+                if level == "L3" and target_level not in {"L1", "L2"}:
+                    errors.append(ValidationError(path, f"map down_ref {ref} must point from L3 to L1/L2"))
 
         if data.get("record_type") == "plan":
             justified_by = safe_list(data, "justified_by")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a strict .codex_context layout for the trust-evidence-protocol plugin."""
+"""Create a strict .tep_context layout for the trust-evidence-protocol plugin."""
 
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ REQUIRED_DIRS = (
     "records/action",
     "records/task",
     "records/working_context",
+    "records/map",
     "records/curator_pool",
     "records/plan",
     "records/debt",

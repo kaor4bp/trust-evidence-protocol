@@ -20,6 +20,7 @@ from tep_runtime.contracts import (  # noqa: E402
     CONTRACT_VERSION,
     GRANT_RECORD_SCHEMA,
     LOOKUP_RESPONSE_SCHEMA,
+    MAP_RECORD_SCHEMA,
     MAP_VIEW_RESPONSE_SCHEMA,
     MIGRATION_REPORT_SCHEMA,
     NEXT_STEP_RESPONSE_SCHEMA,
@@ -32,6 +33,7 @@ from tep_runtime.contracts import (  # noqa: E402
     ChainValidationResponse,
     GrantRecord,
     LookupResponse,
+    MapRecord,
     MapViewResponse,
     MigrationReport,
     NextStepResponse,
@@ -41,6 +43,7 @@ from tep_runtime.contracts import (  # noqa: E402
     RunRecord,
     WorkingContextRecord,
 )
+from tep_runtime.record_versions import is_current_record_contract, validate_record_version  # noqa: E402
 
 
 SCHEMA_EXPORTS = {
@@ -56,6 +59,7 @@ SCHEMA_EXPORTS = {
     "run.record.schema.json": RUN_RECORD_SCHEMA,
     "migration.report.schema.json": MIGRATION_REPORT_SCHEMA,
     "map_view.response.schema.json": MAP_VIEW_RESPONSE_SCHEMA,
+    "map.record.schema.json": MAP_RECORD_SCHEMA,
 }
 
 
@@ -65,6 +69,11 @@ def load_schema(name: str) -> dict:
 
 def test_v04_schema_files_exist_and_match_exported_contract_metadata() -> None:
     assert CONTRACT_VERSION == "0.4"
+    assert is_current_record_contract({"contract_version": "0.4"})
+    assert not is_current_record_contract({"schema_version": "0.4"})
+    assert validate_record_version("claim", {"record_version": 1}) == [
+        "contract_version is required when record_version is set"
+    ]
     for name, exported in SCHEMA_EXPORTS.items():
         schema = load_schema(name)
         assert schema["$id"] == exported["$id"]
@@ -222,6 +231,46 @@ def test_map_contract_payload_is_navigation_only_and_session_based() -> None:
     assert view["signals"]["tap_smell"]
     assert view["signals"]["inquiry_pressure"]
     assert view["proof_routes"][0]["tool"] == "lookup"
+
+
+def test_map_record_contract_is_versioned_and_navigation_only() -> None:
+    schema = load_schema("map.record.schema.json")
+    required = set(schema["required"])
+
+    assert {"contract_version", "record_version", "map_is_proof", "proof_routes"} <= required
+    assert schema["properties"]["contract_version"]["const"] == "0.4"
+    assert schema["properties"]["record_version"]["const"] == 1
+    assert schema["properties"]["map_is_proof"]["const"] is False
+
+    record = MapRecord(
+        id="MAP-20260423-demo",
+        scope="pytest",
+        level="L1",
+        map_kind="evidence_patch",
+        summary="Evidence around MAP record contract validation.",
+        source_set_fingerprint="sha256:map-contract",
+        generated_by="map_refresh",
+        generated_at="2026-04-23T00:00:00+03:00",
+        updated_at="2026-04-23T00:00:00+03:00",
+        stale_policy="source_set_changed",
+        scope_refs={"workspace_refs": ["WSP-20260423-demo"], "project_refs": [], "task_refs": [], "wctx_refs": []},
+        anchor_refs=("CLM-20260423-demo",),
+        proof_routes=(
+            {
+                "route_kind": "claim_support",
+                "route_refs": ["CLM-20260423-demo", "SRC-20260423-demo"],
+                "required_drilldown": True,
+            },
+        ),
+        signals={"tap_smell": {"score": 0.0, "half_life_days": 7.0}},
+    ).to_payload()
+
+    assert record["record_type"] == "map"
+    assert record["contract_version"] == "0.4"
+    assert record["record_version"] == 1
+    assert record["map_is_proof"] is False
+    assert record["level"] == "L1"
+    assert record["proof_routes"][0]["required_drilldown"] is True
 
 
 def test_mutating_contract_payloads_keep_runtime_authorization_boundaries() -> None:

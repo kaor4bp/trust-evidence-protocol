@@ -32,6 +32,8 @@ files only after manifest hash verification and refuses conflicting overwrites.
 - one file = one record
 - filename must equal record `id`
 - records must be canonical JSON objects
+- new 0.4 records use `contract_version` for the public contract and
+  `record_version` for the concrete record shape
 - canonical data must not be stored in aggregate ledgers
 - claims must cite explicit `source_refs`
 - claims that should participate in automatic contradiction scans must define a structured `comparison` object
@@ -44,6 +46,8 @@ files only after manifest hash verification and refuses conflicting overwrites.
 - proposal assumptions may guide discussion, but must not be used as proof in evidence chains
 - fresh unlinked `INP-*` input records are not cleanup garbage; archive them only after `settings.cleanup.orphan_input_stale_after_days`
 - working context, topic overlap, and generated views may guide lookup, but must not be used as proof
+- `MAP-*` records are durable navigation cells only; drill down through
+  `proof_routes` before using proof-capable records
 - `CLM.logic` atoms/rules are projections of claims; generated `logic_index/` output must not be used as proof
 - `accepted-deviation` steps in flows require an explicit user-backed anchor; scoped permission may authorize action, but it does not prove truth
 - memory records do not become proof by virtue of being persisted
@@ -55,14 +59,17 @@ files only after manifest hash verification and refuses conflicting overwrites.
 ## Layout
 
 ```text
-.codex_context/
+.tep_context/
   README.md
   index.md
   backlog.md
   records/
+    agent_identity/
     workspace/
     project/
     input/
+    file/
+    run/
     source/
     claim/
     permission/
@@ -72,6 +79,8 @@ files only after manifest hash verification and refuses conflicting overwrites.
     action/
     task/
     working_context/
+    map/
+    curator_pool/
     plan/
     debt/
     model/
@@ -93,6 +102,8 @@ files only after manifest hash verification and refuses conflicting overwrites.
 Use these prefixes with date plus random suffix:
 
 - `INP-YYYYMMDD-xxxxxxxx`
+- `FILE-YYYYMMDD-xxxxxxxx`
+- `RUN-YYYYMMDD-xxxxxxxx`
 - `SRC-YYYYMMDD-xxxxxxxx`
 - `CLM-YYYYMMDD-xxxxxxxx`
 - `PRM-YYYYMMDD-xxxxxxxx`
@@ -103,6 +114,8 @@ Use these prefixes with date plus random suffix:
 - `PRJ-YYYYMMDD-xxxxxxxx`
 - `TASK-YYYYMMDD-xxxxxxxx`
 - `WCTX-YYYYMMDD-xxxxxxxx`
+- `MAP-YYYYMMDD-xxxxxxxx`
+- `CURP-YYYYMMDD-xxxxxxxx`
 - `PLN-YYYYMMDD-xxxxxxxx`
 - `DEBT-YYYYMMDD-xxxxxxxx`
 - `MODEL-YYYYMMDD-xxxxxxxx`
@@ -117,6 +130,7 @@ Legacy sequential ids such as `CLM-YYYYMMDD-NNNN` remain valid for existing cont
 Use the templates bundled with the plugin:
 
 - `templates/codex_context/input.json`
+- `templates/codex_context/map.json`
 - `templates/codex_context/source.json`
 - `templates/codex_context/claim.json`
 - `templates/codex_context/permission.json`
@@ -127,6 +141,7 @@ Use the templates bundled with the plugin:
 - `templates/codex_context/project.json`
 - `templates/codex_context/task.json`
 - `templates/codex_context/working_context.json`
+- `templates/codex_context/curator_pool.json`
 - `templates/codex_context/plan.json`
 - `templates/codex_context/debt.json`
 - `templates/codex_context/model.json`
@@ -135,7 +150,7 @@ Use the templates bundled with the plugin:
 
 ## Settings
 
-`.codex_context/settings.json` is the policy layer, not a canonical fact record.
+`.tep_context/settings.json` is the policy layer, not a canonical fact record.
 
 It currently stores:
 

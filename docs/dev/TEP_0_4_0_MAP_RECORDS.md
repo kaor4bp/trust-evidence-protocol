@@ -73,7 +73,8 @@ All levels share these fields:
 {
   "id": "MAP-*",
   "record_type": "map",
-  "schema_version": "0.4",
+  "contract_version": "0.4",
+  "record_version": 1,
   "level": "L1|L2|L3",
   "map_kind": "...",
   "status": "active|stale|archived",
@@ -118,6 +119,10 @@ All levels share these fields:
 
 Field rules:
 
+- `contract_version` identifies the public record contract. New 0.4 MAP cells
+  must use `contract_version=0.4`.
+- `record_version` identifies the concrete record shape for migration. New MAP
+  cells start at `record_version=1`.
 - `level` is required and must be exactly one of `L1`, `L2`, or `L3`.
 - `map_is_proof` must be `false`.
 - `anchor_refs` are the most important records for understanding this cell.
@@ -180,7 +185,8 @@ Example:
 {
   "id": "MAP-20260423-l1abc123",
   "record_type": "map",
-  "schema_version": "0.4",
+  "contract_version": "0.4",
+  "record_version": 1,
   "level": "L1",
   "map_kind": "evidence_patch",
   "summary": "Runtime and claim evidence around SmartPick entity visibility.",
@@ -233,7 +239,8 @@ Example:
 {
   "id": "MAP-20260423-l2abc123",
   "record_type": "map",
-  "schema_version": "0.4",
+  "contract_version": "0.4",
+  "record_version": 1,
   "level": "L2",
   "map_kind": "mechanism_cell",
   "summary": "Fresh entities may not be reliably visible until sync/cache boundaries are crossed.",
@@ -293,7 +300,8 @@ Example:
 {
   "id": "MAP-20260423-l3abc123",
   "record_type": "map",
-  "schema_version": "0.4",
+  "contract_version": "0.4",
+  "record_version": 1,
   "level": "L3",
   "map_kind": "task_situation",
   "summary": "Tests should avoid assuming immediate SmartPick visibility for freshly created entities.",

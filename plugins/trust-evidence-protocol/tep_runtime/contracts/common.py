@@ -5,7 +5,11 @@ from dataclasses import asdict, is_dataclass
 from typing import Any
 
 
-CONTRACT_VERSION = "0.4"
+from ..record_versions import CURRENT_RECORD_CONTRACT_VERSION, CURRENT_RECORD_VERSION
+
+
+CONTRACT_VERSION = CURRENT_RECORD_CONTRACT_VERSION
+RECORD_VERSION = CURRENT_RECORD_VERSION
 LEGACY_API_CONTRACT_VERSION = 1
 JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 
@@ -50,6 +54,7 @@ def compact_object_schema(
 
 
 CONTRACT_VERSION_PROPERTY = {"type": "string", "const": CONTRACT_VERSION}
+RECORD_VERSION_PROPERTY = {"type": "integer", "const": RECORD_VERSION}
 ROUTE_TOKEN_PROPERTY = {"type": "string", "pattern": "^ROUTE-[A-Za-z0-9_.:-]+$"}
 
 

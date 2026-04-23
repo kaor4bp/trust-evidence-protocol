@@ -2652,6 +2652,75 @@ def test_schema_core_validates_record_shapes_and_typed_refs(tmp_path: Path) -> N
     assert "project root_refs must be absolute paths" in validate_record(project_id, project)
 
 
+def test_map_records_require_record_version_and_directional_links(tmp_path: Path) -> None:
+    root = tmp_path / ".tep_context"
+
+    def map_record(record_id: str, *, level: str, **overrides: object) -> dict:
+        payload: dict = {
+            "_path": root / "records" / "map" / f"{record_id}.json",
+            "_folder": "map",
+            "id": record_id,
+            "record_type": "map",
+            "contract_version": "0.4",
+            "record_version": 1,
+            "scope": "pytest.map",
+            "note": "Navigation-only map test.",
+            "level": level,
+            "map_kind": "evidence_patch" if level == "L1" else "mechanism_cell",
+            "status": "active",
+            "summary": f"{level} map cell.",
+            "scope_refs": {"workspace_refs": [], "project_refs": [], "task_refs": [], "wctx_refs": []},
+            "anchor_refs": ["CLM-20260423-demo"] if level == "L1" else [],
+            "derived_from_refs": [],
+            "source_set_fingerprint": "sha256:test-map-source-set",
+            "up_refs": [],
+            "down_refs": [],
+            "adjacent_map_refs": [],
+            "contradicts_map_refs": [],
+            "refines_map_refs": [],
+            "supersedes_refs": [],
+            "tension_refs": [],
+            "unknown_links": [],
+            "proof_routes": [
+                {
+                    "route_kind": "claim_support",
+                    "route_refs": ["CLM-20260423-demo", "SRC-20260423-demo"],
+                    "required_drilldown": True,
+                }
+            ],
+            "signals": {"tap_smell": {"score": 0.0, "half_life_days": 7.0}},
+            "map_is_proof": False,
+            "generated_by": "map_refresh",
+            "generated_at": "2026-04-23T00:00:00+03:00",
+            "updated_at": "2026-04-23T00:00:00+03:00",
+            "stale_policy": "source_set_changed",
+        }
+        payload.update(overrides)
+        return payload
+
+    l1 = map_record("MAP-20260423-aaaa1111", level="L1", up_refs=["MAP-20260423-bbbb2222"])
+    l2 = map_record("MAP-20260423-bbbb2222", level="L2", map_kind="mechanism_cell", down_refs=["MAP-20260423-aaaa1111"])
+
+    assert validate_record(l1["id"], l1) == []
+    assert validate_record(l2["id"], l2) == []
+    assert validate_refs({l1["id"]: l1, l2["id"]: l2}) == []
+
+    missing_version = {**l1}
+    missing_version.pop("record_version")
+    assert "map record_version is required" in validate_record(l1["id"], missing_version)
+
+    future_version = {**l1, "record_version": 2}
+    assert "unsupported record_version: 2" in validate_record(l1["id"], future_version)
+
+    proof_map = {**l1, "map_is_proof": True}
+    assert "map.map_is_proof must be false" in validate_record(l1["id"], proof_map)
+
+    wrong_target = map_record("MAP-20260423-cccc3333", level="L1")
+    wrong_link = {**l1, "up_refs": [wrong_target["id"]]}
+    direction_errors = validate_refs({l1["id"]: wrong_link, wrong_target["id"]: wrong_target})
+    assert any(error.message == f"map up_ref {wrong_target['id']} must point from L1 to L2/L3" for error in direction_errors)
+
+
 def test_validation_core_normalizes_optional_lists_and_confidence() -> None:
     payload = {
         "items": [1, " two ", ""],

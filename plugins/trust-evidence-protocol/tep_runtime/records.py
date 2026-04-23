@@ -23,6 +23,7 @@ RECORD_DIRS = {
     "action": "action",
     "task": "task",
     "working_context": "working_context",
+    "map": "map",
     "curator_pool": "curator_pool",
     "plan": "plan",
     "debt": "debt",
@@ -31,7 +32,7 @@ RECORD_DIRS = {
     "open_question": "open_question",
 }
 
-OPTIONAL_RECORD_DIRS = {"agent_identity", "curator_pool"}
+OPTIONAL_RECORD_DIRS = {"agent_identity", "curator_pool", "map"}
 
 RECORD_TYPE_TO_PREFIX = {
     "agent_identity": "AGENT-",
@@ -49,6 +50,7 @@ RECORD_TYPE_TO_PREFIX = {
     "action": "ACT-",
     "task": "TASK-",
     "working_context": "WCTX-",
+    "map": "MAP-",
     "curator_pool": "CURP-",
     "plan": "PLN-",
     "debt": "DEBT-",

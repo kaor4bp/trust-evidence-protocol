@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trust-evidence-protocol.local/schemas/0.4/map.record.schema.json",
+  "title": "TEP 0.4 MAP record",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "record_version",
+    "id",
+    "record_type",
+    "scope",
+    "level",
+    "map_kind",
+    "status",
+    "summary",
+    "scope_refs",
+    "anchor_refs",
+    "derived_from_refs",
+    "source_set_fingerprint",
+    "up_refs",
+    "down_refs",
+    "adjacent_map_refs",
+    "contradicts_map_refs",
+    "refines_map_refs",
+    "supersedes_refs",
+    "tension_refs",
+    "unknown_links",
+    "proof_routes",
+    "signals",
+    "map_is_proof",
+    "generated_by",
+    "generated_at",
+    "updated_at",
+    "stale_policy",
+    "note"
+  ],
+  "properties": {
+    "contract_version": {"type": "string", "const": "0.4"},
+    "record_version": {"type": "integer", "const": 1},
+    "id": {"type": "string", "pattern": "^MAP-"},
+    "record_type": {"type": "string", "const": "map"},
+    "scope": {"type": "string", "minLength": 1},
+    "level": {"type": "string", "enum": ["L1", "L2", "L3"]},
+    "map_kind": {
+      "type": "string",
+      "enum": [
+        "evidence_patch",
+        "mechanism_cell",
+        "pattern_cell",
+        "workflow_cell",
+        "code_area_cell",
+        "risk_cell",
+        "policy_cell",
+        "open_frontier_cell",
+        "task_situation",
+        "debugging_strategy",
+        "implementation_strategy",
+        "curator_strategy",
+        "retrospective_cell",
+        "decision_pressure_cell"
+      ]
+    },
+    "status": {"type": "string", "enum": ["active", "stale", "archived"]},
+    "summary": {"type": "string", "minLength": 1},
+    "scope_refs": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "workspace/project/task/WCTX references for this map cell."
+    },
+    "anchor_refs": {
+      "type": "array",
+      "items": {},
+      "description": "Most important records for understanding this cell."
+    },
+    "derived_from_refs": {
+      "type": "array",
+      "items": {},
+      "description": "Records, cells, or generated views used to derive this cell."
+    },
+    "source_set_fingerprint": {"type": "string", "pattern": "^sha256:"},
+    "up_refs": {
+      "type": "array",
+      "items": {},
+      "description": "Higher-abstraction MAP-* refs."
+    },
+    "down_refs": {
+      "type": "array",
+      "items": {},
+      "description": "Lower-abstraction MAP-* refs."
+    },
+    "adjacent_map_refs": {
+      "type": "array",
+      "items": {},
+      "description": "Neighboring MAP-* refs."
+    },
+    "contradicts_map_refs": {
+      "type": "array",
+      "items": {},
+      "description": "MAP-* refs in tension."
+    },
+    "refines_map_refs": {
+      "type": "array",
+      "items": {},
+      "description": "MAP-* refs refined by this cell."
+    },
+    "supersedes_refs": {
+      "type": "array",
+      "items": {},
+      "description": "MAP-* refs superseded by this cell."
+    },
+    "tension_refs": {
+      "type": "array",
+      "items": {},
+      "description": "Nearby claims/questions/cells carrying tension."
+    },
+    "unknown_links": {
+      "type": "array",
+      "items": {},
+      "description": "Candidate/missing/rejected/unknown structured link objects."
+    },
+    "proof_routes": {
+      "type": "array",
+      "items": {},
+      "description": "Drill-down routes to proof-capable records."
+    },
+    "signals": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "tap, neglect, inquiry, promotion, staleness, and conflict pressure."
+    },
+    "map_is_proof": {"type": "boolean", "const": false},
+    "generated_by": {"type": "string", "enum": ["lookup", "curiosity_map", "curator", "agent_request", "map_refresh"]},
+    "generated_at": {"type": "string"},
+    "updated_at": {"type": "string"},
+    "stale_policy": {"type": "string", "enum": ["anchor_changed", "source_set_changed", "time_window_expired", "manual"]},
+    "note": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": true,
+  "description": "Durable cognitive map cell. Navigation only, never proof."
+}

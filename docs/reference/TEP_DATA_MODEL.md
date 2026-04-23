@@ -65,6 +65,7 @@ Canonical record prefixes:
 - `MODEL-*`: model
 - `FLOW-*`: flow
 - `OPEN-*`: open question
+- `MAP-*`: durable cognitive map cell, navigation only
 
 Runtime/control ids:
 
@@ -76,7 +77,24 @@ Generated/navigation ids:
 
 - `CIX-*`: generated code-index entry, not canonical truth
 - `TEL-*`: telemetry event id, not canonical truth
-- `CURPOOL-*`: bounded curator work pool id, not canonical truth
+- `CURP-*`: bounded curator work pool id, not canonical truth
+
+## Record Versioning
+
+New 0.4 records separate two version concepts:
+
+- `contract_version`: public runtime contract, currently `"0.4"`.
+- `record_version`: concrete JSON record shape, currently `1`.
+
+`schema_version` is reserved for generated metadata and anchors that already
+use numeric schema versions. New canonical records must not use
+`schema_version` as the 0.4 contract marker.
+
+Legacy records without `record_version` remain readable so migrations can run
+in stages. New canonical record types introduced in 0.4, starting with
+`MAP-*`, must include both `contract_version` and `record_version`.
+Migration code should branch on these fields and backfill or wrap legacy records
+only through explicit migration provenance.
 
 ## Core Semantics
 

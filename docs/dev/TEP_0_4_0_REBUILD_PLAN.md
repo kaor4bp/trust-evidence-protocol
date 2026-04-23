@@ -27,6 +27,9 @@ Goals:
   chain-ledger entries, `GRANT`, `RUN`, migration reports, and map sessions.
 - Introduce `contract_version: "0.4"` while documenting any temporary
   compatibility field such as `api_contract_version`.
+- Introduce canonical `record_version` for new 0.4 record shapes so migrations
+  can branch on concrete record format without confusing it with generated
+  `schema_version` metadata.
 
 Exit criteria:
 
@@ -60,6 +63,9 @@ Progress:
 - `lookup` MCP and CLI now share `tep_runtime.lookup_service`; the MCP adapter
   no longer shells out for the lookup front door.
 - `migration_dry_run` MCP already uses the migration service directly.
+- `record_version=1` is the current canonical record-shape marker. Legacy
+  records without `record_version` remain readable, while new 0.4-only records
+  such as `MAP-*` must carry both `contract_version` and `record_version`.
 
 ## Milestone 3: Core Validators
 
