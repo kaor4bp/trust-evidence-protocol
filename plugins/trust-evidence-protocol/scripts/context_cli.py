@@ -241,6 +241,8 @@ from context_lib import (
     assign_project_payload,
     assign_workspace_payload,
     assign_task_payload,
+    augment_chain_service,
+    augment_chain_text,
     build_file_payload,
     build_hypothesis_entry,
     build_run_payload,
@@ -284,6 +286,8 @@ from context_lib import (
     reserve_reason_access,
     score_record,
     select_precedent_tasks,
+    validate_chain_service,
+    validate_chain_text,
     validate_evidence_chain_payload,
     is_mutating_action_kind,
     hypothesis_active_entry_exists,
@@ -294,6 +298,7 @@ from context_lib import (
     validate_reason_ledger,
     remove_hypothesis_entries,
     reopen_hypothesis_entry,
+    read_chain_payload_file,
     sync_hypothesis_entries,
     validate_facts_payload,
     validate_facts_text_lines,
@@ -2294,16 +2299,14 @@ def cmd_validate_evidence_chain(root: Path, chain_file: Path) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
-    try:
-        payload = json.loads(chain_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"{chain_file}: {exc}")
+    payload, error = read_chain_payload_file(chain_file)
+    if error:
+        print(error)
         return 1
-    hypothesis_entries = active_hypothesis_entry_by_claim(root, records)
-    validation = validate_evidence_chain_payload(records, hypothesis_entries, payload)
-    for line in evidence_chain_report_lines(validation, payload, TEP_ICON):
-        print(line)
-    return 1 if validation.errors else 0
+    assert payload is not None
+    result = validate_chain_service(root, records, chain_payload=payload)
+    print(validate_chain_text(result, payload, TEP_ICON))
+    return 0 if result["valid"] else 1
 
 
 def cmd_validate_decision(
@@ -2504,17 +2507,16 @@ def cmd_augment_chain(root: Path, chain_file: Path, output_format: str) -> int:
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
-    try:
-        payload = json.loads(chain_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"{chain_file}: {exc}")
+    payload, error = read_chain_payload_file(chain_file)
+    if error:
+        print(error)
         return 1
-    hypothesis_entries = active_hypothesis_entry_by_claim(root, records)
-    augmented = augment_evidence_chain_payload(records, hypothesis_entries, payload)
+    assert payload is not None
+    augmented = augment_chain_service(root, records, chain_payload=payload)
     if output_format == "json":
         print(json.dumps(augmented, indent=2, ensure_ascii=False))
     else:
-        print("\n".join(augmented_evidence_chain_text_lines(augmented, TEP_ICON)))
+        print(augment_chain_text(augmented, TEP_ICON))
     return 1 if augmented["validation"]["error_count"] else 0
 
 

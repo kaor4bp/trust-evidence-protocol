@@ -228,6 +228,8 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
         ],
         "edges": [{"from": claim_id, "to": task_id, "relation": "supports direct MCP reason services"}],
     }
+    chain_file = tmp_path / "direct-mcp-chain.json"
+    chain_file.write_text(json.dumps(chain_payload), encoding="utf-8")
 
     tep_server = load_mcp_server_module()
 
@@ -258,6 +260,25 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
     assert payload["lookup_is_proof"] is False
     assert payload["focus"]["workspace_ref"] == workspace_id
     assert payload["focus"]["working_context_ref"].startswith("WCTX-")
+
+    ok, augmented_text = tep_server.tool_augment_chain(
+        {"context": str(context), "cwd": str(tmp_path), "file": str(chain_file), "format": "json"}
+    )
+    assert ok is True
+    augmented = json.loads(augmented_text)
+    assert augmented["augment_is_read_only"] is True
+    assert augmented["validation"]["ok"] is True
+    assert augmented["chain"]["nodes"][0]["record"]["id"] == claim_id
+
+    ok, validated_text = tep_server.tool_validate_chain(
+        {"context": str(context), "cwd": str(tmp_path), "file": str(chain_file), "format": "json"}
+    )
+    assert ok is True
+    validated = json.loads(validated_text)
+    assert validated["contract_version"] == "0.4"
+    assert validated["validate_chain_is_proof"] is False
+    assert validated["valid"] is True
+    assert validated["proof_allowed"] is True
 
     ok, reason_step_text = tep_server.tool_reason_step(
         {
@@ -405,7 +426,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
             {
                 "task": "mcp read-only evidence chain",
                 "nodes": [
-                    {"role": "fact", "ref": claim_id},
+                    {"role": "fact", "ref": claim_id, "quote": "MCP gateway can search canonical trust records."},
                     {
                         "role": "requested_permission",
                         "ref": "REQ-mcp-read",
@@ -646,6 +667,15 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
             },
             {
                 "jsonrpc": "2.0",
+                "id": 32,
+                "method": "tools/call",
+                "params": {
+                    "name": "validate_chain",
+                    "arguments": {"context": str(context), "file": str(chain_file), "format": "json"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
                 "id": 21,
                 "method": "tools/call",
                 "params": {
@@ -758,6 +788,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "cleanup_candidates",
         "cleanup_archives",
         "augment_chain",
+        "validate_chain",
         "topic_search",
         "topic_info",
         "topic_conflict_candidates",
@@ -853,6 +884,13 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert augmented_chain["isError"] is False
     assert claim_id in augmented_chain["content"][0]["text"]
     assert '"ok": true' in augmented_chain["content"][0]["text"]
+
+    validated_chain = by_id[32]["result"]
+    assert validated_chain["isError"] is False
+    validated_chain_payload = json.loads(validated_chain["content"][0]["text"])
+    assert validated_chain_payload["contract_version"] == "0.4"
+    assert validated_chain_payload["validate_chain_is_proof"] is False
+    assert validated_chain_payload["valid"] is True
 
     attention_map = by_id[12]["result"]
     assert attention_map["isError"] is False

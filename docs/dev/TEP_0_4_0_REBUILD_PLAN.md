@@ -156,6 +156,11 @@ Progress:
 - Added MCP conformance coverage that monkeypatches CLI execution to fail and
   still proves `next_step`, `lookup`, `reason_step`, and `reason_review` work
   through direct service calls.
+- `augment_chain` and `validate_chain` now share `tep_runtime.chain_service`.
+  MCP enrichment/validation reads chain files and returns structured results
+  directly instead of shelling out to the development CLI. The CLI keeps the
+  compatibility command name `validate-evidence-chain`; normal-agent MCP uses
+  the 0.4-facing `validate_chain` name.
 
 ## Milestone 5: Hooks And Protected Actions
 

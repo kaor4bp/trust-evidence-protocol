@@ -26,6 +26,13 @@ if plugin_root not in sys.path:
     sys.path.insert(0, plugin_root)
 
 from tep_runtime.action_graph import build_next_step_payload, next_step_text_lines  # noqa: E402
+from tep_runtime.chain_service import (  # noqa: E402
+    augment_chain_service,
+    augment_chain_text,
+    read_chain_payload_file,
+    validate_chain_service,
+    validate_chain_text,
+)
 from tep_runtime.cli_common import TEP_ICON  # noqa: E402
 from tep_runtime.context_root import resolve_context_root  # noqa: E402
 from tep_runtime.lookup_service import build_lookup_service_payload, lookup_text_lines  # noqa: E402
@@ -514,6 +521,21 @@ TOOLS: list[JsonObject] = [
         "description": (
             "Read-only enrichment of an evidence-chain JSON file with canonical quotes, public record metadata, "
             "source quotes, and mechanical validation output. This does not create proof beyond records."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "file": {"type": "string", "description": "Path to an evidence-chain JSON file."},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["file"],
+        ),
+    },
+    {
+        "name": "validate_chain",
+        "description": (
+            "Read-only mechanical validation of an evidence-chain JSON file. "
+            "Validity is not proof of reasoning quality; use the returned gaps and repair routes before decisive use."
         ),
         "inputSchema": schema(
             {
@@ -1387,16 +1409,51 @@ def tool_migration_dry_run(args: JsonObject) -> tuple[bool, str]:
 
 
 def tool_augment_chain(args: JsonObject) -> tuple[bool, str]:
-    return run_cli(
-        args,
-        [
-            "augment-chain",
-            "--file",
-            str(args.get("file", "")),
-            "--format",
-            as_format(args.get("format")),
-        ],
-    )
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return False, f"cwd is not a directory: {cwd}"
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return False, unsafe_fallback
+    records, load_error = load_mcp_records(root)
+    if load_error:
+        return False, load_error
+    assert records is not None
+    chain_payload, error = read_chain_payload_file(Path(str(args.get("file", ""))).expanduser().resolve())
+    if error:
+        return False, error
+    assert chain_payload is not None
+    payload = augment_chain_service(root, records, chain_payload=chain_payload)
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, augment_chain_text(payload, TEP_ICON)
+
+
+def tool_validate_chain(args: JsonObject) -> tuple[bool, str]:
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return False, f"cwd is not a directory: {cwd}"
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return False, unsafe_fallback
+    records, load_error = load_mcp_records(root)
+    if load_error:
+        return False, load_error
+    assert records is not None
+    chain_payload, error = read_chain_payload_file(Path(str(args.get("file", ""))).expanduser().resolve())
+    if error:
+        return False, error
+    assert chain_payload is not None
+    payload = validate_chain_service(root, records, chain_payload=chain_payload)
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, validate_chain_text(payload, chain_payload, TEP_ICON)
 
 
 def tool_topic_search(args: JsonObject) -> tuple[bool, str]:
@@ -1749,6 +1806,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "cleanup_archives": tool_cleanup_archives,
     "migration_dry_run": tool_migration_dry_run,
     "augment_chain": tool_augment_chain,
+    "validate_chain": tool_validate_chain,
     "topic_search": tool_topic_search,
     "topic_info": tool_topic_info,
     "topic_conflict_candidates": tool_topic_conflict_candidates,
