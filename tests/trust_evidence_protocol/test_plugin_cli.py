@@ -6034,7 +6034,7 @@ def test_claim_step_ledger_follows_relation_clm_and_blocks_overlaps(tmp_path: Pa
             "--claim-kind",
             "relation",
             "--relation-kind",
-            "supports",
+            "depends_on",
             "--relation-subject",
             first_claim,
             "--relation-object",
@@ -6045,6 +6045,33 @@ def test_claim_step_ledger_follows_relation_clm_and_blocks_overlaps(tmp_path: Pa
             relation_source,
             "--note",
             "relation claim for STEP transition",
+        ),
+        "claim",
+    )
+    inverse_relation_claim = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.claim-step",
+            "--plane",
+            "theory",
+            "--status",
+            "supported",
+            "--claim-kind",
+            "relation",
+            "--relation-kind",
+            "depends_on",
+            "--relation-subject",
+            second_claim,
+            "--relation-object",
+            first_claim,
+            "--statement",
+            "The second CLM depends on the first CLM.",
+            "--source",
+            relation_source,
+            "--note",
+            "inverse relation claim for STEP transition",
         ),
         "claim",
     )
@@ -6129,6 +6156,31 @@ def test_claim_step_ledger_follows_relation_clm_and_blocks_overlaps(tmp_path: Pa
     assert second_step["relation_claim_ref"] == relation_claim
     assert second_step["claim_ref"] == second_claim
 
+    inverse_relation = run_cli(
+        context,
+        "reason-step",
+        "--mode",
+        "planning",
+        "--claim",
+        first_claim,
+        "--prev-step",
+        second_step["id"],
+        "--prev-claim",
+        second_claim,
+        "--relation-claim",
+        inverse_relation_claim,
+        "--wctx",
+        wctx_ref,
+        "--why",
+        "try to reverse the depends_on edge inside one chain",
+        check=False,
+    )
+    assert inverse_relation.returncode == 1
+    assert "inverse relation already exists in this STEP chain" in inverse_relation.stdout
+    assert relation_claim in inverse_relation.stdout
+    assert inverse_relation_claim in inverse_relation.stdout
+    assert f"reason-step --claim {second_claim}" in inverse_relation.stdout
+
     missing_relation = run_cli(
         context,
         "reason-step",
@@ -6156,12 +6208,12 @@ def test_claim_step_ledger_follows_relation_clm_and_blocks_overlaps(tmp_path: Pa
         "demo.claim-step",
         "--plane",
         "theory",
-        "--status",
-        "supported",
-        "--claim-kind",
-        "relation",
-        "--relation-kind",
-        "supports",
+            "--status",
+            "supported",
+            "--claim-kind",
+            "relation",
+            "--relation-kind",
+            "depends_on",
         "--relation-subject",
         first_claim,
         "--relation-object",

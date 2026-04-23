@@ -457,6 +457,99 @@ def validate_claim_step_transition(
     }
 
 
+def _claim_step_lineage(
+    entries: list[dict[str, Any]],
+    *,
+    prev_step_ref: str,
+    task_ref: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    by_id = {str(entry.get("id", "")).strip(): entry for entry in entries if str(entry.get("id", "")).strip()}
+    lineage: list[dict[str, Any]] = []
+    errors: list[str] = []
+    seen: set[str] = set()
+    current_ref = prev_step_ref.strip()
+    while current_ref:
+        if current_ref in seen:
+            errors.append(f"claim-step lineage cycle at {current_ref}")
+            break
+        seen.add(current_ref)
+        step = by_id.get(current_ref)
+        if not step:
+            errors.append(f"missing previous claim step {current_ref}")
+            break
+        if str(step.get("entry_type", "")).strip() != "claim_step":
+            errors.append(f"lineage entry must be STEP-* claim_step: {current_ref}")
+            break
+        if str(step.get("task_ref", "")).strip() != task_ref:
+            errors.append(f"lineage entry {current_ref} belongs to another TASK-*")
+            break
+        lineage.append(step)
+        current_ref = str(step.get("prev_step_ref", "")).strip()
+    return list(reversed(lineage)), errors
+
+
+def _relation_pairs(shape) -> set[tuple[str, str]]:
+    return {(subject, obj) for subject in shape.subject_refs for obj in shape.object_refs}
+
+
+def _inverse_relation_errors(
+    records: dict[str, dict],
+    lineage: list[dict[str, Any]],
+    *,
+    relation_claim_ref: str,
+) -> list[str]:
+    relation_claim = records.get(relation_claim_ref)
+    candidate_shape = relation_shape_for_claim(relation_claim or {})
+    if candidate_shape is None or candidate_shape.kind not in PROOF_RELATION_KINDS:
+        return []
+    candidate_pairs = _relation_pairs(candidate_shape)
+    errors: list[str] = []
+    for step in lineage:
+        existing_ref = str(step.get("relation_claim_ref", "")).strip()
+        if not existing_ref:
+            continue
+        existing_shape = relation_shape_for_claim(records.get(existing_ref, {}))
+        if existing_shape is None or existing_shape.kind != candidate_shape.kind:
+            continue
+        for existing_subject, existing_object in _relation_pairs(existing_shape):
+            if (existing_object, existing_subject) not in candidate_pairs:
+                continue
+            start_ref = existing_object
+            target_ref = existing_subject
+            errors.append(
+                "inverse relation already exists in this STEP chain: "
+                f"{existing_ref} on {step.get('id')} connects {existing_subject} {candidate_shape.kind} {existing_object}; "
+                f"{relation_claim_ref} would connect {existing_object} {candidate_shape.kind} {existing_subject}. "
+                "Start a new STEP chain instead, e.g. "
+                f"`reason-step --claim {start_ref} ...` then continue with "
+                f"`reason-step --prev-claim {start_ref} --relation-claim {relation_claim_ref} --claim {target_ref} ...`."
+            )
+    return errors
+
+
+def validate_claim_step_lineage_relations(
+    records: dict[str, dict],
+    entries: list[dict[str, Any]],
+) -> list[str]:
+    errors: list[str] = []
+    for entry in entries:
+        if str(entry.get("entry_type", "")).strip() != "claim_step":
+            continue
+        entry_id = str(entry.get("id", "")).strip()
+        prev_step_ref = str(entry.get("prev_step_ref", "")).strip()
+        relation_claim_ref = str(entry.get("relation_claim_ref", "")).strip()
+        task_ref = str(entry.get("task_ref", "")).strip()
+        if not (prev_step_ref and relation_claim_ref and task_ref):
+            continue
+        lineage, lineage_errors = _claim_step_lineage(entries, prev_step_ref=prev_step_ref, task_ref=task_ref)
+        errors.extend(f"{entry_id}: {message}" for message in lineage_errors)
+        errors.extend(
+            f"{entry_id}: {message}"
+            for message in _inverse_relation_errors(records, lineage, relation_claim_ref=relation_claim_ref)
+        )
+    return errors
+
+
 def _read_reason_entries_file(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
     if not path.exists():
         return [], []
@@ -632,11 +725,16 @@ def validate_reason_ledger_state(root: Path) -> list[ValidationError]:
     """Read-only state/preflight validation for the append-only reason ledger."""
 
     validation = validate_reason_ledger(root, create_secret=False)
-    if validation["ok"]:
-        return []
     ledger_path = next((str(entry.get("_ledger_path", "")).strip() for entry in validation.get("entries", [])), "")
     path = Path(ledger_path) if ledger_path else reasoning_runtime_dir(root)
-    return [ValidationError(path, message) for message in validation["errors"]]
+    errors = [ValidationError(path, message) for message in validation["errors"]]
+    if not validation["ok"]:
+        return errors
+    records, record_errors = load_records(root)
+    if record_errors:
+        return errors
+    errors.extend(ValidationError(path, message) for message in validate_claim_step_lineage_relations(records, validation["entries"]))
+    return errors
 
 
 def _record_path(record: dict) -> Path:
@@ -1155,6 +1253,14 @@ def create_claim_step(
         relation_claim_ref=normalized_relation_ref,
         mode=mode,
     )
+    if normalized_prev_step_ref and normalized_relation_ref:
+        lineage, lineage_errors = _claim_step_lineage(entries, prev_step_ref=normalized_prev_step_ref, task_ref=task_ref)
+        inverse_errors = _inverse_relation_errors(records, lineage, relation_claim_ref=normalized_relation_ref)
+        if lineage_errors or inverse_errors:
+            decision["blockers"] = [*decision.get("blockers", []), *lineage_errors, *inverse_errors]
+            decision["justification_valid"] = False
+            decision["decision_chain_valid"] = False
+            decision["decision_valid"] = False
     if not decision["justification_valid"]:
         blockers = "; ".join(str(item) for item in decision.get("blockers", []) if str(item).strip())
         suffix = f": {blockers}" if blockers else ""
