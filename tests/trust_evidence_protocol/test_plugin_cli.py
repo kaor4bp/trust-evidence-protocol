@@ -2276,6 +2276,34 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
         "workspace",
     )
     run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    refreshed_map = json.loads(
+        run_cli(context, "map-refresh", "--volume", "compact", "--scope", "all", "--limit", "3", "--format", "json").stdout
+    )
+    assert refreshed_map["map_refresh_is_proof"] is False
+    assert refreshed_map["attention_index_is_proof"] is False
+    assert refreshed_map["applied"] is True
+    assert refreshed_map["candidate_count"] >= 1
+    assert refreshed_map["created_refs"]
+    assert refreshed_map["updated_refs"] == []
+    map_record_id = refreshed_map["created_refs"][0]
+    map_record = load_record(context, "map", map_record_id)
+    assert map_record["contract_version"] == "0.4"
+    assert map_record["record_version"] == 1
+    assert map_record["map_is_proof"] is False
+    assert map_record["generated_by"] == "map_refresh"
+    assert map_record["status"] == "active"
+    assert map_record["scope_refs"]["workspace_refs"] == [workspace_id]
+    assert map_record["proof_routes"][0]["required_drilldown"] is True
+    assert set(map_record["anchor_refs"]).issubset(set(map_record["derived_from_refs"]))
+    refreshed_again = json.loads(
+        run_cli(context, "map-refresh", "--volume", "compact", "--scope", "all", "--limit", "3", "--format", "json").stdout
+    )
+    assert refreshed_again["created_refs"] == []
+    assert map_record_id in refreshed_again["updated_refs"]
+    dry_run = json.loads(
+        run_cli(context, "map-refresh", "--volume", "compact", "--scope", "all", "--limit", "3", "--dry-run", "--format", "json").stdout
+    )
+    assert dry_run["applied"] is False
     lookup_facts = json.loads(
         run_cli(context, "lookup", "--query", "Facility Program relationship", "--reason", "curiosity", "--kind", "facts", "--format", "json").stdout
     )

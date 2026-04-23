@@ -192,6 +192,9 @@ Progress:
   CLI and MCP. The MCP handler performs the read-only mechanical finalization
   gate directly, while the CLI keeps the compatibility `task-outcome-check`
   command for development, hooks, and CI.
+- `map_refresh` now uses `tep_runtime.map_refresh` from CLI and MCP. The MCP
+  handler materializes bounded durable `MAP-L1 evidence_patch` navigation cells
+  directly, while `curiosity_map`/`map_brief` remain read-only generated views.
 
 ## Milestone 5: Hooks And Protected Actions
 
@@ -255,6 +258,16 @@ Exit criteria:
   state.
 - `map_refresh` is the only normal map operation that mutates durable `MAP-*`
   records.
+
+Progress:
+
+- Added the first durable map refresh slice: explicit `map-refresh` CLI,
+  direct `map_refresh` MCP tool, and `tep_runtime.map_refresh` core service.
+- Current service materializes bounded `MAP-L1 evidence_patch` cells from
+  curiosity prompts, updates signal-only matches in place, and marks older
+  same-anchor semantic cells stale when the source-set fingerprint changes.
+- Remaining session tools (`map_open`, `map_view`, `map_move`,
+  `map_drilldown`, `map_checkpoint`) are still pending.
 
 ## Milestone 7: Feature Recovery And Conformance
 

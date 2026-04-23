@@ -38,6 +38,7 @@ from tep_runtime.context_root import resolve_context_root  # noqa: E402
 from tep_runtime.evidence_service import record_evidence_service, record_evidence_text  # noqa: E402
 from tep_runtime.io import context_write_lock  # noqa: E402
 from tep_runtime.lookup_service import build_lookup_service_payload, lookup_text_lines  # noqa: E402
+from tep_runtime.map_refresh import map_refresh_service, map_refresh_text_lines  # noqa: E402
 from tep_runtime.migrations import (  # noqa: E402
     build_migration_dry_run_report,
     build_schema_migration_report,
@@ -748,6 +749,24 @@ TOOLS: list[JsonObject] = [
                     "default": False,
                     "description": "When true, write a standalone HTML map under <context>/views/curiosity/ and return html_path.",
                 },
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "map_refresh",
+        "description": (
+            "Create or update durable MAP-* navigation cells from current attention/curiosity data. "
+            "This is a mutating navigation operation; MAP-* records are not proof."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "volume": {"type": "string", "enum": ["compact", "normal", "wide"], "default": "compact"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 5},
+                "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
+                "mode": {"type": "string", "enum": ["general", "research", "theory", "code"], "default": "general"},
+                "dry_run": {"type": "boolean", "default": False},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
@@ -1763,6 +1782,37 @@ def tool_curiosity_map(args: JsonObject) -> tuple[bool, str]:
     return run_cli(args, cli_args)
 
 
+def tool_map_refresh(args: JsonObject) -> tuple[bool, str]:
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return False, f"cwd is not a directory: {cwd}"
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return False, unsafe_fallback
+    records, load_error = load_mcp_records(root)
+    if load_error:
+        return False, load_error
+    assert records is not None
+    payload, error = map_refresh_service(
+        root,
+        records,
+        scope=str(args.get("scope") or "current"),
+        mode=str(args.get("mode") or "general"),
+        volume=str(args.get("volume") or "compact"),
+        limit=as_int(args.get("limit"), 5, 1, 50),
+        apply=not as_bool(args.get("dry_run")),
+    )
+    if error:
+        return False, error
+    assert payload is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, "\n".join(map_refresh_text_lines(payload))
+
+
 def tool_map_brief(args: JsonObject) -> tuple[bool, str]:
     return run_cli(
         args,
@@ -2013,6 +2063,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "attention_diagram": tool_attention_diagram,
     "attention_diagram_compare": tool_attention_diagram_compare,
     "curiosity_map": tool_curiosity_map,
+    "map_refresh": tool_map_refresh,
     "map_brief": tool_map_brief,
     "curiosity_probes": tool_curiosity_probes,
     "probe_inspect": tool_probe_inspect,

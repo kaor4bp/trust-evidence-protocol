@@ -367,6 +367,7 @@ from tep_runtime.cli_common import (
 )
 from tep_runtime import lookup_service
 from tep_runtime.agent_identity import local_agent_owns_working_context, sign_working_context_payload
+from tep_runtime.map_refresh import map_refresh_service, map_refresh_text_lines
 from tep_runtime.migrations import build_schema_migration_report, migration_report_text_lines
 from tep_runtime.code_index import (
     annotation_snapshot,
@@ -3080,7 +3081,7 @@ def cmd_help(topic: str) -> int:
             "working-context create|fork|show|close|check-drift",
             "workspace-admission check --repo path [--format json]",
             "topic-index build --method lexical | topic-search --query ...",
-            "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | curiosity-map --mode research|theory|code [--html] | curiosity-probes --mode theory --budget 5 | probe-pack --mode theory --budget 3",
+            "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | curiosity-map --mode research|theory|code [--html] | map-refresh [--dry-run] | curiosity-probes --mode theory --budget 5 | probe-pack --mode theory --budget 3",
             "probe-route --index N --scope current|all | record-link --probe-index N --quote ... --note ...",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]",
@@ -4717,6 +4718,30 @@ def cmd_curiosity_map(root: Path, volume: str, output_format: str, scope: str, m
     if html:
         print(f"Wrote curiosity HTML map: {output_path}")
     print("\n".join(curiosity_map_text_lines(map_payload)))
+    return 0
+
+
+def cmd_map_refresh(root: Path, volume: str, output_format: str, scope: str, mode: str, limit: int, dry_run: bool) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return exit_code
+    payload, error = map_refresh_service(
+        root,
+        records,
+        scope=scope,
+        mode=mode,
+        volume=volume,
+        limit=limit,
+        apply=not dry_run,
+    )
+    if error:
+        print(error)
+        return 1
+    assert payload is not None
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(map_refresh_text_lines(payload)))
     return 0
 
 
@@ -8516,6 +8541,16 @@ def parse_args() -> argparse.Namespace:
     curiosity_map.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     curiosity_map.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     curiosity_map.add_argument("--html", action="store_true", help="Write a standalone HTML visual map under <context>/views/curiosity/.")
+    map_refresh = subparsers.add_parser(
+        "map-refresh",
+        help="Create or update durable MAP-* navigation cells from current attention/curiosity data.",
+    )
+    map_refresh.add_argument("--volume", choices=sorted(CURIOSITY_MAP_VOLUMES), default="compact")
+    map_refresh.add_argument("--limit", type=int, default=5)
+    map_refresh.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    map_refresh.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    map_refresh.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
+    map_refresh.add_argument("--dry-run", action="store_true", help="Plan durable MAP-* changes without writing records.")
     map_brief = subparsers.add_parser(
         "map-brief",
         help="Show a compact Map Graph projection with topology islands, bridge pressure, and probes. Not proof.",
@@ -10057,6 +10092,18 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 scope=args.scope,
                 mode=args.mode,
                 html=args.html,
+            )
+        )
+    if args.command == "map-refresh":
+        raise SystemExit(
+            cmd_map_refresh(
+                root,
+                volume=args.volume,
+                output_format=args.output_format,
+                scope=args.scope,
+                mode=args.mode,
+                limit=args.limit,
+                dry_run=args.dry_run,
             )
         )
     if args.command == "map-brief":

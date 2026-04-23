@@ -824,6 +824,21 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
             },
             {
                 "jsonrpc": "2.0",
+                "id": 34,
+                "method": "tools/call",
+                "params": {
+                    "name": "map_refresh",
+                    "arguments": {
+                        "context": str(context),
+                        "volume": "compact",
+                        "scope": "all",
+                        "limit": 2,
+                        "format": "json",
+                    },
+                },
+            },
+            {
+                "jsonrpc": "2.0",
                 "id": 31,
                 "method": "tools/call",
                 "params": {
@@ -984,6 +999,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "attention_diagram",
         "attention_diagram_compare",
         "curiosity_map",
+        "map_refresh",
         "curiosity_probes",
         "probe_inspect",
         "probe_chain_draft",
@@ -1143,6 +1159,13 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert "graph TD" in curiosity_map["content"][0]["text"]
     curiosity_payload = json.loads(curiosity_map["content"][0]["text"])
     assert Path(curiosity_payload["html_path"]).exists()
+
+    map_refresh = by_id[34]["result"]
+    assert map_refresh["isError"] is False
+    map_refresh_payload = json.loads(map_refresh["content"][0]["text"])
+    assert map_refresh_payload["map_refresh_is_proof"] is False
+    assert map_refresh_payload["applied"] is True
+    assert map_refresh_payload["created_refs"]
 
     lookup = by_id[31]["result"]
     assert lookup["isError"] is False

@@ -140,6 +140,9 @@ Field rules:
   They are not proof by themselves.
 - `signals` are activity and pressure values. They may be updated in place when
   the cell meaning has not changed.
+- Runtime-created cells should also mirror active `workspace_refs`,
+  `project_refs`, and `task_refs` at top level when those refs exist. This keeps
+  shared durable-record validators and focus search aligned with `scope_refs`.
 
 `unknown_links` entries should use this shape:
 
@@ -452,6 +455,21 @@ the whole cognitive map on every view. It should create and refresh small cells.
 called from MCP after `lookup`/`map_open` shows stale or missing map coverage,
 but normal read-only map views must not silently mutate records.
 
+Current implementation status:
+
+- `tep_runtime.map_refresh` materializes `L1 evidence_patch` cells from
+  bounded curiosity prompts.
+- CLI exposes this as `map-refresh`; `--dry-run` plans the same mutations
+  without writing records.
+- MCP exposes `map_refresh` as a direct core-service tool, not a CLI shell-out.
+- Matching active cells with the same level, map kind, scope, anchors, and
+  source-set fingerprint are updated in place for signals/timestamps.
+- Matching active cells with the same anchor key but changed source fingerprint
+  are marked `stale`; the new cell links them through `supersedes_refs` and
+  `refines_map_refs`.
+- The generated `curiosity-map`, `attention-map`, HTML map, and `map-brief`
+  remain read-only navigation views.
+
 Refresh flow:
 
 1. Read attention/curiosity/topic/code/telemetry signals as sensor input.
@@ -513,11 +531,12 @@ do not alter the cell's meaning.
 
 Slice order:
 
-1. Define `MAP-*` schema and validators.
-2. Add record loading/search support for `record_type=map`.
+1. Define `MAP-*` schema and validators. Done for `record_version=1`.
+2. Add record loading/search support for `record_type=map`. Done.
 3. Add lookup support for returning existing `MAP-*` cells.
 4. Add explicit `map_refresh` service for materializing and updating `L1` cells
-   from current attention/curiosity output.
+   from current attention/curiosity output. Done for bounded `evidence_patch`
+   cells.
 5. Add map session state in owner-bound `WCTX-*` plus read-only
    `map_open`/`map_view`/`map_move`/`map_drilldown`/`map_checkpoint` behavior.
 6. Add `L2` creation from `MAP-L1`, `CLM(meta_aggregated)`, MODEL/FLOW, and
