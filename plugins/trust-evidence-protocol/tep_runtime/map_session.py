@@ -468,6 +468,74 @@ def map_move_service(
     return build_map_view_payload(root, view_records, signed, moved), None
 
 
+def _map_proof_routes(record: dict, *, source_map_ref: str, via_map_refs: list[str] | None = None) -> list[dict[str, Any]]:
+    routes = record.get("proof_routes", []) if isinstance(record.get("proof_routes"), list) else []
+    enriched = []
+    for route in routes:
+        if not isinstance(route, dict):
+            continue
+        payload = dict(route)
+        payload["source_map_ref"] = source_map_ref
+        payload["via_map_refs"] = list(via_map_refs or [])
+        payload["route_is_proof"] = False
+        enriched.append(payload)
+    return enriched
+
+
+def _expanded_map_proof_routes(
+    records: dict[str, dict],
+    map_record: dict,
+    *,
+    visited: set[str] | None = None,
+    depth: int = 0,
+) -> list[dict[str, Any]]:
+    map_ref = str(map_record.get("id", "")).strip()
+    if not map_ref:
+        return []
+    visited = set(visited or set())
+    if map_ref in visited or depth > 3:
+        return []
+    visited.add(map_ref)
+    routes = _map_proof_routes(map_record, source_map_ref=map_ref)
+    for down_ref in _safe_list(map_record, "down_refs"):
+        child = records.get(down_ref)
+        if not child or child.get("record_type") != "map":
+            continue
+        routes.append(
+            {
+                "route_kind": "map_down_ref",
+                "route_refs": [map_ref, down_ref],
+                "source_map_ref": map_ref,
+                "via_map_refs": [down_ref],
+                "required_drilldown": True,
+                "route_is_proof": False,
+            }
+        )
+        for child_route in _expanded_map_proof_routes(records, child, visited=visited, depth=depth + 1):
+            expanded = dict(child_route)
+            expanded["via_map_refs"] = [down_ref, *[ref for ref in child_route.get("via_map_refs", []) if ref != down_ref]]
+            expanded["expanded_from_map_ref"] = map_ref
+            expanded["route_is_proof"] = False
+            routes.append(expanded)
+    return routes
+
+
+def _map_hierarchy_payload(records: dict[str, dict], map_record: dict) -> dict[str, Any]:
+    return {
+        "hierarchy_is_proof": False,
+        "up_cells": [
+            _map_cell_item(records, records[ref], reason="higher abstraction")
+            for ref in _safe_list(map_record, "up_refs")
+            if ref in records and records[ref].get("record_type") == "map"
+        ][:8],
+        "down_cells": [
+            _map_cell_item(records, records[ref], reason="lower evidence patch")
+            for ref in _safe_list(map_record, "down_refs")
+            if ref in records and records[ref].get("record_type") == "map"
+        ][:8],
+    }
+
+
 def map_drilldown_service(
     root: Path,
     records: dict[str, dict],
@@ -486,21 +554,30 @@ def map_drilldown_service(
     if not record:
         return None, f"missing record {ref}"
     routes: list[dict[str, Any]] = []
+    hierarchy = {"hierarchy_is_proof": False, "up_cells": [], "down_cells": []}
     if record.get("record_type") == "map":
-        routes = list(record.get("proof_routes", [])) if isinstance(record.get("proof_routes"), list) else []
+        routes = _expanded_map_proof_routes(records, record)
+        hierarchy = _map_hierarchy_payload(records, record)
     else:
         for map_record in _active_map_records(root, records, scope=str(view.get("scope") or "current")):
             route_refs = []
             for route in map_record.get("proof_routes", []) if isinstance(map_record.get("proof_routes"), list) else []:
                 if ref in [str(item) for item in route.get("route_refs", [])]:
-                    routes.append(route)
+                    enriched = dict(route)
+                    enriched["source_map_ref"] = str(map_record.get("id") or "")
+                    enriched["via_map_refs"] = []
+                    enriched["route_is_proof"] = False
+                    routes.append(enriched)
                     route_refs.extend([str(item) for item in route.get("route_refs", [])])
             if ref in _safe_list(map_record, "anchor_refs") or ref in route_refs:
                 routes.append(
                     {
                         "route_kind": "map_cell_anchor",
                         "route_refs": [str(map_record.get("id")), ref],
+                        "source_map_ref": str(map_record.get("id")),
+                        "via_map_refs": [],
                         "required_drilldown": True,
+                        "route_is_proof": False,
                     }
                 )
     return (
@@ -512,6 +589,7 @@ def map_drilldown_service(
             "ref": ref,
             "record": _record_item(records, ref, reason="map drilldown target"),
             "proof_routes": routes,
+            "hierarchy": hierarchy,
             "required_next": ["record_detail", "augment_chain", "validate_chain"],
             "note": "Drilldown routes are navigation only until chain validation succeeds.",
         },

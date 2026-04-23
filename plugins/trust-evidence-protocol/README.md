@@ -560,6 +560,7 @@ Commands:
   - returns the primary tool, ordered route commands, `next_allowed_commands`, `route_graph`, `evidence_profile`, `output_contract`, navigation-only `map_navigation`, and a compact `chain_starter`
   - `map_navigation` returns relevant durable `MAP-*` cells when available; these cells are navigation memory only and require `map-drilldown`, `record-detail`, and chain validation before proof use
   - active `L2` map cells with `down_refs` rank above covered `L1` evidence patches, and map views expose hierarchy `up_cells` / `down_cells` for bounded navigation
+  - `map-drilldown` expands higher-level map cells through bounded `down_refs` and returns child map hops plus lower-level proof routes as navigation metadata; every expanded route keeps `route_is_proof=false`
   - `map_navigation.refresh_triggers` reports navigation-only reasons to run `attention-index build` and `map-refresh --dry-run` when uncovered or newer map-worthy `CLM-*`, `MODEL-*`, or `FLOW-*` records exist, when map anchors become terminal, or when a map cell's source-set fingerprint no longer matches its source refs
   - `chain_starter` is a mechanical draft with candidate ids, quotes, edges, validation preview, and next `augment-chain` / `validate-decision` commands; it is not proof until validated
   - `facts` routes to `claim-graph`, `search-records`, `record-detail`, and `linked-records`

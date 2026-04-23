@@ -189,8 +189,10 @@ Current implementation status:
 - `map_open`, `map_move`, and `map_checkpoint` mutate only WCTX operational
   state. They do not create facts, proposals, debts, open questions, or durable
   `MAP-*` cells.
-- `map_view` and `map_drilldown` are read-only. `map_drilldown` returns proof
-  routes that still require record detail and chain validation before use.
+- `map_view` and `map_drilldown` are read-only. `map_drilldown` returns
+  navigation routes toward proof-capable records, including bounded `down_refs`
+  expansion for higher-level map cells; those routes still require record
+  detail and chain validation before use.
 
 Required map view output:
 

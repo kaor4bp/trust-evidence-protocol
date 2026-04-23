@@ -383,6 +383,9 @@ Rules:
 - Current implementation ranks active `L2` cells with `down_refs` above covered
   `L1` cells and includes `up_refs`, `down_refs`, and `covered_by_map_refs` in
   `lookup.map_navigation.cells`.
+- `map_drilldown` expands a selected `L2`/`L3` cell through bounded `down_refs`
+  and returns the lower-level `proof_routes` with `source_map_ref`,
+  `via_map_refs`, and `expanded_from_map_ref` metadata.
 - If the current `REASON-*` branch exists, lookup should prefer map cells that
   add new chain nodes or expose unresolved tensions.
 
@@ -411,6 +414,16 @@ Allowed:
 ```text
 MAP-* -> proof_routes -> CLM/SRC/RUN/INP/FILE/ART
 ```
+
+For higher-level cells:
+
+```text
+MAP-L2/L3 -> down_refs -> MAP-L1/L2 -> proof_routes -> CLM/SRC/RUN/INP/FILE/ART
+```
+
+The expanded route is still navigation. `route_is_proof=false` must remain true
+until `record_detail`, `augment_chain`, and `validate_chain` produce a valid
+proof-capable chain.
 
 Not allowed:
 

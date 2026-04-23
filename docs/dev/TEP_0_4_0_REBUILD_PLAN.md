@@ -292,6 +292,9 @@ Progress:
 - `lookup.map_navigation` now prefers active L2 abstractions over covered L1
   evidence patches, and `map_view` exposes hierarchy cells for up/down
   navigation.
+- `map_drilldown` now expands higher-level cells through bounded `down_refs`,
+  returning child map hops and lower-level proof routes as navigation metadata
+  without treating any `MAP-*` route as proof.
 - Remaining work: richer move ranking, dismissed/deferred candidate memory,
   explicit multi-session support, richer L2 ranking, and L3 map-cell creation.
 

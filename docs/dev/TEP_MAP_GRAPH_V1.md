@@ -235,9 +235,11 @@ routes, level, map kind, or summary changes materially. New map-relevant
 `CLM-*` records and new or changed `MODEL-*`/`FLOW-*` records are refresh
 triggers.
 
-`map_drilldown` returns a proof route such as `lookup`, `record_detail`,
-`linked_records`, `augment_chain`, and `validate_chain`. It does not return
-proof.
+`map_drilldown` returns navigation routes toward proof-capable records, such as
+`lookup`, `record_detail`, `linked_records`, `augment_chain`, and
+`validate_chain`. For higher-level `MAP-*` cells it may unfold bounded
+`down_refs` to lower-level map cells before reaching proof-capable records. It
+does not return proof.
 
 `map-brief` currently reports:
 

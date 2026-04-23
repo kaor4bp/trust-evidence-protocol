@@ -478,9 +478,10 @@ from tep_runtime.logic_check import (  # noqa: E402
     structural_logic_check_text_lines,
     z3_logic_check_text_lines,
 )
+import tep_runtime.map_session as map_session_module  # noqa: E402
 from tep_runtime.lookup_service import build_lookup_map_navigation  # noqa: E402
 from tep_runtime.map_refresh import build_map_refresh_plan, map_refresh_triggers  # noqa: E402
-from tep_runtime.map_session import build_map_view_payload  # noqa: E402
+from tep_runtime.map_session import build_map_view_payload, map_drilldown_service  # noqa: E402
 from tep_runtime.topic_index import (  # noqa: E402
     build_lexical_topic_index,
     infer_topic_terms_from_refs,
@@ -3123,6 +3124,112 @@ def test_l2_map_cells_dominate_lookup_and_expose_view_hierarchy(tmp_path: Path) 
     assert view["zone"]["map_ref"] == l2_map_id
     assert view["hierarchy"]["hierarchy_is_proof"] is False
     assert [cell["ref"] for cell in view["hierarchy"]["down_cells"]] == [first_map_id, second_map_id]
+
+
+def test_l2_map_drilldown_expands_down_refs_to_l1_proof_routes(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / ".tep_context"
+    wctx_id = "WCTX-20260423-a0000001"
+    session_ref = f"{wctx_id}#map-session"
+    claim_id = "CLM-20260423-aaaa1111"
+    source_id = "SRC-20260423-bbbb2222"
+    l1_map_id = "MAP-20260423-cccc3333"
+    l2_map_id = "MAP-20260423-dddd4444"
+    records = {
+        wctx_id: {
+            "id": wctx_id,
+            "record_type": "working_context",
+            "status": "active",
+            "map_sessions": {
+                "default": {
+                    "session_ref": session_ref,
+                    "selected_map_ref": l2_map_id,
+                    "current_zone_id": f"MZONE-{l2_map_id}",
+                    "scope": "all",
+                    "mode": "general",
+                    "query": "mechanism drilldown",
+                    "visited_map_refs": [l2_map_id],
+                }
+            },
+        },
+        claim_id: {
+            "id": claim_id,
+            "record_type": "claim",
+            "status": "supported",
+            "claim_kind": "factual",
+            "statement": "L1 proof route claim.",
+        },
+        source_id: {
+            "id": source_id,
+            "record_type": "source",
+            "source_kind": "file",
+            "summary": "L1 proof route source.",
+        },
+        l1_map_id: {
+            "_path": root / "records" / "map" / f"{l1_map_id}.json",
+            "_folder": "map",
+            "id": l1_map_id,
+            "record_type": "map",
+            "contract_version": "0.4",
+            "record_version": 1,
+            "level": "L1",
+            "map_kind": "evidence_patch",
+            "status": "active",
+            "summary": "Evidence patch with proof-capable drilldown refs.",
+            "anchor_refs": [claim_id],
+            "derived_from_refs": [claim_id, source_id],
+            "up_refs": [l2_map_id],
+            "proof_routes": [
+                {
+                    "route_kind": "claim_support",
+                    "route_refs": [claim_id, source_id],
+                    "required_drilldown": True,
+                }
+            ],
+            "map_is_proof": False,
+        },
+        l2_map_id: {
+            "_path": root / "records" / "map" / f"{l2_map_id}.json",
+            "_folder": "map",
+            "id": l2_map_id,
+            "record_type": "map",
+            "contract_version": "0.4",
+            "record_version": 1,
+            "level": "L2",
+            "map_kind": "mechanism_cell",
+            "status": "active",
+            "summary": "Mechanism cell over one evidence patch.",
+            "anchor_refs": [claim_id],
+            "derived_from_refs": [l1_map_id, claim_id],
+            "down_refs": [l1_map_id],
+            "proof_routes": [
+                {
+                    "route_kind": "map_l2_mechanism",
+                    "route_refs": [l1_map_id, claim_id],
+                    "required_drilldown": True,
+                }
+            ],
+            "map_is_proof": False,
+        },
+    }
+
+    monkeypatch.setattr(map_session_module, "local_agent_owns_working_context", lambda _root, _wctx: True)
+
+    payload, error = map_drilldown_service(root, records, session_ref=session_ref, record_ref=l2_map_id)
+
+    assert error is None
+    assert payload is not None
+    assert payload["drilldown_is_proof"] is False
+    assert [cell["ref"] for cell in payload["hierarchy"]["down_cells"]] == [l1_map_id]
+    routes = payload["proof_routes"]
+    by_kind = {route["route_kind"]: route for route in routes}
+
+    assert by_kind["map_l2_mechanism"]["source_map_ref"] == l2_map_id
+    assert by_kind["map_l2_mechanism"]["via_map_refs"] == []
+    assert by_kind["map_down_ref"]["route_refs"] == [l2_map_id, l1_map_id]
+    assert by_kind["claim_support"]["source_map_ref"] == l1_map_id
+    assert by_kind["claim_support"]["via_map_refs"] == [l1_map_id]
+    assert by_kind["claim_support"]["expanded_from_map_ref"] == l2_map_id
+    assert all(route["route_is_proof"] is False for route in routes)
 
 
 def test_validation_core_normalizes_optional_lists_and_confidence() -> None:
