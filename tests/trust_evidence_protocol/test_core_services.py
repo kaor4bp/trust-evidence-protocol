@@ -267,6 +267,11 @@ from tep_runtime.generated_views import (  # noqa: E402
     write_resolved_report,
 )
 from tep_runtime.actions import build_action_payload  # noqa: E402
+from tep_runtime.agent_identity import (  # noqa: E402
+    ensure_local_agent_identity,
+    sign_working_context_payload,
+    signed_wctx_payload_hash,
+)
 from tep_runtime.schemas import SOURCE_KINDS, validate_record, validate_refs  # noqa: E402
 from tep_runtime.state_validation import (  # noqa: E402
     collect_validation_errors,
@@ -2204,6 +2209,47 @@ def test_working_context_core_builds_payloads_and_mutations() -> None:
         "updated_at": "2026-04-18T08:20:00+03:00",
         "closed_at": "2026-04-18T08:20:00+03:00",
     }
+
+
+def test_agent_identity_signs_working_context_without_public_secret(tmp_path: Path) -> None:
+    root = tmp_path / ".tep_context"
+    timestamp = "2026-04-23T00:00:00+03:00"
+    context = build_working_context_payload(
+        record_id="WCTX-20260423-abcdef12",
+        timestamp=timestamp,
+        scope="lookup.curiosity",
+        title="Lookup curiosity",
+        context_kind="investigation",
+        pinned_refs=[],
+        focus_paths=[],
+        topic_terms=["curiosity"],
+        topic_seed_refs=[],
+        assumptions=[],
+        concerns=[],
+        project_refs=[],
+        task_refs=[],
+        tags=["auto-wctx"],
+        note="Auto-created WCTX.",
+    )
+
+    signed, agent = sign_working_context_payload(root, {}, context, timestamp=timestamp)
+
+    assert agent["record_type"] == "agent_identity"
+    assert agent["record_version"] == 1
+    assert agent["key_fingerprint"] == signed["agent_key_fingerprint"]
+    assert "secret" not in agent
+    assert signed["contract_version"] == "0.4"
+    assert signed["record_version"] == 1
+    assert signed["agent_identity_ref"] == agent["id"]
+    assert signed["ownership_mode"] == "owner-only"
+    assert signed["handoff_policy"] == "fork-required"
+    assert signed["owner_signature"]["signed_payload_hash"] == signed_wctx_payload_hash(signed)
+    assert signed["owner_signature"]["signature"].startswith("hmac-sha256:")
+    secret_file = root / "runtime" / "agent_identity" / "local_agent_key.json"
+    secret_payload = json.loads(secret_file.read_text(encoding="utf-8"))
+    assert secret_payload["secret"]
+    reused_agent, _ = ensure_local_agent_identity(root, {agent["id"]: agent}, timestamp=timestamp)
+    assert reused_agent == agent
 
 
 def test_topic_index_core_builds_navigation_prefilter_and_reports(tmp_path: Path) -> None:

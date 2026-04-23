@@ -16,6 +16,7 @@ and `MAP-*`, require both fields. Legacy records without `record_version` stay
 readable until an explicit migration rewrites or wraps them.
 
 `AGENT-*` identity records expose only local-agent key metadata and fingerprints.
-Private key material is runtime-private. `WCTX-*` records are owner-bound with
-`ownership_mode=owner-only`; other agents must fork/adopt through the runtime
-instead of using someone else's WCTX as current focus.
+Private key material is runtime-private under `.tep_context/runtime/agent_identity/`.
+`WCTX-*` records are owner-bound with `ownership_mode=owner-only`; other agents
+must fork/adopt through the runtime instead of using someone else's WCTX as
+current focus.

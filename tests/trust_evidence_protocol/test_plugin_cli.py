@@ -2284,6 +2284,17 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert lookup_facts["focus"]["working_context_ref"].startswith("WCTX-")
     assert lookup_facts["focus"]["auto_created_working_context"] is True
     assert lookup_facts["auto_created_working_context"]["not_proof"] is True
+    auto_wctx = load_record(context, "working_context", lookup_facts["focus"]["working_context_ref"])
+    assert auto_wctx["contract_version"] == "0.4"
+    assert auto_wctx["record_version"] == 1
+    assert auto_wctx["ownership_mode"] == "owner-only"
+    assert auto_wctx["handoff_policy"] == "fork-required"
+    assert auto_wctx["owner_signature"]["algorithm"] == "hmac-sha256"
+    agent = load_record(context, "agent_identity", auto_wctx["agent_identity_ref"])
+    assert agent["record_version"] == 1
+    assert agent["key_fingerprint"] == auto_wctx["agent_key_fingerprint"]
+    assert "secret" not in agent
+    assert (context / "runtime" / "agent_identity" / "local_agent_key.json").exists()
     assert lookup_facts["primary_tool"] == "claim-graph"
     assert lookup_facts["api_contract_version"] == 1
     assert lookup_facts["evidence_profile"]["normal_entrypoint"] == "lookup"

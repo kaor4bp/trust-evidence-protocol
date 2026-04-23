@@ -266,8 +266,13 @@ Rules:
 
 - WCTX is operational state, not proof.
 - Private agent key material is never stored in the public WCTX record.
+- The local HMAC key is runtime-private state under
+  `.tep_context/runtime/agent_identity/`; only its `sha256:` fingerprint is
+  exposed through `AGENT-*`.
 - The WCTX owner signature covers the canonical focus payload that the runtime
   uses for `next_step`, lookup routing, map sessions, and protected actions.
+- Agent-facing auto-created WCTX records, such as lookup focus contexts, must
+  be created as signed 0.4 owner-bound records.
 - A non-owner agent may inspect a WCTX as navigation or handoff context, but
   must not use it as current focus.
 - To continue from another agent's WCTX, the runtime must create a new signed

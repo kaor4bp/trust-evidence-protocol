@@ -124,6 +124,9 @@ Progress:
   behavior by default, while shared validation checks `prev_ledger_hash`,
   `entry_hash`, seal, `ledger_hash`, `chain_hash`, and PoW without creating
   `runtime/reasoning/seal.json` for empty contexts.
+- Added local agent identity signing helpers. Lookup auto-created WCTX records
+  now write/reuse a public `AGENT-*` identity, keep the HMAC key under runtime
+  private storage, and persist signed owner-bound 0.4 WCTX payloads.
 - Added GRANT/RUN lifecycle validation as a shared service. Durable `RUN-*` and
   protected records that cite `grant_ref` must point to a current v2 `GRANT-*`,
   match grant scope/action/command bindings, and respect `max_runs`.

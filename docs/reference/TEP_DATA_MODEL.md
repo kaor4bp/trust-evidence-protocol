@@ -102,6 +102,19 @@ change has one dedicated module under `tep_runtime/schema_migrations/`, and
 apply is all-or-nothing after post-migration validation. Root migration and
 schema migration are separate operations.
 
+## Local Agent Identity
+
+`AGENT-*` is public local-agent metadata. It stores the agent name,
+`hmac-sha256` key algorithm, `local-agent` scope, and `sha256:` key
+fingerprint. It must not store private key material.
+
+The corresponding HMAC key is runtime-private state under
+`.tep_context/runtime/agent_identity/`. Owner-bound `WCTX-*` records store an
+`owner_signature` over the canonical WCTX focus payload plus the public
+`AGENT-*` reference and fingerprint. Another agent may inspect that WCTX as
+navigation context, but must create a signed fork/adopted WCTX before using it
+as current focus.
+
 ## Core Semantics
 
 Truth has one canonical record type: `claim`.

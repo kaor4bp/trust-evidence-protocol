@@ -71,6 +71,10 @@ def only_record_id(context: Path, record_type: str) -> str:
     return records[0].stem
 
 
+def load_record(context: Path, record_type: str, record_id: str) -> dict:
+    return json.loads((context / "records" / record_type / f"{record_id}.json").read_text(encoding="utf-8"))
+
+
 def load_mcp_server_module():
     spec = importlib.util.spec_from_file_location("tep_mcp_server_under_test", MCP_SERVER)
     assert spec is not None
@@ -370,6 +374,11 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
     assert payload["lookup_is_proof"] is False
     assert payload["focus"]["workspace_ref"] == workspace_id
     assert payload["focus"]["working_context_ref"].startswith("WCTX-")
+    wctx = load_record(context, "working_context", payload["focus"]["working_context_ref"])
+    assert wctx["record_version"] == 1
+    assert wctx["owner_signature"]["algorithm"] == "hmac-sha256"
+    agent = load_record(context, "agent_identity", wctx["agent_identity_ref"])
+    assert agent["key_fingerprint"] == wctx["agent_key_fingerprint"]
 
     ok, evidence_text = tep_server.tool_record_evidence(
         {

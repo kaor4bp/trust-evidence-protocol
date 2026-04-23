@@ -78,8 +78,10 @@ Rules:
   legacy migration records.
 - `project_refs` are optional only for genuinely cross-project records.
 - `AGENT-*` is versioned local agent identity metadata; private key material is
-  not a public record.
+  runtime-private and only the public fingerprint is recorded.
 - `WCTX-*` is a versioned owner-bound agent working context, not truth.
+- Agent-facing runtime paths that create WCTX automatically, starting with
+  `lookup`, must create signed owner-bound 0.4 WCTX records.
 - `REASON-*` belongs to one task focus and cannot parent across tasks.
 
 ### 2.3 Provenance Surfaces

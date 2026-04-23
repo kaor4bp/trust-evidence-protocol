@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .attention import ATTENTION_MODES
+from .agent_identity import sign_working_context_payload
 from .claims import claim_is_fallback
 from .cli_common import public_record_payload, refresh_generated_outputs, validate_mutated_records
 from .hydration import invalidate_hydration_state
@@ -135,7 +136,13 @@ def active_working_context_for_lookup(records: dict[str, dict], project_ref: str
     return sorted(candidates, key=lambda item: str(item.get("updated_at", "")), reverse=True)[0] if candidates else None
 
 
-def persist_working_context_with_task_links(root: Path, records: dict[str, dict], payload: dict) -> str | None:
+def persist_working_context_with_task_links(
+    root: Path,
+    records: dict[str, dict],
+    payload: dict,
+    *,
+    extra_records: tuple[dict, ...] = (),
+) -> str | None:
     if not payload.get("workspace_refs"):
         refs = workspace_refs_for_write(root, [])
         if refs:
@@ -143,6 +150,10 @@ def persist_working_context_with_task_links(root: Path, records: dict[str, dict]
             payload["workspace_refs"] = refs
     timestamp = now_timestamp()
     mutations: dict[str, dict] = {payload["id"]: payload}
+    for extra in extra_records:
+        record_id = str(extra.get("id", "")).strip()
+        if record_id:
+            mutations[record_id] = extra
     for task_ref in payload.get("task_refs", []) if isinstance(payload.get("task_refs"), list) else []:
         task = records.get(str(task_ref))
         if not task or task.get("record_type") != "task":
@@ -162,10 +173,11 @@ def persist_working_context_with_task_links(root: Path, records: dict[str, dict]
         return "; ".join(f"{error.path}: {error.message}" for error in errors)
 
     write_json_file(record_path(root, "working_context", payload["id"]), payload)
-    for task_ref, task_payload in mutations.items():
-        if task_ref == payload["id"]:
+    for record_id, record_payload in mutations.items():
+        if record_id == payload["id"]:
             continue
-        write_json_file(record_path(root, "task", task_ref), task_payload)
+        record_type = str(record_payload.get("record_type", "")).strip()
+        write_json_file(record_path(root, record_type, record_id), record_payload)
     write_validation_report(root, [])
     refresh_generated_outputs(root, merged)
     invalidate_hydration_state(root, f"recorded working_context {payload['id']}")
@@ -200,7 +212,8 @@ def ensure_lookup_working_context(root: Path, records: dict[str, dict], query: s
         tags=["auto-wctx", f"lookup-reason:{reason}"],
         note="Auto-created by lookup to keep agent operational context explicit. Not proof and not authorization.",
     )
-    error = persist_working_context_with_task_links(root, records, payload)
+    payload, agent_record = sign_working_context_payload(root, records, payload, timestamp=timestamp)
+    error = persist_working_context_with_task_links(root, records, payload, extra_records=(agent_record,))
     if error:
         return "", None, f"failed to auto-create WCTX for lookup: {error}"
     return str(payload["id"]), payload, None
