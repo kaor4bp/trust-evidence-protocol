@@ -38,7 +38,7 @@ from tep_runtime.context_root import resolve_context_root  # noqa: E402
 from tep_runtime.evidence_service import record_evidence_service, record_evidence_text  # noqa: E402
 from tep_runtime.io import context_write_lock  # noqa: E402
 from tep_runtime.lookup_service import build_lookup_service_payload, lookup_text_lines  # noqa: E402
-from tep_runtime.migrations import build_migration_dry_run_report  # noqa: E402
+from tep_runtime.migrations import build_migration_dry_run_report, build_schema_migration_report  # noqa: E402
 from tep_runtime.reason_service import (  # noqa: E402
     reason_review_service,
     reason_review_text,
@@ -577,6 +577,42 @@ TOOLS: list[JsonObject] = [
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["source"],
+        ),
+    },
+    {
+        "name": "schema_migration_plan",
+        "description": (
+            "Read-only record schema migration plan for a .tep_context root. "
+            "Does not write records."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "migrations": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional migration ids to run. Defaults to the full registered schema migration chain.",
+                },
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "schema_migration_apply",
+        "description": (
+            "Mutating record schema migration apply for a .tep_context root. "
+            "Runs post-migration validation and writes only if the whole plan is clean."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "migrations": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional migration ids to run. Defaults to the full registered schema migration chain.",
+                },
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
         ),
     },
     {
@@ -1515,15 +1551,19 @@ def tool_cleanup_archives(args: JsonObject) -> tuple[bool, str]:
 
 
 def migration_report_text(report: JsonObject) -> str:
+    mode = str(report.get("mode") or "dry-run")
+    is_schema_migration = report.get("source") == report.get("target")
+    title = "TEP 0.4 Schema Migration Report" if is_schema_migration else "TEP 0.4 Migration Report"
     lines = [
-        "TEP 0.4 Migration Dry Run",
+        title,
+        f"mode: {mode}",
         f"source: {report['source']}",
         f"target: {report['target']}",
         f"preserved_refs: {len(report['preserved_refs'])}",
         f"revoked_grants: {len(report['revoked_grants'])}",
         f"planned_actions: {len(report['planned_actions'])}",
         f"unresolved: {len(report['unresolved'])}",
-        "applied: false",
+        f"applied: {str(bool(report.get('applied'))).lower()}",
     ]
     if report["unresolved"]:
         lines.append("unresolved_items:")
@@ -1532,6 +1572,15 @@ def migration_report_text(report: JsonObject) -> str:
             path = item.get("path", "")
             lines.append(f"- {reason}: {path}".rstrip())
     return "\n".join(lines)
+
+
+def schema_migration_ids(args: JsonObject) -> list[str] | None:
+    raw = args.get("migrations")
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if str(item).strip()]
+    return [str(raw).strip()] if str(raw).strip() else None
 
 
 def tool_migration_dry_run(args: JsonObject) -> tuple[bool, str]:
@@ -1545,6 +1594,26 @@ def tool_migration_dry_run(args: JsonObject) -> tuple[bool, str]:
         or str(Path.home() / ".tep_context")
     )
     report = build_migration_dry_run_report(source, target).to_payload()
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(report, ensure_ascii=False, indent=2)
+    return True, migration_report_text(report)
+
+
+def tool_schema_migration_plan(args: JsonObject) -> tuple[bool, str]:
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    report = build_schema_migration_report(root, migration_ids=schema_migration_ids(args)).to_payload()
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(report, ensure_ascii=False, indent=2)
+    return True, migration_report_text(report)
+
+
+def tool_schema_migration_apply(args: JsonObject) -> tuple[bool, str]:
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    report = build_schema_migration_report(root, apply=True, migration_ids=schema_migration_ids(args)).to_payload()
     if as_format(args.get("format")) == "json":
         return True, json.dumps(report, ensure_ascii=False, indent=2)
     return True, migration_report_text(report)
@@ -1949,6 +2018,8 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "cleanup_candidates": tool_cleanup_candidates,
     "cleanup_archives": tool_cleanup_archives,
     "migration_dry_run": tool_migration_dry_run,
+    "schema_migration_plan": tool_schema_migration_plan,
+    "schema_migration_apply": tool_schema_migration_apply,
     "augment_chain": tool_augment_chain,
     "validate_chain": tool_validate_chain,
     "topic_search": tool_topic_search,

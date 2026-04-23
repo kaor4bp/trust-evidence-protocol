@@ -96,6 +96,11 @@ in stages. New canonical record types introduced in 0.4, starting with
 Migration code should branch on these fields and backfill or wrap legacy records
 only through explicit migration provenance.
 
+Record-shape changes are handled by the schema migration chain. Each schema
+change has one dedicated module under `tep_runtime/schema_migrations/`, and
+apply is all-or-nothing after post-migration validation. Root migration and
+schema migration are separate operations.
+
 ## Core Semantics
 
 Truth has one canonical record type: `claim`.

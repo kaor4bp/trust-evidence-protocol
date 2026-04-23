@@ -48,6 +48,8 @@ Goals:
 - Implement migration dry-run, backup, report, apply, validate, and post-review.
 - Create `INP-* input_kind=migration_batch` records for legacy provenance.
 - Revoke legacy grants for authorization while preserving audit history.
+- Add a separate record schema migration chain where each schema change has its
+  own module and can be planned/applied independently of root migration.
 
 Exit criteria:
 
@@ -66,6 +68,9 @@ Progress:
 - `record_version=1` is the current canonical record-shape marker. Legacy
   records without `record_version` remain readable, while new 0.4-only records
   such as `MAP-*` must carry both `contract_version` and `record_version`.
+- Added schema migration service/MCP tools:
+  `schema_migration_plan` is read-only, `schema_migration_apply` writes only
+  after all planned record rewrites pass post-migration validation.
 
 ## Milestone 3: Core Validators
 

@@ -5,11 +5,20 @@ from pathlib import Path
 from typing import Any
 
 from .contracts import MigrationReport
-from .io import parse_json_file
+from .io import context_write_lock, parse_json_file, write_json_file
 from .paths import reasons_ledger_path
+from .schema_migrations import registered_schema_migrations
+from .schemas import validate_record
 
 
 def legacy_record_files(root: Path) -> list[Path]:
+    records_root = root / "records"
+    if not records_root.is_dir():
+        return []
+    return sorted(path for path in records_root.rglob("*.json") if path.is_file())
+
+
+def record_files(root: Path) -> list[Path]:
     records_root = root / "records"
     if not records_root.is_dir():
         return []
@@ -150,4 +159,128 @@ def build_migration_dry_run_report(source_root: str | Path, target_root: str | P
         revoked_grants=revoked_grants,
         unresolved=unresolved,
         applied=False,
+    )
+
+
+def _selected_schema_migrations(migration_ids: list[str] | tuple[str, ...] | None) -> tuple[Any, list[dict[str, Any]]]:
+    migrations = registered_schema_migrations()
+    if not migration_ids:
+        return migrations, []
+    by_id = {migration.id: migration for migration in migrations}
+    selected = []
+    unresolved = []
+    for migration_id in migration_ids:
+        migration_id = str(migration_id).strip()
+        if not migration_id:
+            continue
+        migration = by_id.get(migration_id)
+        if migration is None:
+            unresolved.append({"path": "", "reason": "unknown_schema_migration", "migration_id": migration_id})
+            continue
+        selected.append(migration)
+    return tuple(selected), unresolved
+
+
+def _record_validation_payload(path: Path, record: dict) -> dict:
+    payload = dict(record)
+    payload["_path"] = path
+    payload["_folder"] = path.parent.name
+    return payload
+
+
+def build_schema_migration_report(
+    root: str | Path,
+    *,
+    apply: bool = False,
+    migration_ids: list[str] | tuple[str, ...] | None = None,
+) -> MigrationReport:
+    context_root = Path(root).expanduser().resolve()
+    mode = "apply" if apply else "dry-run"
+    planned_actions: list[dict[str, Any]] = []
+    migrated_refs: list[str] = []
+    unresolved: list[dict[str, Any]] = []
+    pending_writes: list[tuple[Path, dict[str, Any]]] = []
+
+    migrations, selection_issues = _selected_schema_migrations(migration_ids)
+    unresolved.extend(selection_issues)
+
+    if not context_root.is_dir():
+        unresolved.append({"path": str(context_root), "reason": "context_root_missing"})
+    else:
+        for path in record_files(context_root):
+            try:
+                original = parse_json_file(path)
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                unresolved.append(
+                    {
+                        "path": legacy_batch_key(path, context_root),
+                        "reason": "invalid_json_record",
+                        "detail": str(exc),
+                    }
+                )
+                continue
+
+            current = dict(original)
+            path_actions: list[dict[str, Any]] = []
+            path_issues: list[dict[str, Any]] = []
+            relative_path = legacy_batch_key(path, context_root)
+
+            for migration in migrations:
+                if not migration.applies_to(path, current):
+                    continue
+                record_id = str(current.get("id", "")).strip()
+                action = {
+                    "action": "migrate_record_schema",
+                    "migration_id": migration.id,
+                    "description": migration.description,
+                    "path": relative_path,
+                    "record_id": record_id,
+                    "record_type": str(current.get("record_type", "")).strip() or path.parent.name,
+                }
+                path_actions.append(action)
+                result = migration.migrate(path, current, relative_path=relative_path)
+                current = dict(result.record)
+                path_issues.extend(issue.to_payload() for issue in result.issues)
+
+            if not path_actions:
+                continue
+
+            record_id = str(current.get("id", "")).strip()
+            if not record_id:
+                path_issues.append({"path": relative_path, "reason": "missing_record_id"})
+            else:
+                validation_payload = _record_validation_payload(path, current)
+                for message in validate_record(record_id, validation_payload):
+                    path_issues.append(
+                        {
+                            "path": relative_path,
+                            "reason": "post_migration_validation_failed",
+                            "detail": message,
+                            "record_id": record_id,
+                        }
+                    )
+
+            planned_actions.extend(path_actions)
+            if path_issues:
+                unresolved.extend(path_issues)
+                continue
+            if current != original:
+                migrated_refs.append(record_id or relative_path)
+                pending_writes.append((path, current))
+
+    if apply and pending_writes and not unresolved:
+        with context_write_lock(context_root):
+            for path, payload in pending_writes:
+                write_json_file(path, payload)
+
+    return MigrationReport(
+        mode=mode,
+        source=str(context_root),
+        target=str(context_root),
+        planned_actions=planned_actions,
+        created_refs=(),
+        preserved_refs=tuple(sorted(set(migrated_refs))),
+        revoked_grants=(),
+        unresolved=unresolved,
+        applied=bool(apply and not unresolved),
     )

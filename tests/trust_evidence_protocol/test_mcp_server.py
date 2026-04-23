@@ -148,6 +148,116 @@ def test_mcp_migration_dry_run_uses_service_without_writing_target(tmp_path: Pat
     assert not target.exists()
 
 
+def test_mcp_schema_migration_plan_and_apply_use_service(tmp_path: Path) -> None:
+    context = tmp_path / ".tep_context"
+    map_file = context / "records" / "map" / "MAP-20260423-demo.json"
+    map_file.parent.mkdir(parents=True, exist_ok=True)
+    map_file.write_text(
+        json.dumps(
+            {
+                "id": "MAP-20260423-demo",
+                "record_type": "map",
+                "schema_version": "0.4",
+                "scope": "pytest.map",
+                "note": "Legacy map record requiring schema migration.",
+                "level": "L1",
+                "map_kind": "evidence_patch",
+                "status": "active",
+                "summary": "Legacy MAP shape.",
+                "scope_refs": {"workspace_refs": [], "project_refs": [], "task_refs": [], "wctx_refs": []},
+                "anchor_refs": ["CLM-20260423-demo"],
+                "derived_from_refs": [],
+                "source_set_fingerprint": "sha256:legacy-map",
+                "up_refs": [],
+                "down_refs": [],
+                "adjacent_map_refs": [],
+                "contradicts_map_refs": [],
+                "refines_map_refs": [],
+                "supersedes_refs": [],
+                "tension_refs": [],
+                "unknown_links": [],
+                "proof_routes": [
+                    {
+                        "route_kind": "claim_support",
+                        "route_refs": ["CLM-20260423-demo", "SRC-20260423-demo"],
+                        "required_drilldown": True,
+                    }
+                ],
+                "signals": {},
+                "map_is_proof": False,
+                "generated_by": "map_refresh",
+                "generated_at": "2026-04-23T00:00:00+03:00",
+                "updated_at": "2026-04-23T00:00:00+03:00",
+                "stale_policy": "source_set_changed",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    plan_responses = run_mcp(
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "pytest"}},
+            },
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "schema_migration_plan",
+                    "arguments": {"context": str(context), "format": "json"},
+                },
+            },
+        ]
+    )
+
+    tools = {tool["name"]: tool for tool in plan_responses[1]["result"]["tools"]}
+    assert "schema_migration_plan" in tools
+    assert "Read-only" in tools["schema_migration_plan"]["description"]
+    assert "schema_migration_apply" in tools
+
+    plan = json.loads(plan_responses[2]["result"]["content"][0]["text"])
+    assert plan["mode"] == "dry-run"
+    assert plan["applied"] is False
+    assert plan["planned_actions"][0]["migration_id"] == "20260423_map_record_v1"
+    assert "record_version" not in json.loads(map_file.read_text(encoding="utf-8"))
+
+    apply_responses = run_mcp(
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "pytest"}},
+            },
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "schema_migration_apply",
+                    "arguments": {"context": str(context), "format": "json"},
+                },
+            },
+        ]
+    )
+
+    applied = json.loads(apply_responses[1]["result"]["content"][0]["text"])
+    assert applied["mode"] == "apply"
+    assert applied["applied"] is True
+    stored = json.loads(map_file.read_text(encoding="utf-8"))
+    assert stored["contract_version"] == "0.4"
+    assert stored["record_version"] == 1
+    assert "schema_version" not in stored
+
+
 def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monkeypatch) -> None:
     context = bootstrap_context(tmp_path)
     run_cli(
