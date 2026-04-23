@@ -69,8 +69,12 @@ Canonical record prefixes:
 
 Runtime/control ids:
 
-- `REASON-*`: append-only task-local reasoning ledger entry
-- `GRANT-*`: append-only authorization entry derived from a reason step
+- `STEP-*`: append-only task-local claim-step ledger entry over connected CLM
+  records
+- `REASON-*`: legacy/public-chain reasoning ledger entry retained for
+  compatibility paths; normal 0.4 agent reasoning should use `STEP-*`
+- `GRANT-*`: append-only authorization entry derived from a reviewed `STEP-*`
+  or compatible reason step
 - `RUN-*`: command execution trace
 
 Generated/navigation ids:
@@ -133,6 +137,31 @@ Mapping:
 - observation: runtime-plane `CLM-*`, usually tentative or supported
 
 Only source-backed `CLM-*` records can be decisive proof candidates.
+
+The normal agent cognition loop is:
+
+```text
+lookup / MAP-* / CIX-* / backend signals
+-> SRC-* / CLM-* support capture
+-> relation CLM-*
+-> STEP-* claim-step ledger
+-> GRANT-* / RUN-* / final answer when needed
+-> new SRC-* / CLM-* from runtime or user feedback
+```
+
+`lookup` is the direct path when the agent knows what it needs. `MAP-*`,
+curiosity probes, tap smell, cold zones, and `CIX-*`/backend signals are
+navigation surfaces for broader attention and visual thinking. They can suggest
+where to inspect next, but they cannot be proof nodes. A signal becomes
+reasoning material only after drill-down and canonical support capture into
+`SRC-*`, `CLM-*`, or a relation `CLM-*`.
+
+CLM progression is not only confirmatory. A claim can move toward confirmation
+through accepted support and corroboration, or toward refutation through
+`contradiction_refs`, structured `comparison`, `meta_conflict`, `contested`, and
+eventually `rejected` when stronger support wins. The ledger records how the
+agent moved through those explicit CLM states and relations; it does not invent
+truth outside the CLM graph.
 
 ## Input Records
 
@@ -341,6 +370,14 @@ Every later step must connect `prev_claim_ref -> claim_ref` through a relation
 CLM. For proof/action modes, the current claim and relation must be
 supported/corroborated and proof-capable. Planning/debugging/curiosity may carry
 at most one tentative hop. Two tentative hops in sequence are invalid.
+
+The claim-step ledger is the protocol pressure mechanism for agent thinking. It
+requires an explicit CLM transition before substantial continuation, protected
+actions, and finalization. It validates branch ownership, task/WCTX scope,
+connected relations, tentative-hop limits, proof-capable relation kinds for
+proof/action modes, and same-kind relation acyclicity in one branch. The ledger
+therefore proves sequence integrity and protocol-valid reasoning structure, not
+global truth.
 
 ## Meta Claims
 
@@ -732,17 +769,19 @@ remains a compatible alias and must not be read as semantic proof.
 Generated/backend/navigation ids such as `CIX-*`, `BCK-*`, `backend:*`, or
 `topic_index:*` cannot be proof nodes.
 
-`REASON-*` entries form a task-local DAG. A new step without explicit parents
-continues from the latest step for the current task; explicit `parent_refs` and
-`branch` create forks for alternative interpretations or rollback paths. A
-reason step cannot parent across another `TASK-*`.
+`REASON-*` entries form a task-local DAG for the compatibility public-chain
+path. A new step without explicit parents continues from the latest step for
+the current task; explicit `parent_refs` and `branch` create forks for
+alternative interpretations or rollback paths. A reason step cannot parent
+across another `TASK-*`.
 Same-mode continuation cannot duplicate the direct parent chain hash on the
 same branch; the agent must extend the evidence chain or fork a named
 alternative branch. This keeps the ledger as reasoning progression, not a
 reusable permit token.
 
-Final answers for an active task must be backed by a reviewed
-`REASON-* mode=final` entry with the current task node and context fingerprint.
+Final answers for an active task must be backed by a reviewed `STEP-*`
+claim-step for the current task, mode, WCTX, and context fingerprint. Compatible
+public-chain flows may still use `REASON-* mode=final`.
 Autonomous `done` completion is stricter: it also needs a fresh
 `GRANT-* mode=final`. Interrupted work or ordinary continuation can resume from
 the latest non-final `REASON-*` without fabricating a final step.

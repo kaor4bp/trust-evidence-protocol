@@ -644,8 +644,10 @@ def strictness_approval(context: Path, value: str, permission_id: str | None = N
 def test_skill_package_is_core_plus_workflows_without_legacy_identity_artifacts() -> None:
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     assert len(skill.splitlines()) <= 160
-    assert "route / next_step -> lookup -> support capture -> CLM relation -> STEP review -> action/final" in skill
-    assert "Command details belong in the plugin README, runtime help, and developer docs." in skill
+    assert "-> lookup or map navigation" in skill
+    assert "-> CLM-* plus relation CLM-*" in skill
+    assert "-> STEP-* claim-step ledger" in skill
+    assert "Refutation is first-class." in skill
     assert "workflows/plugin-commands.md" not in skill
 
     workflow_files = sorted(path.name for path in (SKILL_ROOT / "workflows").glob("*.md"))

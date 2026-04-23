@@ -89,7 +89,7 @@ def load_mcp_server_module():
 def test_mcp_manifest_declares_readonly_server() -> None:
     plugin_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_manifest["mcpServers"] == "./.mcp.json"
-    assert plugin_manifest["version"] == "0.4.4"
+    assert plugin_manifest["version"] == "0.4.5"
 
     claude_manifest = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert claude_manifest["version"] == plugin_manifest["version"]

@@ -19,7 +19,8 @@ The runtime must:
 - keep retrieval/navigation separate from proof
 - mechanically capture provenance
 - validate public evidence chains
-- require task-local REASON progression for planning/action/final boundaries
+- require task-local `STEP-*` claim progression for planning/action/final
+  boundaries
 - authorize protected actions through GRANT
 - capture command provenance through RUN
 - prioritize integrated MODEL/FLOW knowledge over scattered raw claims
@@ -69,7 +70,7 @@ Operational records must satisfy this path:
 ```text
 WSP-* -> PRJ-* -> TASK-* -> PLN-* / DEBT-* / ACT-* / OPEN-*
 WSP-* -> AGENT-* -> WCTX-*
-TASK-* -> WCTX-* -> REASON-* -> GRANT-* -> RUN-* / protected record
+TASK-* -> WCTX-* -> STEP-* -> GRANT-* -> RUN-* / protected record
 ```
 
 Rules:
@@ -82,7 +83,9 @@ Rules:
 - `WCTX-*` is a versioned owner-bound agent working context, not truth.
 - Agent-facing runtime paths that create or mutate WCTX, including `lookup` and
   manual create/fork/close, must create signed owner-bound 0.4 WCTX records.
-- `REASON-*` belongs to one task focus and cannot parent across tasks.
+- `STEP-*` belongs to one task focus and cannot parent across tasks. Legacy
+  `REASON-*` public-chain entries remain a compatibility/debug path, not the
+  normal 0.4 agent reasoning cursor.
 
 ### 2.3 Provenance Surfaces
 
@@ -400,7 +403,8 @@ Adjustments:
 - same project: `+15`
 - current task/WCTX link: `+15`
 - exact query/topic match: `+10`
-- linked from current REASON branch as unused extension: `+10`
+- linked from current `STEP-*`/compatible reason branch as unused extension:
+  `+10`
 - unresolved contradiction: `-30` and mark `contested`
 - stale lifecycle: cap final score at `25`
 - archived lifecycle: cap final score at `5`, explicit drill-down only
@@ -416,9 +420,9 @@ Constraints:
 
 ### 5.5 Chain Extension Mode
 
-If `current_reason_ref` exists, lookup must:
+If a current `STEP-*` or compatible `current_reason_ref` exists, lookup must:
 
-- load current REASON chain refs
+- load current claim-step/reason chain refs
 - avoid returning the same refs as primary chain candidates
 - prefer unused support, contrasting facts, open questions, or compatible
   hypotheses
@@ -583,9 +587,39 @@ The output must distinguish:
 - `contradicted_hypothesis`
 - `untested_exploration_hypothesis`
 
-## 8. REASON, GRANT, RUN
+## 8. STEP, REASON, GRANT, RUN
+
+### 8.0 Normal Claim-Step Ledger
+
+The normal 0.4 reasoning cursor is `STEP-* entry_type=claim_step`.
+`STEP-*` records are append-only entries in the per-agent reasoning ledger that
+show how the agent advanced through the CLM graph.
+
+Required normal transition:
+
+```text
+prev CLM-* -> relation CLM-* -> next CLM-*
+```
+
+Rules:
+
+- the first step may anchor a task/WCTX branch with one `claim_ref`
+- every continuation must connect the previous step claim to the next claim
+  through a relation `CLM-*`
+- proof/action/final modes require supported or corroborated proof-capable
+  claims and relation CLMs
+- planning/debugging/curiosity modes may carry at most one tentative hop
+- the validator rejects same-kind relation cycles in one branch before append
+- `STEP-*` proves connected sequence integrity, branch ownership, and
+  protocol-valid reasoning structure; it does not prove global truth
+- refutation must be explicit CLM work: `contested`, `rejected`,
+  `contradiction_refs`, `comparison`, or `meta_conflict`
 
 ### 8.1 REASON Record
+
+`REASON-*` is the older public-chain ledger entry shape. It remains available
+for compatibility, chain validation, debugging, and migration, but normal agent
+progression should use `STEP-*` over connected CLM records.
 
 Required fields:
 
@@ -617,10 +651,10 @@ Rules:
 
 - append-only JSONL ledger at `runtime/reasoning/agents/AGENT-*/reasons.jsonl`
 - direct file writes blocked by hooks
-- agents should treat the latest valid `REASON-*` as the current task cursor;
-  `next-step` and `lookup` must make create/extend/fork REASON the shortest
-  route when the ledger is empty, stale for the intent, or a chain starter is
-  ready
+- agents should treat the latest valid `STEP-*` as the normal current task
+  cursor; `next-step` and `lookup` must make create/extend/fork STEP the
+  shortest route when the ledger is empty, stale for the intent, or a chain
+  starter is ready. `REASON-*` remains a compatible public-chain path.
 - `justification_valid` and `decision_chain_valid` mean the public chain
   validated for the requested mode; they do not prove globally correct private
   reasoning
@@ -806,6 +840,27 @@ Curiosity map is navigation for agent attention and visual thinking. It is a
 cognitive fact map: a bounded map session that shows the agent support anchors,
 ignored-but-relevant facts, bridges, tensions, and inquiry pressure without
 exposing raw records.
+
+The map is the abstract complement to direct `lookup`. `lookup` answers a known
+information need; the map helps the agent discover which signals deserve
+attention before the agent knows the exact query. It may combine established
+fact anchors with tap smell, neglected connected facts, heuristic bridges, CIX
+and backend code signals, and curiosity probes, but all of these remain layered
+over canonical records and never replace them.
+
+The intended loop is:
+
+```text
+lookup/map signal -> drill-down -> SRC/CLM support -> relation CLM -> STEP
+```
+
+The reverse loop is also required: new `CLM-*`, relation `CLM-*`, `MODEL-*`,
+`FLOW-*`, and meaningful runtime/user feedback should create refresh pressure
+for maps and lookup rankings. Confirmation and refutation are both valid
+outcomes. A map may surface a conflict or neglected contradiction, but the
+agent must express it as canonical CLM state (`contested`/`rejected`),
+`contradiction_refs`, `comparison`, or `meta_conflict` before using it in the
+ledger.
 
 It must expose:
 

@@ -13,13 +13,25 @@ This skill only defines the mental model and the few obligations that remain on 
 ## Mental Model
 
 The agent may think freely, but durable work must pass through the graph API.
+Treat navigation and reasoning as different planes.
 
 ```text
-route / next_step -> lookup -> support capture -> CLM relation -> STEP review -> action/final
+next_step
+-> lookup or map navigation
+-> drill-down/support capture
+-> CLM-* plus relation CLM-*
+-> STEP-* claim-step ledger
+-> optional GRANT-* / RUN-* / final answer
 ```
 
 Navigation output is not proof.
 Proof requires canonical ids plus quotes and a valid provenance chain.
+
+`lookup` is the direct retrieval path when you know what you need.
+Map/curiosity tools are the broader signal path when you need a cognitive map:
+anchors, ignored-but-relevant facts, bridges, tensions, tap smell, cold zones,
+and code/backend signals. These signals guide attention only; they must be
+drilled down into canonical records before they can enter a `STEP-*`.
 
 Normal graph direction:
 
@@ -30,7 +42,7 @@ TASK/PLAN        -> scope and decomposition
 STEP             -> task/WCTX-scoped claim-step over connected CLM records
 GRANT            -> one-shot authorization bound to STEP/task/action/window
 RUN              -> factual execution trace; using a grant means linking RUN.grant_ref
-CIX              -> code navigation only
+MAP/CIX/backend  -> navigation and signal surfaces only
 PRP              -> constructive agent proposal
 ```
 
@@ -41,7 +53,7 @@ They should rank above scattered claims, but they must come from supported or us
 
 1. Invent a private per-agent secret token at the start of a work session and reuse it for every mutating MCP call as `agent_token`, or expose it to CLI/hooks as `TEP_AGENT_SECRET_TOKEN`. Do not share this token with another agent.
 2. If unsure what to do, call `next_step` or CLI `next-step`.
-3. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason. If a current `STEP-*` exists, lookup will prefer records that can extend the CLM chain with connected claims.
+3. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason. If you do not know what is important yet, use map/curiosity navigation to inspect anchors, bridges, ignored facts, and tap smell. If a current `STEP-*` exists, lookup and map drill-down should prefer records that can extend or safely fork the CLM chain.
 4. If the route says task decomposition is missing, use `validate-task-decomposition`, `confirm-atomic-task`, or `decompose-task`.
 5. If making or relying on a claim, use the support-capture API. If the next step depends on a previous claim, record an explicit relation CLM such as `supports`, `causes`, `depends_on`, `implies`, or `refines`.
 6. Before planning continuation or final answers for an active task, append a relevant `STEP-*` claim step through `reason_step`/`reason-step`. Before protected edits, model/flow updates, autonomous `done`, or permission-sensitive writes, get the relevant `STEP-*` reviewed into a `GRANT-*`. Bash mutations need a command-bound `GRANT-*`.
@@ -89,6 +101,10 @@ prev CLM-* -> relation CLM-* -> next CLM-*
 
 The relation is itself a `CLM-* claim_kind=relation` record.
 If the relation does not exist, record it or stop; do not pull a sudden fact into the ledger.
+The ledger validates that a new step continues the current CLM graph coherently.
+It rejects unsupported jumps, two tentative hops in sequence, navigation-only
+relations for proof/action modes, duplicate mechanical reuse, and same-kind
+relation cycles in one branch.
 Protected actions need a reviewed `STEP-*` ledger step from a valid CLM transition, not just a loose chain file.
 Planning continuation for an active task needs a valid `STEP-*` whose transition still validates for `planning`.
 Final answers for an active task need a reviewed `STEP-* mode=final`; autonomous `TEP TASK OUTCOME: done` also needs a fresh `GRANT-* mode=final`.
@@ -104,20 +120,11 @@ Hypotheses are allowed for exploration.
 They must not become proof until supported.
 Exploration hypotheses may guide lookup and probes; proof/action modes must reject tentative claims and `co_relevant` navigation relations.
 
-## Output Panels
-
-Use short panels only when they help the user or the runtime requires them:
-
-```text
-Reasoning Checkpoint
-Evidence Chain
-Guidelines
-Proposal
-Open Questions
-```
-
-Keep them compact.
-Prefer ids and quotes over prose.
+Refutation is first-class. If new evidence weakens or contradicts a claim, do
+not hide it in prose. Record or reuse the conflicting `CLM-*`, link it with
+`contradiction_refs`, `comparison`, or `meta_conflict`, then advance the
+`STEP-*` chain through the explicit relation/status change. Use `contested`
+while conflict is unresolved and `rejected` when stronger support wins.
 
 ## Autonomous Tasks
 
@@ -146,8 +153,3 @@ Stop and use the runtime route when:
 - a runtime claim lacks runtime provenance
 - a guideline, restriction, or permission boundary is unclear
 - lookup and known records disagree
-
-## Documentation Boundary
-
-This file is the agent mental model.
-Command details belong in the plugin README, runtime help, and developer docs.

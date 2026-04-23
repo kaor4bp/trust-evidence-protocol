@@ -20,7 +20,8 @@ The runtime must provide:
 - explicit route graphs for the next safe actions
 - mechanical creation of provenance records when the agent supplies support
 - validated public reasoning chains
-- task-local REASON progression before protected planning/action/finalization
+- task-local `STEP-*` claim progression before protected
+  planning/action/finalization
 - clear refusal and repair paths when a contract is not satisfied
 
 The skill should explain the mental model. MCP should be the normal
@@ -34,9 +35,10 @@ Normal loop:
 ```text
 hydrate / next-step
 -> lookup(reason, task, cwd, mode)
--> optional drill-down through returned commands
--> record-evidence or chain-draft/augment-chain
--> reason-step
+-> optional map navigation / drill-down through returned routes
+-> record-evidence / support capture into CLM-*
+-> relation CLM-* for the next transition
+-> reason-step claim_ref/relation_claim_ref
 -> optional reason-review -> GRANT
 -> protected action / final response / task outcome
 ```
@@ -114,6 +116,13 @@ Rules:
 
 Purpose: retrieve facts, models, flows, code index entries, map context, and
 chain-extension candidates.
+
+`lookup` is the direct retrieval path: use it when the agent can name the
+information need. Map navigation is the abstract signal path: use it when the
+agent needs to inspect anchors, ignored facts, bridges, tensions, tap smell,
+cold zones, or CIX/backend signals before choosing the next CLM to inspect.
+Both surfaces are navigation. Neither can be used as proof until the agent
+drills down to canonical support and records or reuses `CLM-*` records.
 
 Required inputs:
 
@@ -246,8 +255,16 @@ Rules:
 
 - Map output is navigation only.
 - Anchor facts still require drill-down and chain validation before proof use.
+- Map and lookup form the source side of the agent loop; the sink side is the
+  `STEP-*` claim ledger. A map signal becomes ledger material only after
+  drill-down and canonical CLM/relation CLM support capture.
+- Map should surface both confirmation and refutation opportunities: neglected
+  contradictions, tension facts, rejected/candidate links, and hypotheses
+  around an anchor. The agent must express these as explicit CLM state or
+  relation work before using them in a `STEP-*`.
 - Ignored-but-relevant facts are connected facts with low recent use, absence
-  from the current REASON branch, or low lookup/tap presence despite relevance.
+  from the current `STEP-*` branch, or low lookup/tap presence despite
+  relevance.
 - Tap smell is a decaying signal that repeated access may indicate agent
   fixation, missing MODEL/FLOW integration, or repeated task reuse.
 - Inquiry pressure summarizes facts with many hypotheses, tentative branches,
@@ -416,16 +433,39 @@ Rules:
 - If the chain is incomplete, the API should suggest open questions, competing
   hypotheses, or lookup extension candidates.
 
-## 6. REASON And GRANT Contract
+## 6. STEP, REASON, And GRANT Contract
 
-`REASON-*` is the task-local ledger of justified progression.
-Agents should treat it as their current task cursor, not just as authorization
-paperwork. `next_step` and `lookup` should make a fresh or extended REASON the
-shortest route when the current task has no reason step, the branch is stale,
-or a lookup `chain_starter` is ready.
+`STEP-* entry_type=claim_step` is the normal task-local ledger of justified
+CLM progression. It is the pressure mechanism that keeps the agent from using
+navigation as proof or pulling unrelated facts into a decision.
 
-The agent appends a reason step when it wants to plan, request permission, take
-protected action, or finalize:
+Normal STEP transition:
+
+```text
+prev CLM-* -> relation CLM-* -> next CLM-*
+```
+
+Rules:
+
+- A STEP step belongs to exactly one workspace/task/WCTX/agent focus.
+- A STEP continuation must reference the previous step or resolve to the latest
+  step for the task.
+- A STEP continuation must use a relation `CLM-*` that connects the previous
+  claim to the next claim.
+- Proof/action/final modes reject tentative and navigation-only relation hops.
+- Planning/debugging/curiosity modes allow at most one tentative hop.
+- The runtime validates the branch graph before append, including same-kind
+  relation cycle rejection.
+- A refutation path is still a CLM path: use explicit `contested`/`rejected`
+  status, `contradiction_refs`, `comparison`, or `meta_conflict` before the
+  ledger can use it.
+
+`REASON-*` is the older public-chain ledger entry shape. It remains available
+for compatibility, chain validation, debugging, and migration paths. Normal
+agent progression should prefer `STEP-*` over connected CLM records.
+
+Compatible public-chain clients append a REASON step when they need the older
+chain-payload route for planning, permission, protected action, or finalization:
 
 ```json
 {
@@ -441,7 +481,7 @@ protected action, or finalize:
 }
 ```
 
-Rules:
+Compatibility rules:
 
 - A REASON step belongs to exactly one workspace/task focus.
 - `justification_valid` and `decision_chain_valid` confirm only that the
@@ -552,7 +592,7 @@ A compatible 0.4 implementation should pass deterministic tests for:
 - no workspace fallback
 - WCTX owner signature and agent identity mismatch are rejected for active focus
 - lookup returns route graph and chain candidates
-- lookup defaults to chain-extension mode when current REASON exists
+- lookup defaults to chain-extension mode when current `STEP-*` exists
 - evidence capture creates provenance graph
 - runtime CLM without RUN is rejected
 - MODEL/FLOW from runtime-only or tentative support is rejected
