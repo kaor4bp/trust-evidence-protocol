@@ -3393,6 +3393,108 @@ def test_lookup_ignores_active_working_context_linked_to_paused_task(tmp_path: P
     assert created["task_refs"] == []
 
 
+def test_lookup_forks_focus_when_active_wctx_is_owned_by_another_agent(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "foreign-wctx-workspace",
+            "--title",
+            "Foreign WCTX Workspace",
+            "--note",
+            "workspace for foreign WCTX lookup",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--type",
+            "investigation",
+            "--scope",
+            "foreign.wctx",
+            "--title",
+            "Investigate foreign WCTX",
+            "--note",
+            "task with a foreign active WCTX",
+        ),
+        "task",
+    )
+    foreign_wctx_id = recorded_id(
+        run_cli(
+            context,
+            "working-context",
+            "create",
+            "--scope",
+            "foreign.wctx",
+            "--title",
+            "Foreign-owned active context",
+            "--kind",
+            "investigation",
+            "--task",
+            task_id,
+            "--note",
+            "initial owner context",
+        ),
+        "working_context",
+    )
+
+    secret_path = context / "runtime" / "agent_identity" / "local_agent_key.json"
+    secret_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agent_identity_ref": "AGENT-20260423-feedfeed",
+                "agent_name": "pytest-other-agent",
+                "key_algorithm": "hmac-sha256",
+                "key_scope": "local-agent",
+                "secret": "other-agent-secret",
+                "created_at": "2026-04-23T00:00:00+03:00",
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    close_attempt = run_cli(
+        context,
+        "working-context",
+        "close",
+        "--context",
+        foreign_wctx_id,
+        "--note",
+        "should fail for non-owner",
+        check=False,
+    )
+    assert close_attempt.returncode == 1
+    assert "owned by another local agent" in close_attempt.stdout
+
+    lookup = json.loads(
+        run_cli(
+            context,
+            "lookup",
+            "--query",
+            "foreign working context route",
+            "--reason",
+            "orientation",
+            "--kind",
+            "facts",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert lookup["focus"]["auto_created_working_context"] is True
+    assert lookup["focus"]["working_context_ref"] != foreign_wctx_id
+    created = load_record(context, "working_context", lookup["focus"]["working_context_ref"])
+    assert created["agent_identity_ref"] == "AGENT-20260423-feedfeed"
+    assert created["owner_signature"]["algorithm"] == "hmac-sha256"
+
+
 def test_record_detail_and_neighborhood_expose_drilldown_context(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 

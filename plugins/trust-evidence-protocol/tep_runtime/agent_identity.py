@@ -80,7 +80,6 @@ def _new_secret_payload(records: dict[str, dict], timestamp: str) -> dict[str, s
         "key_algorithm": "hmac-sha256",
         "key_scope": "local-agent",
         "secret": secret,
-        "key_fingerprint": agent_key_fingerprint(secret),
         "created_at": timestamp,
     }
 
@@ -131,7 +130,7 @@ def local_agent_identity_record(secret_payload: dict) -> dict:
         id=str(secret_payload["agent_identity_ref"]),
         scope="agent.local",
         agent_name=str(secret_payload.get("agent_name") or _local_agent_name()),
-        key_fingerprint=str(secret_payload.get("key_fingerprint") or agent_key_fingerprint(str(secret_payload["secret"]))),
+        key_fingerprint=agent_key_fingerprint(str(secret_payload["secret"])),
         created_at=timestamp,
         note="Public local-agent identity metadata only. Private key material is runtime-private.",
     ).to_payload()
@@ -142,7 +141,7 @@ def ensure_local_agent_identity(root: Path, records: dict[str, dict], timestamp:
     agent_ref = str(secret_payload["agent_identity_ref"])
     existing = records.get(agent_ref)
     secret = str(secret_payload["secret"])
-    fingerprint = str(secret_payload.get("key_fingerprint") or agent_key_fingerprint(secret))
+    fingerprint = agent_key_fingerprint(secret)
     if existing and existing.get("record_type") == "agent_identity" and str(existing.get("key_fingerprint", "")) == fingerprint:
         return _public_record(existing), secret
     return local_agent_identity_record({**secret_payload, "key_fingerprint": fingerprint}), secret
@@ -158,7 +157,7 @@ def local_agent_owns_working_context(root: Path, payload: dict) -> bool:
     if not secret_payload:
         return False
     secret = str(secret_payload.get("secret", ""))
-    fingerprint = str(secret_payload.get("key_fingerprint") or agent_key_fingerprint(secret))
+    fingerprint = agent_key_fingerprint(secret)
     return (
         str(secret_payload.get("agent_identity_ref", "")).strip()
         == str(payload.get("agent_identity_ref", "")).strip()
@@ -183,7 +182,7 @@ def verify_working_context_signature(root: Path, payload: dict) -> list[str]:
         return errors
 
     secret = str(secret_payload.get("secret", ""))
-    fingerprint = str(secret_payload.get("key_fingerprint") or agent_key_fingerprint(secret))
+    fingerprint = agent_key_fingerprint(secret)
     if fingerprint != str(payload.get("agent_key_fingerprint", "")).strip():
         errors.append("WCTX local agent secret fingerprint mismatch")
         return errors
