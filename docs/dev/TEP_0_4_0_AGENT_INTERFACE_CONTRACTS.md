@@ -171,6 +171,20 @@ optional explicit mutation:
 map_refresh(session|scope)
 ```
 
+Current implementation status:
+
+- `map_open`, `map_view`, `map_move`, `map_drilldown`, and `map_checkpoint`
+  are exposed as MCP tools and have CLI mirrors for development/CI.
+- The default session reference is encoded as `WCTX-*#map-session`.
+- Session state is stored under `WCTX.map_sessions.default` and is covered by
+  the owner signature. A non-owner agent must fork/adopt the WCTX before using
+  the session.
+- `map_open`, `map_move`, and `map_checkpoint` mutate only WCTX operational
+  state. They do not create facts, proposals, debts, open questions, or durable
+  `MAP-*` cells.
+- `map_view` and `map_drilldown` are read-only. `map_drilldown` returns proof
+  routes that still require record detail and chain validation before use.
+
 Required map view output:
 
 ```json
@@ -271,6 +285,8 @@ Rules:
   exposed through `AGENT-*`.
 - The WCTX owner signature covers the canonical focus payload that the runtime
   uses for `next_step`, lookup routing, map sessions, and protected actions.
+- `map_sessions` is part of the signed WCTX payload. Tampering with a map
+  session must invalidate the owner signature.
 - Agent-facing WCTX creation and mutation paths, including lookup auto-create
   and manual create/fork/close, must produce signed 0.4 owner-bound records.
 - A non-owner agent may inspect a WCTX as navigation or handoff context, but

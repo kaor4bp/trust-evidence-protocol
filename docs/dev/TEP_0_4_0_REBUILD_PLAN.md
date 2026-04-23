@@ -266,8 +266,13 @@ Progress:
 - Current service materializes bounded `MAP-L1 evidence_patch` cells from
   curiosity prompts, updates signal-only matches in place, and marks older
   same-anchor semantic cells stale when the source-set fingerprint changes.
-- Remaining session tools (`map_open`, `map_view`, `map_move`,
-  `map_drilldown`, `map_checkpoint`) are still pending.
+- Added the first owner-bound map-session slice: `map_open`, `map_view`,
+  `map_move`, `map_drilldown`, and `map_checkpoint` use
+  `tep_runtime.map_session` from CLI and MCP.
+- The default session is stored as signed WCTX operational state at
+  `WCTX.map_sessions.default` and returned as `WCTX-*#map-session`.
+- Remaining work: richer move ranking, dismissed/deferred candidate memory,
+  explicit multi-session support, and L2/L3 map-cell creation.
 
 ## Milestone 7: Feature Recovery And Conformance
 

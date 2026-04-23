@@ -34,6 +34,7 @@ WCTX_SIGNED_FIELDS = (
     "focus_paths",
     "topic_terms",
     "topic_seed_refs",
+    "map_sessions",
     "assumptions",
     "concerns",
     "parent_context_ref",

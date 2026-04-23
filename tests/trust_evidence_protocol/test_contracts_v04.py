@@ -146,6 +146,7 @@ def test_working_context_contract_is_agent_owned_and_signed() -> None:
     assert wctx_schema["properties"]["handoff_policy"]["const"] == "fork-required"
     assert wctx_schema["properties"]["record_version"]["const"] == 1
     assert wctx_schema["properties"]["owner_signature"]["properties"]["algorithm"]["const"] == "hmac-sha256"
+    assert "map_sessions" in wctx_schema["properties"]
 
     agent = AgentIdentityRecord(
         id="AGENT-20260423-demo",
@@ -178,6 +179,7 @@ def test_working_context_contract_is_agent_owned_and_signed() -> None:
     assert context["ownership_mode"] == "owner-only"
     assert context["handoff_policy"] == "fork-required"
     assert context["agent_identity_ref"] == agent["id"]
+    assert context["map_sessions"] == {}
 
 
 def test_front_door_contract_payloads_expose_routes_without_proof() -> None:

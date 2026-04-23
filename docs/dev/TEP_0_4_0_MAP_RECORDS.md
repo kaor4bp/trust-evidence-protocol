@@ -501,6 +501,10 @@ Shared vs personal state:
 - `MAP-*` records are shared canonical navigation cells.
 - The agent's current position, inspected/dismissed/deferred candidates, and
   allowed map moves live in an owner-bound `WCTX-*` map session.
+- Current implementation stores the default personal session at
+  `WCTX.map_sessions.default` and returns it as `WCTX-*#map-session`.
+- `map_sessions` is covered by the WCTX owner signature so map position,
+  visited cells, and checkpoints cannot be silently changed without detection.
 - Reusing another agent's WCTX session requires the normal fork/adopt flow; it
   must not silently transfer personal map state.
 
@@ -537,8 +541,11 @@ Slice order:
 4. Add explicit `map_refresh` service for materializing and updating `L1` cells
    from current attention/curiosity output. Done for bounded `evidence_patch`
    cells.
-5. Add map session state in owner-bound `WCTX-*` plus read-only
+5. Add map session state in owner-bound `WCTX-*` plus read-only/mutating
    `map_open`/`map_view`/`map_move`/`map_drilldown`/`map_checkpoint` behavior.
+   Done for the default owner-bound WCTX session: `map_open`, `map_move`, and
+   `map_checkpoint` mutate WCTX session state; `map_view` and `map_drilldown`
+   are read-only navigation.
 6. Add `L2` creation from `MAP-L1`, `CLM(meta_aggregated)`, MODEL/FLOW, and
    tensions.
 7. Add `L3` creation from `MAP-L2`, TASK, WCTX, PLAN, REASON, OPEN, and PRP.

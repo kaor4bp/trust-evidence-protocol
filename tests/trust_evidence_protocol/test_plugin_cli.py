@@ -2369,6 +2369,36 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert lookup_telemetry["by_reason"]["curiosity"] >= 1
     assert lookup_telemetry["by_reason"]["orientation"] >= 1
     assert lookup_telemetry["by_working_context"][lookup_facts["focus"]["working_context_ref"]] >= 2
+    opened_map = json.loads(
+        run_cli(context, "map-open", "--query", "Facility Program relationship", "--scope", "all", "--format", "json").stdout
+    )
+    assert opened_map["contract_version"] == "0.4"
+    assert opened_map["map_is_proof"] is False
+    assert opened_map["map_session_ref"].startswith("WCTX-")
+    assert opened_map["map_session_ref"].endswith("#map-session")
+    assert opened_map["zone"]["id"].startswith("MZONE-")
+    assert opened_map["anchor_facts"]
+    session_ref = opened_map["map_session_ref"]
+    map_wctx = load_record(context, "working_context", session_ref.split("#", 1)[0])
+    assert map_wctx["map_sessions"]["default"]["session_ref"] == session_ref
+    assert "map_sessions" in map_wctx["owner_signature"]["signed_fields"]
+    viewed_map = json.loads(run_cli(context, "map-view", "--session", session_ref, "--format", "json").stdout)
+    assert viewed_map["map_session_ref"] == session_ref
+    moved_map = json.loads(
+        run_cli(context, "map-move", "--session", session_ref, "--target", opened_map["zone"]["map_ref"], "--format", "json").stdout
+    )
+    assert moved_map["visited_map_refs"]
+    drilldown = json.loads(
+        run_cli(context, "map-drilldown", "--session", session_ref, "--record", opened_map["anchor_facts"][0]["ref"], "--format", "json").stdout
+    )
+    assert drilldown["drilldown_is_proof"] is False
+    assert drilldown["proof_routes"]
+    checkpoint = json.loads(
+        run_cli(context, "map-checkpoint", "--session", session_ref, "--note", "pytest checkpoint", "--format", "json").stdout
+    )
+    assert checkpoint["checkpoint"]["checkpoint_is_proof"] is False
+    checkpoint_wctx = load_record(context, "working_context", session_ref.split("#", 1)[0])
+    assert checkpoint_wctx["map_sessions"]["default"]["checkpoints"][-1]["note"] == "pytest checkpoint"
     run_cli(context, "set-current-workspace", "--clear")
     probes_payload = json.loads(run_cli(context, "curiosity-probes", "--budget", "10", "--format", "json").stdout)
     assert probes_payload["attention_index_is_proof"] is False

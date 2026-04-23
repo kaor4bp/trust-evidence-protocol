@@ -52,6 +52,7 @@ class WorkingContextRecord:
     focus_paths: tuple[str, ...] = ()
     topic_terms: tuple[str, ...] = ()
     topic_seed_refs: tuple[str, ...] = ()
+    map_sessions: Mapping[str, Any] = field(default_factory=dict)
     assumptions: tuple[Mapping[str, Any], ...] = ()
     concerns: tuple[str, ...] = ()
     parent_context_ref: str = ""
@@ -165,6 +166,7 @@ WORKING_CONTEXT_RECORD_SCHEMA = compact_object_schema(
         "focus_paths": loose_array(),
         "topic_terms": loose_array(),
         "topic_seed_refs": loose_array(),
+        "map_sessions": loose_object("Owner-bound personal map sessions keyed by session name."),
         "assumptions": loose_array(),
         "concerns": loose_array(),
         "parent_context_ref": {"type": "string"},

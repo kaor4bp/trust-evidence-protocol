@@ -53,6 +53,11 @@
     "focus_paths": {"type": "array", "items": {}},
     "topic_terms": {"type": "array", "items": {}},
     "topic_seed_refs": {"type": "array", "items": {}},
+    "map_sessions": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Owner-bound personal map sessions keyed by session name."
+    },
     "assumptions": {"type": "array", "items": {}},
     "concerns": {"type": "array", "items": {}},
     "parent_context_ref": {"type": "string"},

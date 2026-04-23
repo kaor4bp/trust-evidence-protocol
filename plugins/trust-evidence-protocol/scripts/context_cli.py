@@ -368,6 +368,15 @@ from tep_runtime.cli_common import (
 from tep_runtime import lookup_service
 from tep_runtime.agent_identity import local_agent_owns_working_context, sign_working_context_payload
 from tep_runtime.map_refresh import map_refresh_service, map_refresh_text_lines
+from tep_runtime.map_session import (
+    map_checkpoint_service,
+    map_drilldown_service,
+    map_drilldown_text_lines,
+    map_move_service,
+    map_open_service,
+    map_view_service,
+    map_view_text_lines,
+)
 from tep_runtime.migrations import build_schema_migration_report, migration_report_text_lines
 from tep_runtime.code_index import (
     annotation_snapshot,
@@ -3081,7 +3090,7 @@ def cmd_help(topic: str) -> int:
             "working-context create|fork|show|close|check-drift",
             "workspace-admission check --repo path [--format json]",
             "topic-index build --method lexical | topic-search --query ...",
-            "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | curiosity-map --mode research|theory|code [--html] | map-refresh [--dry-run] | curiosity-probes --mode theory --budget 5 | probe-pack --mode theory --budget 3",
+            "tap-record --record CLM-* --kind cited --intent support | telemetry-report | attention-index build | curiosity-map --mode research|theory|code [--html] | map-refresh [--dry-run] | map-open --query ... | map-view --session WCTX-*#map-session | map-move --target MAP-* | map-drilldown --record CLM-* | map-checkpoint --note ...",
             "probe-route --index N --scope current|all | record-link --probe-index N --quote ... --note ...",
             "logic-index build | logic-search --predicate ... | logic-graph --symbol ... | logic-check",
             "backend-status [--format json] | backend-check --backend derivation.datalog [--format json]",
@@ -4742,6 +4751,86 @@ def cmd_map_refresh(root: Path, volume: str, output_format: str, scope: str, mod
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
     print("\n".join(map_refresh_text_lines(payload)))
+    return 0
+
+
+def cmd_map_open(root: Path, query: str, mode: str, scope: str, output_format: str) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return exit_code
+    payload, error = map_open_service(root, records, query=query, mode=mode, scope=scope)
+    if error:
+        print(error)
+        return 1
+    assert payload is not None
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(map_view_text_lines(payload)))
+    return 0
+
+
+def cmd_map_view(root: Path, session_ref: str, output_format: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload, error = map_view_service(root, records, session_ref=session_ref)
+    if error:
+        print(error)
+        return 1
+    assert payload is not None
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(map_view_text_lines(payload)))
+    return 0
+
+
+def cmd_map_move(root: Path, session_ref: str, target: str, output_format: str) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return exit_code
+    payload, error = map_move_service(root, records, session_ref=session_ref, target=target)
+    if error:
+        print(error)
+        return 1
+    assert payload is not None
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(map_view_text_lines(payload)))
+    return 0
+
+
+def cmd_map_drilldown(root: Path, session_ref: str, record_ref: str, output_format: str) -> int:
+    records, exit_code = load_valid_context_readonly(root)
+    if exit_code:
+        return exit_code
+    payload, error = map_drilldown_service(root, records, session_ref=session_ref, record_ref=record_ref)
+    if error:
+        print(error)
+        return 1
+    assert payload is not None
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(map_drilldown_text_lines(payload)))
+    return 0
+
+
+def cmd_map_checkpoint(root: Path, session_ref: str, note: str, output_format: str) -> int:
+    records, exit_code = load_clean_context(root)
+    if exit_code:
+        return exit_code
+    payload, error = map_checkpoint_service(root, records, session_ref=session_ref, note=note)
+    if error:
+        print(error)
+        return 1
+    assert payload is not None
+    if output_format == "json":
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print("\n".join(map_view_text_lines(payload)))
     return 0
 
 
@@ -8551,6 +8640,41 @@ def parse_args() -> argparse.Namespace:
     map_refresh.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
     map_refresh.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
     map_refresh.add_argument("--dry-run", action="store_true", help="Plan durable MAP-* changes without writing records.")
+    map_open = subparsers.add_parser(
+        "map-open",
+        help="Open or replace the owner-bound WCTX map session and return a bounded map view.",
+    )
+    map_open.add_argument("--query", default="")
+    map_open.add_argument("--scope", choices=sorted(ATTENTION_SCOPES), default="current")
+    map_open.add_argument("--mode", choices=sorted(ATTENTION_MODES), default="general")
+    map_open.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    map_view = subparsers.add_parser(
+        "map-view",
+        help="Read the current owner-bound WCTX map session. Not proof.",
+    )
+    map_view.add_argument("--session", dest="session_ref", default="")
+    map_view.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    map_move = subparsers.add_parser(
+        "map-move",
+        help="Move the owner-bound WCTX map session to another MAP-* zone.",
+    )
+    map_move.add_argument("--session", dest="session_ref", required=True)
+    map_move.add_argument("--target", required=True)
+    map_move.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    map_drilldown = subparsers.add_parser(
+        "map-drilldown",
+        help="Return proof-route drilldown hints for a map or record ref. Not proof.",
+    )
+    map_drilldown.add_argument("--session", dest="session_ref", required=True)
+    map_drilldown.add_argument("--record", dest="record_ref", required=True)
+    map_drilldown.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
+    map_checkpoint = subparsers.add_parser(
+        "map-checkpoint",
+        help="Persist a checkpoint in the owner-bound WCTX map session.",
+    )
+    map_checkpoint.add_argument("--session", dest="session_ref", required=True)
+    map_checkpoint.add_argument("--note", default="")
+    map_checkpoint.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     map_brief = subparsers.add_parser(
         "map-brief",
         help="Show a compact Map Graph projection with topology islands, bridge pressure, and probes. Not proof.",
@@ -10106,6 +10230,24 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 dry_run=args.dry_run,
             )
         )
+    if args.command == "map-open":
+        raise SystemExit(
+            cmd_map_open(
+                root,
+                query=args.query,
+                mode=args.mode,
+                scope=args.scope,
+                output_format=args.output_format,
+            )
+        )
+    if args.command == "map-view":
+        raise SystemExit(cmd_map_view(root, session_ref=args.session_ref, output_format=args.output_format))
+    if args.command == "map-move":
+        raise SystemExit(cmd_map_move(root, session_ref=args.session_ref, target=args.target, output_format=args.output_format))
+    if args.command == "map-drilldown":
+        raise SystemExit(cmd_map_drilldown(root, session_ref=args.session_ref, record_ref=args.record_ref, output_format=args.output_format))
+    if args.command == "map-checkpoint":
+        raise SystemExit(cmd_map_checkpoint(root, session_ref=args.session_ref, note=args.note, output_format=args.output_format))
     if args.command == "map-brief":
         raise SystemExit(
             cmd_map_brief(

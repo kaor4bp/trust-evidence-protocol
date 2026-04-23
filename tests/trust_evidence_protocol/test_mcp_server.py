@@ -839,6 +839,20 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
             },
             {
                 "jsonrpc": "2.0",
+                "id": 35,
+                "method": "tools/call",
+                "params": {
+                    "name": "map_open",
+                    "arguments": {
+                        "context": str(context),
+                        "query": "Facility Program relationship",
+                        "scope": "all",
+                        "format": "json",
+                    },
+                },
+            },
+            {
+                "jsonrpc": "2.0",
                 "id": 31,
                 "method": "tools/call",
                 "params": {
@@ -1000,6 +1014,11 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "attention_diagram_compare",
         "curiosity_map",
         "map_refresh",
+        "map_open",
+        "map_view",
+        "map_move",
+        "map_drilldown",
+        "map_checkpoint",
         "curiosity_probes",
         "probe_inspect",
         "probe_chain_draft",
@@ -1166,6 +1185,71 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert map_refresh_payload["map_refresh_is_proof"] is False
     assert map_refresh_payload["applied"] is True
     assert map_refresh_payload["created_refs"]
+
+    map_open = by_id[35]["result"]
+    assert map_open["isError"] is False
+    map_open_payload = json.loads(map_open["content"][0]["text"])
+    assert map_open_payload["map_is_proof"] is False
+    assert map_open_payload["map_session_ref"].endswith("#map-session")
+    assert map_open_payload["anchor_facts"]
+    map_session_ref = map_open_payload["map_session_ref"]
+    map_target = map_open_payload["zone"]["map_ref"]
+    anchor_ref = map_open_payload["anchor_facts"][0]["ref"]
+    followup = run_mcp(
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 101,
+                "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "pytest"}},
+            },
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {
+                "jsonrpc": "2.0",
+                "id": 102,
+                "method": "tools/call",
+                "params": {
+                    "name": "map_view",
+                    "arguments": {"context": str(context), "map_session_ref": map_session_ref, "format": "json"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 103,
+                "method": "tools/call",
+                "params": {
+                    "name": "map_move",
+                    "arguments": {"context": str(context), "map_session_ref": map_session_ref, "target": map_target, "format": "json"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 104,
+                "method": "tools/call",
+                "params": {
+                    "name": "map_drilldown",
+                    "arguments": {"context": str(context), "map_session_ref": map_session_ref, "record": anchor_ref, "format": "json"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 105,
+                "method": "tools/call",
+                "params": {
+                    "name": "map_checkpoint",
+                    "arguments": {"context": str(context), "map_session_ref": map_session_ref, "note": "mcp checkpoint", "format": "json"},
+                },
+            },
+        ]
+    )
+    followup_by_id = {response["id"]: response for response in followup}
+    assert followup_by_id[102]["result"]["isError"] is False
+    assert json.loads(followup_by_id[102]["result"]["content"][0]["text"])["map_session_ref"] == map_session_ref
+    assert followup_by_id[103]["result"]["isError"] is False
+    assert followup_by_id[104]["result"]["isError"] is False
+    assert json.loads(followup_by_id[104]["result"]["content"][0]["text"])["drilldown_is_proof"] is False
+    assert followup_by_id[105]["result"]["isError"] is False
+    assert json.loads(followup_by_id[105]["result"]["content"][0]["text"])["checkpoint"]["note"] == "mcp checkpoint"
 
     lookup = by_id[31]["result"]
     assert lookup["isError"] is False

@@ -39,6 +39,15 @@ from tep_runtime.evidence_service import record_evidence_service, record_evidenc
 from tep_runtime.io import context_write_lock  # noqa: E402
 from tep_runtime.lookup_service import build_lookup_service_payload, lookup_text_lines  # noqa: E402
 from tep_runtime.map_refresh import map_refresh_service, map_refresh_text_lines  # noqa: E402
+from tep_runtime.map_session import (  # noqa: E402
+    map_checkpoint_service,
+    map_drilldown_service,
+    map_drilldown_text_lines,
+    map_move_service,
+    map_open_service,
+    map_view_service,
+    map_view_text_lines,
+)
 from tep_runtime.migrations import (  # noqa: E402
     build_migration_dry_run_report,
     build_schema_migration_report,
@@ -769,6 +778,69 @@ TOOLS: list[JsonObject] = [
                 "dry_run": {"type": "boolean", "default": False},
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
+        ),
+    },
+    {
+        "name": "map_open",
+        "description": "Open or replace the owner-bound WCTX map session and return a bounded map view. Navigation only, not proof.",
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "query": {"type": "string", "description": "Task, topic, or map question to orient the session."},
+                "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
+                "mode": {"type": "string", "enum": ["general", "research", "theory", "code"], "default": "general"},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "map_view",
+        "description": "Read the current owner-bound WCTX map session. Navigation only, not proof.",
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "map_session_ref": {"type": "string", "description": "WCTX-*#map-session. Defaults to current owned WCTX session."},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+        ),
+    },
+    {
+        "name": "map_move",
+        "description": "Move the owner-bound WCTX map session to another MAP-* zone. Navigation only, not proof.",
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "map_session_ref": {"type": "string", "description": "WCTX-*#map-session.", "minLength": 1},
+                "target": {"type": "string", "description": "MAP-* ref or MZONE-MAP-* zone id.", "minLength": 1},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["map_session_ref", "target"],
+        ),
+    },
+    {
+        "name": "map_drilldown",
+        "description": "Return proof-route drilldown hints for a map or record ref. Routes are not proof.",
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "map_session_ref": {"type": "string", "description": "WCTX-*#map-session.", "minLength": 1},
+                "record": {"type": "string", "description": "MAP-*/CLM-*/SRC-* or other canonical ref to inspect.", "minLength": 1},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["map_session_ref", "record"],
+        ),
+    },
+    {
+        "name": "map_checkpoint",
+        "description": "Persist a checkpoint in the owner-bound WCTX map session. Navigation state only, not proof.",
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "map_session_ref": {"type": "string", "description": "WCTX-*#map-session.", "minLength": 1},
+                "note": {"type": "string", "description": "Short checkpoint note."},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["map_session_ref"],
         ),
     },
     {
@@ -1813,6 +1885,114 @@ def tool_map_refresh(args: JsonObject) -> tuple[bool, str]:
     return True, "\n".join(map_refresh_text_lines(payload))
 
 
+def _load_map_tool_context(args: JsonObject) -> tuple[Path | None, dict[str, dict] | None, str | None]:
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return None, None, f"cwd is not a directory: {cwd}"
+    root = mcp_context_root(args)
+    if root is None:
+        return None, None, "Could not resolve TEP context root"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return None, None, unsafe_fallback
+    records, load_error = load_mcp_records(root)
+    if load_error:
+        return None, None, load_error
+    assert records is not None
+    return root, records, None
+
+
+def tool_map_open(args: JsonObject) -> tuple[bool, str]:
+    root, records, error = _load_map_tool_context(args)
+    if error:
+        return False, error
+    assert root is not None and records is not None
+    payload, service_error = map_open_service(
+        root,
+        records,
+        query=str(args.get("query") or ""),
+        mode=str(args.get("mode") or "general"),
+        scope=str(args.get("scope") or "current"),
+    )
+    if service_error:
+        return False, service_error
+    assert payload is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, "\n".join(map_view_text_lines(payload))
+
+
+def tool_map_view(args: JsonObject) -> tuple[bool, str]:
+    root, records, error = _load_map_tool_context(args)
+    if error:
+        return False, error
+    assert root is not None and records is not None
+    payload, service_error = map_view_service(root, records, session_ref=str(args.get("map_session_ref") or ""))
+    if service_error:
+        return False, service_error
+    assert payload is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, "\n".join(map_view_text_lines(payload))
+
+
+def tool_map_move(args: JsonObject) -> tuple[bool, str]:
+    root, records, error = _load_map_tool_context(args)
+    if error:
+        return False, error
+    assert root is not None and records is not None
+    payload, service_error = map_move_service(
+        root,
+        records,
+        session_ref=str(args.get("map_session_ref") or ""),
+        target=str(args.get("target") or ""),
+    )
+    if service_error:
+        return False, service_error
+    assert payload is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, "\n".join(map_view_text_lines(payload))
+
+
+def tool_map_drilldown(args: JsonObject) -> tuple[bool, str]:
+    root, records, error = _load_map_tool_context(args)
+    if error:
+        return False, error
+    assert root is not None and records is not None
+    payload, service_error = map_drilldown_service(
+        root,
+        records,
+        session_ref=str(args.get("map_session_ref") or ""),
+        record_ref=str(args.get("record") or ""),
+    )
+    if service_error:
+        return False, service_error
+    assert payload is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, "\n".join(map_drilldown_text_lines(payload))
+
+
+def tool_map_checkpoint(args: JsonObject) -> tuple[bool, str]:
+    root, records, error = _load_map_tool_context(args)
+    if error:
+        return False, error
+    assert root is not None and records is not None
+    payload, service_error = map_checkpoint_service(
+        root,
+        records,
+        session_ref=str(args.get("map_session_ref") or ""),
+        note=str(args.get("note") or ""),
+    )
+    if service_error:
+        return False, service_error
+    assert payload is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, "\n".join(map_view_text_lines(payload))
+
+
 def tool_map_brief(args: JsonObject) -> tuple[bool, str]:
     return run_cli(
         args,
@@ -2064,6 +2244,11 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "attention_diagram_compare": tool_attention_diagram_compare,
     "curiosity_map": tool_curiosity_map,
     "map_refresh": tool_map_refresh,
+    "map_open": tool_map_open,
+    "map_view": tool_map_view,
+    "map_move": tool_map_move,
+    "map_drilldown": tool_map_drilldown,
+    "map_checkpoint": tool_map_checkpoint,
     "map_brief": tool_map_brief,
     "curiosity_probes": tool_curiosity_probes,
     "probe_inspect": tool_probe_inspect,
