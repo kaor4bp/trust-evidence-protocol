@@ -69,6 +69,10 @@ Critical TEP verdict policy:
 - If a component needed for green has no concrete anchored value, put it in `underdetermined_targets`.
 - If such an underdetermined target remains, choose `ask` when available; if `ask` is unavailable, choose `red`.
 - `implementation-choice` cannot introduce concrete values that are not entailed by the prompt facts.
+- Keep `allowed_freedom=proof-only` when prompt facts uniquely determine the fix or verdict.
+- Use `implementation-choice` only when multiple fact-preserving implementations remain open.
+- Ignore underdetermined values that do not affect the asserted target or requested bounded answer.
+- If a requested terminal action or color is not justified yet, do not infer the opposite terminal verdict from that absence alone; choose `ask` unless the opposite verdict is itself entailed by the facts.
 
 Answer options:
 {answer_options}

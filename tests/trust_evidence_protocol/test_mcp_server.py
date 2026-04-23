@@ -15,6 +15,21 @@ BOOTSTRAP = PLUGIN_ROOT / "scripts" / "bootstrap_codex_context.py"
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
 MCP_SERVER = PLUGIN_ROOT / "mcp" / "tep_server.py"
 _TEST_AGENT_KEYS: dict[str, str] = {}
+_MCP_TOOLS_REQUIRING_AGENT_KEY = {
+    "brief_context",
+    "next_step",
+    "lookup",
+    "record_evidence",
+    "reason_step",
+    "reason_review",
+    "guidelines_for",
+    "map_refresh",
+    "map_open",
+    "map_view",
+    "map_move",
+    "map_drilldown",
+    "map_checkpoint",
+}
 
 
 def make_agent_private_key(label: str) -> str:
@@ -29,6 +44,23 @@ def make_agent_private_key(label: str) -> str:
 def _rewrite_agent_tokens(value):
     if isinstance(value, dict):
         rewritten: dict[str, object] = {}
+        if value.get("method") == "tools/call":
+            params = value.get("params")
+            if isinstance(params, dict):
+                tool_name = params.get("name")
+                arguments = params.get("arguments")
+                if (
+                    isinstance(tool_name, str)
+                    and tool_name in _MCP_TOOLS_REQUIRING_AGENT_KEY
+                    and isinstance(arguments, dict)
+                    and "agent_private_key" not in arguments
+                ):
+                    value = dict(value)
+                    params = dict(params)
+                    arguments = dict(arguments)
+                    arguments["agent_private_key"] = make_agent_private_key("pytest-mcp-default-agent-token")
+                    params["arguments"] = arguments
+                    value["params"] = params
         for key, item in value.items():
             if key == "agent_private_key" and isinstance(item, str):
                 rewritten["agent_private_key"] = _rewrite_agent_tokens(make_agent_private_key(str(item)))
@@ -122,7 +154,7 @@ def load_mcp_server_module():
 def test_mcp_manifest_declares_readonly_server() -> None:
     plugin_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_manifest["mcpServers"] == "./.mcp.json"
-    assert plugin_manifest["version"] == "0.4.12"
+    assert plugin_manifest["version"] == "0.4.16"
 
     claude_manifest = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert claude_manifest["version"] == plugin_manifest["version"]
@@ -152,6 +184,60 @@ def test_next_step_requires_agent_private_key() -> None:
     assert ok is False
     assert "agent_identity_required" in message
     assert "agent_private_key" in message
+    assert "--agent-private-key" in message
+
+
+def test_guidelines_for_requires_agent_private_key() -> None:
+    module = load_mcp_server_module()
+
+    ok, message = module.tool_guidelines_for(
+        {
+            "context": "/tmp/tep-context",
+            "cwd": "/tmp",
+            "task": "review ownership rules",
+            "format": "json",
+        }
+    )
+
+    assert ok is False
+    assert "agent_identity_required" in message
+    assert "agent_private_key" in message
+    assert "--agent-private-key" in message
+
+
+def test_run_cli_forwards_agent_private_key_to_subprocess(monkeypatch, tmp_path: Path) -> None:
+    module = load_mcp_server_module()
+    captured: dict[str, object] = {}
+
+    def fake_run(command, cwd, env, capture_output, text, check):
+        captured["command"] = command
+        captured["cwd"] = cwd
+        captured["env"] = env
+        assert capture_output is True
+        assert text is True
+        assert check is False
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    ok, message = module.run_cli(
+        {
+            "cwd": str(tmp_path),
+            "context": str(tmp_path / ".tep_context"),
+            "agent_private_key": "pytest-forwarded-agent-token",
+        },
+        ["brief-context", "--task", "forward env"],
+    )
+
+    assert ok is True
+    assert message == "ok"
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert "--agent-private-key" in command
+    assert "pytest-forwarded-agent-token" in command
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["TEP_ACCESS_CHANNEL"] == "mcp"
 
 
 def test_mcp_migration_dry_run_uses_service_without_writing_target(tmp_path: Path) -> None:
@@ -406,7 +492,13 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
     monkeypatch.setattr(tep_server, "run_cli", fail_run_cli)
 
     ok, next_step_text = tep_server.tool_next_step(
-        {"context": str(context), "cwd": str(tmp_path), "intent": "plan", "task": "direct service route"}
+        {
+            "context": str(context),
+            "cwd": str(tmp_path),
+            "intent": "plan",
+            "task": "direct service route",
+            "agent_private_key": agent_private_key,
+        }
     )
     assert ok is True
     assert "TEP Next Step" in next_step_text
@@ -1050,6 +1142,10 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         if "context" in tool["inputSchema"]["properties"]
     }
     assert len(context_schemas) == 1
+    tools_by_name = {tool["name"]: tool for tool in by_id[2]["result"]["tools"]}
+    assert "agent_private_key" in tools_by_name["next_step"]["inputSchema"]["required"]
+    assert "agent_private_key" in tools_by_name["brief_context"]["inputSchema"]["required"]
+    assert "agent_private_key" in tools_by_name["guidelines_for"]["inputSchema"]["required"]
     assert {
         "search_records",
         "next_step",

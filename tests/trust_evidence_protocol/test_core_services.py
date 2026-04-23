@@ -281,6 +281,7 @@ from tep_runtime.generated_views import (  # noqa: E402
 from tep_runtime.actions import build_action_payload  # noqa: E402
 from tep_runtime.agent_identity import (  # noqa: E402
     agent_identity_scope,
+    current_bound_agent_ref,
     agent_secret_path,
     ensure_local_agent_identity,
     sign_working_context_payload,
@@ -2308,6 +2309,21 @@ def test_agent_identity_signs_working_context_without_public_secret(tmp_path: Pa
         other_agent, _ = ensure_local_agent_identity(root, {agent["id"]: agent}, timestamp=timestamp)
     assert other_agent["id"] != agent["id"]
     assert other_agent["key_fingerprint"] != agent["key_fingerprint"]
+
+
+def test_current_bound_agent_ref_ignores_foreign_thread_binding(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / ".tep_context"
+    root.mkdir()
+    monkeypatch.setenv("CODEX_THREAD_ID", "pytest-shared-thread")
+
+    with agent_identity_scope(make_agent_private_key("thread-owner-agent")):
+        owner, _ = ensure_local_agent_identity(root, {}, timestamp="2026-04-23T12:00:00")
+
+    with agent_identity_scope(make_agent_private_key("other-agent")):
+        assert current_bound_agent_ref(root) == ""
+
+    with agent_identity_scope(make_agent_private_key("thread-owner-agent")):
+        assert current_bound_agent_ref(root) == owner["id"]
 
 
 def test_topic_index_core_builds_navigation_prefilter_and_reports(tmp_path: Path) -> None:

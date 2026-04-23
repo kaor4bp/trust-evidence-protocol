@@ -22,8 +22,9 @@ from hook_common import (
 
 
 PROTOCOL_REMINDER = (
-    "Use TEP skill: search resolved context first, cite `CLM-*`/`GLD-* + quote` for planning, permission, "
-    "persistence, and substantial edits, and never derive green/red/ask values from target assertions."
+    "Before any TEP front-door call, generate and keep your own personal `agent_private_key`. "
+    "Then use TEP skill: search resolved context first, cite `CLM-*`/`GLD-* + quote` for planning, "
+    "permission, persistence, and substantial edits, and never derive green/red/ask values from target assertions."
 )
 
 

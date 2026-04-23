@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.4.12"
+SERVER_VERSION = "0.4.16"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 plugin_root = str(PLUGIN_ROOT)
@@ -83,8 +83,9 @@ def agent_private_key_property() -> JsonObject:
     return {
         "type": "string",
         "description": (
-            "Per-agent private key for owner-bound mutations. The agent invents and keeps this secret; "
-            "the runtime stores only its fingerprint and thread-scoped bindings."
+            "Per-agent private key. The agent must generate and keep this secret in its own session state, "
+            "then pass it explicitly on MCP calls. Do not reuse another agent's key; the runtime stores only "
+            "its fingerprint and owner-bound/thread-scoped bindings."
         ),
     }
 
@@ -94,6 +95,9 @@ def schema(
     required: list[str] | None = None,
 ) -> JsonObject:
     properties = dict(properties)
+    required_fields = list(required or [])
+    if "agent_private_key" in properties and "agent_private_key" not in required_fields:
+        required_fields.append("agent_private_key")
     properties.setdefault(
         "cwd",
         {
@@ -107,7 +111,7 @@ def schema(
     return {
         "type": "object",
         "properties": properties,
-        "required": required or [],
+        "required": required_fields,
         "additionalProperties": False,
     }
 
@@ -435,6 +439,7 @@ TOOLS: list[JsonObject] = [
         "inputSchema": schema(
             {
                 "context": context_property(),
+                "agent_private_key": agent_private_key_property(),
                 "task": {"type": "string", "description": "Concrete task the guidelines should apply to."},
                 "domain": {
                     "type": "string",
@@ -1167,6 +1172,9 @@ def run_cli(args: JsonObject, cli_args: list[str]) -> tuple[bool, str]:
     context = context_path(args)
     if context:
         command.extend(["--context", context])
+    private_key = agent_private_key_arg(args)
+    if private_key:
+        command.extend(["--agent-private-key", private_key])
     command.extend(cli_args)
     cwd = call_cwd(args)
     if not cwd.is_dir():
@@ -1174,10 +1182,11 @@ def run_cli(args: JsonObject, cli_args: list[str]) -> tuple[bool, str]:
     unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
     if unsafe_fallback:
         return False, unsafe_fallback
+    env = {**os.environ, "TEP_ACCESS_CHANNEL": "mcp"}
     result = subprocess.run(
         command,
         cwd=cwd,
-        env={**os.environ, "TEP_ACCESS_CHANNEL": "mcp"},
+        env=env,
         capture_output=True,
         text=True,
         check=False,
@@ -1563,6 +1572,9 @@ def tool_backend_check(args: JsonObject) -> tuple[bool, str]:
 
 
 def tool_guidelines_for(args: JsonObject) -> tuple[bool, str]:
+    token_error = require_agent_private_key_arg(args)
+    if token_error:
+        return False, token_error
     cli_args = [
         "guidelines-for",
         "--task",

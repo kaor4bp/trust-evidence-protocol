@@ -366,7 +366,7 @@ from tep_runtime.cli_common import (
     validate_mutated_records,
 )
 from tep_runtime import lookup_service
-from tep_runtime.agent_identity import local_agent_owns_working_context, sign_working_context_payload
+from tep_runtime.agent_identity import agent_identity_scope, local_agent_owns_working_context, require_agent_private_key, sign_working_context_payload
 from tep_runtime.map_refresh import map_refresh_service, map_refresh_text_lines
 from tep_runtime.map_session import (
     map_checkpoint_service,
@@ -2538,6 +2538,7 @@ def cmd_augment_chain(root: Path, chain_file: Path, output_format: str) -> int:
 
 
 def cmd_brief_context(root: Path, task: str, limit: int, detail: str) -> int:
+    require_agent_private_key()
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -2556,6 +2557,7 @@ def cmd_brief_context(root: Path, task: str, limit: int, detail: str) -> int:
 
 
 def cmd_next_step(root: Path, intent: str, task: str, detail: str, output_format: str) -> int:
+    require_agent_private_key()
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3041,6 +3043,7 @@ def cmd_help(topic: str) -> int:
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|test|model|flow|proposal|final --chain evidence-chain.json",
             "reason-step --mode edit --kind write --claim CLM-* --relation-claim CLM-* --why ... | reason-review --reason STEP-* --mode edit --kind write --grant [--command ... --cwd ...] | reason-check-grant --mode edit --kind write --command ... --cwd ... | reason-current",
+            "record-evidence --scope ... --kind file-line|url|command-output|user-input|artifact --quote ... [--claim ... --claim-status supported]",
             "record-input ... | record-run --command ... | record-support --thought ... --kind file-line|command-output|user-confirmation | classify-input --input INP-* --derived-record REF",
             "curator-pool build --workspace WSP-* [--project PRJ-*] [--task TASK-*] --kind health|duplicates|conflicts|modeling|flow|staleness --query ... | curator-pool show --pool CURP-* [--format json]",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
@@ -3173,7 +3176,9 @@ def ensure_lookup_working_context(root: Path, records: dict[str, dict], query: s
     task_ref = current_active_task_ref(root, records)
     existing = active_working_context_for_lookup(records, project_ref, task_ref)
     if existing:
-        return str(existing.get("id", "")), None, None
+        tags = {str(tag).strip() for tag in existing.get("tags", []) if str(tag).strip()}
+        auto_wctx = existing if "auto-wctx" in tags else None
+        return str(existing.get("id", "")), auto_wctx, None
     if not workspace_ref:
         return "", None, "lookup requires an active workspace before creating WCTX; run workspace-admission for this repository"
 
@@ -3591,6 +3596,7 @@ def lookup_text_lines(payload: dict) -> list[str]:
 
 
 def cmd_lookup(root: Path, query: str, kind: str, root_path: str | None, scope: str, mode: str, reason: str, output_format: str) -> int:
+    require_agent_private_key()
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -3808,6 +3814,7 @@ def cmd_review_context(root: Path) -> int:
         print(f"{root / 'review' / 'conflicts.md'}: {len(conflict_lines)} conflict issue(s)")
         print("Reviewed context with conflict issues; flow may continue, but conflict-aware preflight may still block planning or mutation.")
         return 0
+    print(f"Review OK: {root}")
     print(f"Reviewed context: {root}")
     return 0
 
@@ -4126,6 +4133,7 @@ def cmd_guidelines_for(
     include_task_local: bool,
     output_format: str,
 ) -> int:
+    require_agent_private_key()
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
@@ -8381,6 +8389,16 @@ def parse_args() -> argparse.Namespace:
             "context_root, or ~/.tep_context."
         ),
     )
+    parser.add_argument(
+        "--agent-private-key",
+        dest="agent_private_key",
+        default=None,
+        help=(
+            "Your personal per-agent private key. Generate it yourself, keep it in agent session state, "
+            "and pass it explicitly for owner-bound/front-door commands. `TEP_AGENT_PRIVATE_KEY` remains "
+            "a compatibility fallback."
+        ),
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     tep_help = subparsers.add_parser(
@@ -11426,15 +11444,20 @@ def main() -> None:
     if root is None:
         print("Could not resolve TEP context root")
         raise SystemExit(1)
-    if command_requires_write_lock(args):
-        try:
-            with context_write_lock(root):
-                dispatch(args, root)
-        except TimeoutError as exc:
-            print(exc)
-            raise SystemExit(1)
-        return
-    dispatch(args, root)
+    try:
+        with agent_identity_scope(args.agent_private_key):
+            if command_requires_write_lock(args):
+                try:
+                    with context_write_lock(root):
+                        dispatch(args, root)
+                except TimeoutError as exc:
+                    print(exc)
+                    raise SystemExit(1)
+                return
+            dispatch(args, root)
+    except RuntimeError as exc:
+        print(exc)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

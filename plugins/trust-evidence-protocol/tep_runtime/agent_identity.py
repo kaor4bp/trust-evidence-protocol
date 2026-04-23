@@ -104,9 +104,11 @@ def current_agent_private_key() -> str:
 class AgentIdentityRequiredError(RuntimeError):
     def __init__(self) -> None:
         super().__init__(
-            "agent_identity_required: generate or provide your personal agent_private_key "
-            "(or TEP_AGENT_PRIVATE_KEY) before starting work; the runtime may require it "
-            "even for next_step, lookup, and other front-door calls"
+            "agent_identity_required: generate your own personal agent_private_key, keep it in your "
+            "agent session state, and pass it explicitly (`--agent-private-key` in CLI or "
+            "`agent_private_key` in MCP). Do not reuse another agent's key. You may use "
+            "`TEP_AGENT_PRIVATE_KEY` only as a compatibility fallback; the runtime stores only the "
+            "fingerprint and owner-bound bindings."
         )
 
 
@@ -228,12 +230,16 @@ def _agent_record(agent_ref: str, *, fingerprint: str, created_at: str) -> dict:
 
 def current_bound_agent_ref(root: Path) -> str:
     thread_binding = _thread_binding(root)
-    if str(thread_binding.get("agent_identity_ref", "")).startswith("AGENT-"):
-        return str(thread_binding.get("agent_identity_ref", "")).strip()
     private_key = current_agent_private_key()
     if not private_key:
         return ""
-    binding = _key_binding(root, agent_key_fingerprint(private_key))
+    fingerprint = agent_key_fingerprint(private_key)
+    if (
+        str(thread_binding.get("agent_identity_ref", "")).startswith("AGENT-")
+        and str(thread_binding.get("key_fingerprint", "")).strip() == fingerprint
+    ):
+        return str(thread_binding.get("agent_identity_ref", "")).strip()
+    binding = _key_binding(root, fingerprint)
     return str(binding.get("agent_identity_ref", "")).strip() if str(binding.get("agent_identity_ref", "")).startswith("AGENT-") else ""
 
 

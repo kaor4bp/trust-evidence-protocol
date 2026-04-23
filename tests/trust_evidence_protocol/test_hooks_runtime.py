@@ -314,6 +314,18 @@ def hook_json_with_env(script: Path, payload: dict, env: dict[str, str]) -> dict
     return json.loads(output)
 
 
+def hook_json_without_agent_key(script: Path, payload: dict) -> dict:
+    context = Path(payload["cwd"]) / ".codex_context"
+    return hook_json_with_env(
+        script,
+        payload,
+        {
+            "CODEX_THREAD_ID": "pytest-thread-hooks-no-agent-key",
+            "TEP_CONTEXT_ROOT": str(context),
+        },
+    )
+
+
 def test_runtime_gate_hydration_and_invalidation_cycle(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
 
@@ -825,7 +837,8 @@ def test_task_layer_is_explicit_in_hydration_and_hooks(tmp_path: Path) -> None:
     assert task_id in session_context
     assert "TEP route:" in session_context
     assert "graph=" in session_context
-    assert "Use TEP skill" in session_context
+    assert "TEP skill" in session_context
+    assert "agent_private_key" in session_context
 
     complete = run_cli(context, "complete-task", "--note", "done")
     assert f"Completed task {task_id}" in complete.stdout
@@ -1759,7 +1772,8 @@ def test_user_prompt_hook_reminds_when_context_is_fresh(tmp_path: Path) -> None:
     additional_context = payload["hookSpecificOutput"]["additionalContext"]
     assert "TEP route:" in additional_context
     assert "graph=" in additional_context
-    assert "Use TEP skill" in additional_context
+    assert "TEP skill" in additional_context
+    assert "agent_private_key" in additional_context
     assert "Evidence Chain" in additional_context
     assert "GLD-* + quote" in additional_context
 
@@ -1780,7 +1794,8 @@ def test_user_prompt_hook_captures_prompt_input_and_keeps_hydration_fresh(tmp_pa
     assert hook_output["systemMessage"] == "🛡️ TEP reminder."
     assert "TEP route:" in hook_output["hookSpecificOutput"]["additionalContext"]
     assert "graph=" in hook_output["hookSpecificOutput"]["additionalContext"]
-    assert "Use TEP skill" in hook_output["hookSpecificOutput"]["additionalContext"]
+    assert "TEP skill" in hook_output["hookSpecificOutput"]["additionalContext"]
+    assert "agent_private_key" in hook_output["hookSpecificOutput"]["additionalContext"]
 
     input_ids = record_ids(context, "input")
     assert len(input_ids) == 1
@@ -1826,6 +1841,28 @@ def test_quiet_hook_verbosity_compacts_session_and_suppresses_fresh_prompt_remin
     assert "TEP route: intent=edit" in prompt_payload["hookSpecificOutput"]["additionalContext"]
     assert "graph=" in prompt_payload["hookSpecificOutput"]["additionalContext"]
     assert "Use TEP skill" not in prompt_payload["hookSpecificOutput"]["additionalContext"]
+
+
+def test_session_start_hook_bootstraps_agent_identity_before_route_hint(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    payload = hook_json_without_agent_key(HOOK_DIR / "session_start_hydrate.py", hook_payload(context, ""))
+    additional_context = payload["hookSpecificOutput"]["additionalContext"]
+    assert "agent_private_key" in additional_context
+    assert "Do not reuse another agent's key." in additional_context
+    assert "TEP route:" not in additional_context
+
+
+def test_user_prompt_hook_bootstraps_agent_identity_before_route_hint(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    payload = hook_payload(context, "")
+    payload["prompt"] = "why is the new agent stuck"
+    hook_output = hook_json_without_agent_key(HOOK_DIR / "user_prompt_hydration_notice.py", payload)
+    additional_context = hook_output["hookSpecificOutput"]["additionalContext"]
+    assert "agent_private_key" in additional_context
+    assert "Do not reuse another agent's key." in additional_context
+    assert "TEP route:" not in additional_context
 
 
 def test_pre_and_post_tool_hooks_track_mutating_bash_commands(tmp_path: Path) -> None:

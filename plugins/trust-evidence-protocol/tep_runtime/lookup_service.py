@@ -197,7 +197,9 @@ def ensure_lookup_working_context(root: Path, records: dict[str, dict], query: s
     task_ref = current_active_task_ref(root, records)
     existing = active_working_context_for_lookup(root, records, project_ref, task_ref)
     if existing:
-        return str(existing.get("id", "")), None, None
+        tags = {str(tag).strip() for tag in existing.get("tags", []) if str(tag).strip()}
+        auto_wctx = existing if "auto-wctx" in tags else None
+        return str(existing.get("id", "")), auto_wctx, None
     if not workspace_ref:
         return "", None, "lookup requires an active workspace before creating WCTX; run workspace-admission for this repository"
 

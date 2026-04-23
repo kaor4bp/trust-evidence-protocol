@@ -21,7 +21,7 @@ from .notes import append_note
 from .paths import record_path
 from .reports import write_validation_report
 from .scopes import workspace_refs_for_write
-from .state_validation import collect_validation_errors, validate_candidate_record, validate_records_state
+from .state_validation import collect_validation_errors, split_write_blocking_errors, validate_candidate_record, validate_records_state
 
 TEP_ICON = "🛡️"
 
@@ -118,9 +118,15 @@ def load_clean_context(root: Path, allowed_freedom: str | None = None) -> tuple[
     records, errors = collect_validation_errors(root, allowed_freedom=allowed_freedom)
     write_validation_report(root, errors)
     refresh_generated_outputs(root, records)
-    if errors:
-        print_errors(errors)
+    blocking_errors, nonblocking_errors = split_write_blocking_errors(records, errors)
+    if blocking_errors:
+        print_errors(blocking_errors)
         return records, 1
+    if nonblocking_errors:
+        print(
+            f"Ignoring {len(nonblocking_errors)} non-active working_context integrity issue(s) for this write. "
+            f"See {root / 'review' / 'broken.md'} for the full report."
+        )
     return records, 0
 
 
@@ -142,9 +148,15 @@ def persist_candidate(
         payload,
         allowed_freedom=allowed_freedom,
     )
-    if candidate_errors:
-        print_errors(candidate_errors)
+    blocking_errors, nonblocking_errors = split_write_blocking_errors({**records, payload["id"]: candidate}, candidate_errors)
+    if blocking_errors:
+        print_errors(blocking_errors)
         return 1
+    if nonblocking_errors:
+        print(
+            f"Ignoring {len(nonblocking_errors)} non-active working_context integrity issue(s) for this write. "
+            f"See {root / 'review' / 'broken.md'} for the full report."
+        )
 
     write_json_file(record_path(root, record_type, payload["id"]), payload)
     updated_records = dict(records)
@@ -194,7 +206,8 @@ def validate_mutated_records(
     for record_id, payload in updates.items():
         merged[record_id] = candidate_record_payload(root, payload)
     errors = validate_records_state(root, merged, allowed_freedom=allowed_freedom)
-    return merged, errors
+    blocking_errors, _ = split_write_blocking_errors(merged, errors)
+    return merged, blocking_errors
 
 
 def persist_mutated_records(

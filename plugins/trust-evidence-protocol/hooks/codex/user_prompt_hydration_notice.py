@@ -24,7 +24,8 @@ from hook_common import (
 
 
 PROTOCOL_REMINDER = (
-    "Use TEP skill: search resolved context first via MCP/brief-context, then show compact Evidence Chain or "
+    "Before any TEP front-door call, generate and keep your own personal `agent_private_key`. "
+    "Then use TEP skill: search resolved context first via MCP/brief-context, then show compact Evidence Chain or "
     "Reasoning Checkpoint before planning, permission, persistence, or edits. green/red/ask: target assertions "
     "are not proof. Code edits cite `GLD-* + quote` before and after."
 )

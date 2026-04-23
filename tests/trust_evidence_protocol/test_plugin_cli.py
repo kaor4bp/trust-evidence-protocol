@@ -1190,6 +1190,7 @@ def test_claim_lifecycle_pushes_resolved_claims_to_fallback_retrieval(tmp_path: 
     assert old_claim["lifecycle"]["resolved_by_claim_refs"] == [current_claim_id]
 
     review = run_cli(context, "review-context").stdout
+    assert "Review OK:" in review
     assert "Reviewed context:" in review
     assert "comparable claims disagree" not in (context / "review" / "conflicts.md").read_text(encoding="utf-8")
 
@@ -3433,6 +3434,100 @@ def test_curator_pool_builds_explicit_workspace_snapshot_without_current_focus(t
     assert "run-runtime-commands" in shown_text
 
 
+def test_start_task_ignores_invalid_closed_working_context_integrity_errors(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "wctx-write-gate",
+            "--title",
+            "WCTX Write Gate Workspace",
+            "--root-ref",
+            "/tmp/wctx-write-gate",
+            "--note",
+            "workspace for closed WCTX write-gate regression",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    project_id = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "wctx-write-gate-project",
+            "--title",
+            "WCTX Write Gate Project",
+            "--root-ref",
+            "/tmp/wctx-write-gate-project",
+            "--note",
+            "project for closed WCTX write-gate regression",
+        ),
+        "project",
+    )
+    run_cli(context, "set-current-project", "--project", project_id)
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "wctx.write-gate",
+            "--title",
+            "Create and close WCTX",
+            "--type",
+            "investigation",
+            "--note",
+            "seed task for closed WCTX regression",
+        ),
+        "task",
+    )
+    wctx_id = recorded_id(
+        run_cli(
+            context,
+            "working-context",
+            "create",
+            "--scope",
+            "wctx.write-gate",
+            "--title",
+            "Context to close",
+            "--kind",
+            "investigation",
+            "--task",
+            task_id,
+            "--note",
+            "seed closed WCTX",
+        ),
+        "working_context",
+    )
+    run_cli(context, "working-context", "close", "--context", wctx_id, "--note", "close before tamper")
+    run_cli(context, "complete-task", "--note", "seed task done")
+
+    closed = load_record(context, "working_context", wctx_id)
+    closed["title"] = "Tampered closed working context"
+    write_json(context / "records" / "working_context" / f"{wctx_id}.json", closed)
+
+    review = run_cli(context, "review-context", check=False)
+    assert review.returncode == 1
+    assert "WCTX owner_signature.signed_payload_hash mismatch" in review.stdout
+
+    started = run_cli(
+        context,
+        "start-task",
+        "--scope",
+        "wctx.write-gate.followup",
+        "--title",
+        "Follow-up task after closed WCTX tamper",
+        "--type",
+        "implementation",
+        "--note",
+        "must not be blocked by invalid closed WCTX",
+    )
+    assert "Started task TASK-" in started.stdout
+    assert "Ignoring 2 non-active working_context integrity issue(s) for this write." in started.stdout
+
+
 def test_workspace_admission_requires_decision_for_unknown_repo(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     known_repo = tmp_path / "known-repo"
@@ -3721,6 +3816,56 @@ def test_lookup_forks_focus_when_active_wctx_is_owned_by_another_agent(tmp_path:
     created = load_record(context, "working_context", lookup["focus"]["working_context_ref"])
     assert created["agent_identity_ref"] != foreign["agent_identity_ref"]
     assert created["owner_signature"]["algorithm"] == "hmac-sha256"
+
+
+def test_cli_accepts_explicit_agent_private_key_flag(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CLI),
+            "--context",
+            str(context),
+            "--agent-private-key",
+            make_agent_private_key("pytest-explicit-cli-flag"),
+            "next-step",
+            "--intent",
+            "auto",
+            "--format",
+            "json",
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "CODEX_THREAD_ID": "pytest-thread-explicit-cli-flag"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["intent"] == "auto"
+    assert payload["start_briefing"]["permission_snapshot"]["always_allowed"] == ["next_step", "lookup"]
+
+
+def test_help_commands_lists_record_evidence_route(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+
+    output = run_cli(context, "help", "commands").stdout
+
+    assert "record-evidence" in output
+    assert "--claim" in output
+
+
+def test_release_notes_stay_repo_relative_and_linked() -> None:
+    docs_root = REPO_ROOT / "docs" / "dev"
+    readme = (docs_root / "README.md").read_text(encoding="utf-8")
+
+    for version in ("0_4_13", "0_4_14", "0_4_15", "0_4_16"):
+        filename = f"TEP_{version}_RELEASE_NOTES.md"
+        content = (docs_root / filename).read_text(encoding="utf-8")
+        assert filename in readme
+        assert "/Users/" not in content
+
+    assert "`211 passed, 40 deselected`" in (docs_root / "TEP_0_4_16_RELEASE_NOTES.md").read_text(encoding="utf-8")
 
 
 def test_record_detail_and_neighborhood_expose_drilldown_context(tmp_path: Path) -> None:

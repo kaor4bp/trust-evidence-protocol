@@ -17,6 +17,37 @@ from .reason_ledger import validate_grant_run_lifecycle, validate_reason_ledger_
 from .schemas import validate_record, validate_refs
 from .settings import validate_settings_state
 
+NONBLOCKING_INACTIVE_WCTX_PREFIXES = (
+    "0.4 WCTX requires agent_identity_ref",
+    "WCTX agent_identity_ref ",
+    "WCTX agent_key_fingerprint must match",
+    "0.4 WCTX ownership_mode must be owner-only",
+    "0.4 WCTX handoff_policy must be fork-required",
+    "0.4 WCTX requires owner_signature object",
+    "WCTX owner_signature.",
+)
+
+
+def split_write_blocking_errors(records: dict[str, dict], errors: list[ValidationError]) -> tuple[list[ValidationError], list[ValidationError]]:
+    blocking: list[ValidationError] = []
+    nonblocking: list[ValidationError] = []
+    path_to_record = {
+        str(record.get("_path")): record
+        for record in records.values()
+        if isinstance(record, dict) and record.get("record_type") == "working_context"
+    }
+    for error in errors:
+        record = path_to_record.get(str(error.path))
+        if (
+            record
+            and str(record.get("status", "")).strip() != "active"
+            and any(error.message.startswith(prefix) for prefix in NONBLOCKING_INACTIVE_WCTX_PREFIXES)
+        ):
+            nonblocking.append(error)
+            continue
+        blocking.append(error)
+    return blocking, nonblocking
+
 
 def validate_records_state(
     root: Path,
@@ -80,4 +111,5 @@ def validate_candidate_record(
     merged = dict(records)
     merged[record_id] = candidate
     errors.extend(validate_records_state(root, merged, allowed_freedom=allowed_freedom))
-    return candidate, errors
+    blocking_errors, _ = split_write_blocking_errors(merged, errors)
+    return candidate, blocking_errors

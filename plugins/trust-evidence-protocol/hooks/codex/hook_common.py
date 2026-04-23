@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -76,6 +77,11 @@ from context_lib import (  # noqa: E402
 )
 
 TEP_ICON = "🛡️"
+AGENT_IDENTITY_BOOTSTRAP_HINT = (
+    "TEP bootstrap: before any MCP/CLI front-door call, generate your own personal "
+    "`agent_private_key`, keep it in your agent session state, and pass it explicitly. "
+    "Do not reuse another agent's key."
+)
 
 GIT_MUTATING_SUBCOMMANDS = {
     "add": "write",
@@ -302,6 +308,8 @@ def active_permission_context(context_root: Path, action_kind: str, *, cwd: str 
 
 
 def next_step_hint(context_root: Path, *, intent: str = "auto", task: str = "") -> str:
+    if not str(os.environ.get("TEP_AGENT_PRIVATE_KEY") or "").strip():
+        return AGENT_IDENTITY_BOOTSTRAP_HINT
     records, errors = load_records(context_root)
     if errors:
         return "TEP route: review-context -> fix record load issues"

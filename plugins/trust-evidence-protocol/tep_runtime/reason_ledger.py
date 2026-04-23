@@ -593,6 +593,14 @@ def _read_only_ledger_scopes(root: Path) -> list[LedgerScope]:
         path = reasons_ledger_path(root, current_agent)
         if path.exists():
             scopes.append(LedgerScope(current_agent, path))
+        return scopes
+    agents_root = reasoning_runtime_dir(root) / "agents"
+    if not agents_root.exists():
+        return scopes
+    for path in sorted(agents_root.glob("*/reasons.jsonl")):
+        agent_ref = path.parent.name.strip()
+        if agent_ref:
+            scopes.append(LedgerScope(agent_ref, path))
     return scopes
 
 

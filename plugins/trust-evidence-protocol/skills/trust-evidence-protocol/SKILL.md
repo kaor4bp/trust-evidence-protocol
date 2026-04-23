@@ -117,10 +117,14 @@ When your interpretation changes, append a new claim step with a relation CLM an
 Do not reuse the same claim as a mechanical permit; same-mode continuation must advance through a connected relation or fork a named alternative branch.
 Fork or roll back the reasoning ledger when observations change direction.
 
-Hypotheses are allowed for exploration.
-They must not become proof until supported.
+Hypotheses are allowed for exploration, but not as proof until supported.
 Exploration hypotheses may guide lookup and probes; proof/action modes must reject tentative claims and `co_relevant` navigation relations.
-
+If the task explicitly asks for bounded hypotheses, a proven subset, or another underdetermined-but-bounded outcome and one answer option matches it, choose that option instead of defaulting to `ask`; if one bounded option is entailed by the facts and `ask` is only needed for a wider unsupported action, choose the entailed bounded option.
+If prompt facts conflict with an authorized artifact and the task is classification rather than execution, prefer `ask` over forcing `red/green` unless an answer option explicitly models the conflict-handling action.
+Do not upgrade `allowed_freedom` from `proof-only` to `implementation-choice` when the fix is already uniquely determined by prompt facts; generic permission to "fix errors" does not itself authorize implementation choice, and `implementation-choice` applies only when multiple fact-preserving implementations remain open.
+Do not treat underdetermined variables outside the user-visible goal slice as blockers; if a value does not affect the asserted target, requested classification, or bounded answer option, leave it untouched rather than converting the whole task into `ask`.
+If one terminal action is not justified yet, do not infer the opposite terminal verdict from that absence alone; choose `ask` unless the opposite outcome is itself entailed by the facts.
+When a prompt gives a finite equality chain plus one anchored value for every affected component, propagate transitively and make the local fix under `proof-only`; a stale assertion target or stale code literal is not an underdetermined value when the prompt facts already determine the correction.
 Refutation is first-class. If new evidence weakens or contradicts a claim, do
 not hide it in prose. Record or reuse the conflicting `CLM-*`, link it with
 `contradiction_refs`, `comparison`, or `meta_conflict`, then advance the
