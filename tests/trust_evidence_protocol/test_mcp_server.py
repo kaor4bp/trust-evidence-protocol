@@ -165,6 +165,69 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
     workspace_id = only_record_id(context, "workspace")
     run_cli(context, "set-current-workspace", "--workspace", workspace_id)
     run_cli(context, "init-anchor", "--directory", str(tmp_path), "--workspace", workspace_id)
+    source_id = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "mcp.services",
+            "--source-kind",
+            "runtime",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "command",
+            "--origin-ref",
+            "pytest mcp service",
+            "--quote",
+            "MCP services can append reason ledger entries directly.",
+            "--note",
+            "direct mcp reason service source",
+        ),
+        "source",
+    )
+    claim_id = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "mcp.services",
+            "--plane",
+            "runtime",
+            "--status",
+            "supported",
+            "--statement",
+            "MCP services can append reason ledger entries directly.",
+            "--source",
+            source_id,
+            "--note",
+            "direct mcp reason service claim",
+        ),
+        "claim",
+    )
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "mcp.services",
+            "--title",
+            "Exercise direct MCP reason services",
+            "--related-claim",
+            claim_id,
+            "--note",
+            "active task for direct mcp reason service test",
+        ),
+        "task",
+    )
+    chain_payload = {
+        "task": "exercise direct MCP reason services",
+        "nodes": [
+            {"role": "fact", "ref": claim_id, "quote": "MCP services can append reason ledger entries directly."},
+            {"role": "task", "ref": task_id, "quote": "Exercise direct MCP reason services"},
+        ],
+        "edges": [{"from": claim_id, "to": task_id, "relation": "supports direct MCP reason services"}],
+    }
 
     tep_server = load_mcp_server_module()
 
@@ -195,6 +258,41 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
     assert payload["lookup_is_proof"] is False
     assert payload["focus"]["workspace_ref"] == workspace_id
     assert payload["focus"]["working_context_ref"].startswith("WCTX-")
+
+    ok, reason_step_text = tep_server.tool_reason_step(
+        {
+            "context": str(context),
+            "cwd": str(tmp_path),
+            "chain_payload": chain_payload,
+            "intent": "editing",
+            "mode": "edit",
+            "action_kind": "write",
+            "why": "prove MCP can create ledger steps through the service layer",
+            "format": "json",
+        }
+    )
+    assert ok is True
+    reason = json.loads(reason_step_text)
+    assert reason["id"].startswith("REASON-")
+    assert reason["task_ref"] == task_id
+    assert reason["chain_payload"] == chain_payload
+
+    ok, reason_review_text = tep_server.tool_reason_review(
+        {
+            "context": str(context),
+            "cwd": str(tmp_path),
+            "reason_ref": reason["id"],
+            "mode": "edit",
+            "action_kind": "write",
+            "grant": True,
+            "format": "json",
+        }
+    )
+    assert ok is True
+    review = json.loads(reason_review_text)
+    assert review["reason"]["id"] == reason["id"]
+    assert review["grant"]["id"].startswith("GRANT-")
+    assert review["grant"]["reason_ref"] == reason["id"]
 
 
 def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
@@ -646,6 +744,8 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "search_records",
         "next_step",
         "lookup",
+        "reason_step",
+        "reason_review",
         "record_detail",
         "claim_graph",
         "linked_records",

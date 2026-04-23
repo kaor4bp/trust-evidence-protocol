@@ -30,6 +30,12 @@ from tep_runtime.cli_common import TEP_ICON  # noqa: E402
 from tep_runtime.context_root import resolve_context_root  # noqa: E402
 from tep_runtime.lookup_service import build_lookup_service_payload, lookup_text_lines  # noqa: E402
 from tep_runtime.migrations import build_migration_dry_run_report  # noqa: E402
+from tep_runtime.reason_service import (  # noqa: E402
+    reason_review_service,
+    reason_review_text,
+    reason_step_service,
+    reason_step_text,
+)
 from tep_runtime.state_validation import collect_validation_errors  # noqa: E402
 
 
@@ -149,6 +155,64 @@ TOOLS: list[JsonObject] = [
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["query", "reason"],
+        ),
+    },
+    {
+        "name": "reason_step",
+        "description": (
+            "Append a validated REASON-* ledger step from a public evidence chain. "
+            "Use after lookup/chain validation and before protected actions."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "chain_payload": {
+                    "type": "object",
+                    "description": "Evidence-chain JSON object to validate and sign into the reason ledger.",
+                    "additionalProperties": True,
+                },
+                "intent": {"type": "string", "default": "planning"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["answering", "curiosity", "debugging", "edit", "final", "permission", "planning"],
+                    "default": "planning",
+                },
+                "action_kind": {"type": "string", "description": "Optional protected action kind such as write, bash, git, or final."},
+                "why": {"type": "string", "description": "Short public justification for appending this reasoning step."},
+                "parent_refs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional parent REASON-* refs for continuation or forked reasoning.",
+                },
+                "branch": {"type": "string", "default": "main"},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["chain_payload", "why"],
+        ),
+    },
+    {
+        "name": "reason_review",
+        "description": (
+            "Review a REASON-* ledger step and optionally create a one-shot GRANT-* for the current task/action."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "reason_ref": {"type": "string", "description": "REASON-* step to review."},
+                "mode": {
+                    "type": "string",
+                    "enum": ["answering", "curiosity", "debugging", "edit", "final", "permission", "planning"],
+                    "default": "planning",
+                },
+                "action_kind": {"type": "string", "description": "Optional protected action kind such as write, bash, git, or final."},
+                "grant": {"type": "boolean", "default": False},
+                "ttl_seconds": {"type": "integer", "minimum": 1, "description": "Optional grant TTL; runtime settings still clamp the final value."},
+                "command": {"type": "string", "description": "Optional exact command binding for shell grants."},
+                "command_cwd": {"type": "string", "description": "Optional cwd binding for exact command grants."},
+                "tool": {"type": "string", "default": "bash"},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["reason_ref"],
         ),
     },
     {
@@ -962,6 +1026,86 @@ def tool_lookup(args: JsonObject) -> tuple[bool, str]:
     return True, "\n".join(lookup_text_lines(payload))
 
 
+def tool_reason_step(args: JsonObject) -> tuple[bool, str]:
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return False, f"cwd is not a directory: {cwd}"
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return False, unsafe_fallback
+    records, load_error = load_mcp_records(root)
+    if load_error:
+        return False, load_error
+    assert records is not None
+    chain_payload = args.get("chain_payload")
+    if not isinstance(chain_payload, dict):
+        return False, "chain_payload must be an object"
+    reason, error = reason_step_service(
+        root,
+        records,
+        chain_payload=chain_payload,
+        intent=str(args.get("intent") or "planning"),
+        mode=str(args.get("mode") or "planning"),
+        action_kind=str(args.get("action_kind") or "").strip() or None,
+        why=str(args.get("why") or ""),
+        parent_refs=as_list(args.get("parent_refs")),
+        branch=str(args.get("branch") or "main"),
+        icon=TEP_ICON,
+    )
+    if error:
+        return False, error
+    assert reason is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(reason, ensure_ascii=False, indent=2)
+    return True, reason_step_text(
+        reason,
+        str(args.get("mode") or "planning"),
+        str(args.get("action_kind") or "").strip() or None,
+    )
+
+
+def tool_reason_review(args: JsonObject) -> tuple[bool, str]:
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return False, f"cwd is not a directory: {cwd}"
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return False, unsafe_fallback
+    _, load_error = load_mcp_records(root)
+    if load_error:
+        return False, load_error
+    ttl_seconds = None
+    if args.get("ttl_seconds") is not None:
+        ttl_seconds = as_int(args.get("ttl_seconds"), 0, 1, 604800)
+    payload, error = reason_review_service(
+        root,
+        reason_ref=str(args.get("reason_ref") or ""),
+        mode=str(args.get("mode") or "planning"),
+        action_kind=str(args.get("action_kind") or "").strip() or None,
+        grant=as_bool(args.get("grant")),
+        ttl_seconds=ttl_seconds,
+        command=str(args.get("command") or "").strip() or None,
+        cwd=str(args.get("command_cwd") or "").strip() or None,
+        tool=str(args.get("tool") or "bash"),
+    )
+    if error:
+        return False, error
+    assert payload is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, reason_review_text(
+        payload,
+        str(args.get("reason_ref") or ""),
+        as_bool(args.get("grant")),
+    )
+
+
 def tool_search_records(args: JsonObject) -> tuple[bool, str]:
     cli_args = [
         "search-records",
@@ -1587,6 +1731,8 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "brief_context": tool_brief_context,
     "next_step": tool_next_step,
     "lookup": tool_lookup,
+    "reason_step": tool_reason_step,
+    "reason_review": tool_reason_review,
     "search_records": tool_search_records,
     "record_detail": tool_record_detail,
     "claim_graph": tool_claim_graph,

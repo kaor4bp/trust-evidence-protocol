@@ -147,6 +147,16 @@ Exit criteria:
 - Normal-agent conformance tests show use of `next_step`/`lookup` before
   drill-down.
 
+Progress:
+
+- `reason_step` and `reason_review` now share `tep_runtime.reason_service`
+  between CLI and MCP. The MCP handlers append and review the reason ledger
+  directly, including PoW/HMAC ledger validation, without shelling out to the
+  development CLI.
+- Added MCP conformance coverage that monkeypatches CLI execution to fail and
+  still proves `next_step`, `lookup`, `reason_step`, and `reason_review` work
+  through direct service calls.
+
 ## Milestone 5: Hooks And Protected Actions
 
 Goals:

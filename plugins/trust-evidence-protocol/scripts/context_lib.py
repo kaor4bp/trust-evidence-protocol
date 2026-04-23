@@ -381,6 +381,12 @@ from tep_runtime.reasoning import (
     validate_chain_node,
     validate_evidence_chain_payload,
 )
+from tep_runtime.reason_service import (
+    reason_review_service,
+    reason_review_text,
+    reason_step_service,
+    reason_step_text,
+)
 from tep_runtime.reasoning_case import build_reasoning_case_payload, reasoning_case_text_lines
 from tep_runtime.retrieval import (
     active_guidelines_for,

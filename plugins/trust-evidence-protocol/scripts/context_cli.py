@@ -277,6 +277,10 @@ from context_lib import (
     reasoning_case_text_lines,
     reason_access_text_lines,
     reason_current_text_lines,
+    reason_review_service,
+    reason_review_text,
+    reason_step_service,
+    reason_step_text,
     reserve_reason_access,
     score_record,
     select_precedent_tasks,
@@ -2381,23 +2385,17 @@ def cmd_reason_step(
     except (OSError, json.JSONDecodeError) as exc:
         print(f"{chain_file}: {exc}")
         return 1
-    hypothesis_entries = active_hypothesis_entry_by_claim(root, records)
-    validation = validate_evidence_chain_payload(records, hypothesis_entries, payload)
-    if validation.errors:
-        for line in evidence_chain_report_lines(validation, payload, TEP_ICON):
-            print(line)
-        return 1
-    decision = decision_validation_payload(records, hypothesis_entries, payload, mode)
-    reason, error = create_reason_step(
+    reason, error = reason_step_service(
         root,
+        records,
         chain_payload=payload,
-        decision_payload=decision,
         intent=intent,
         mode=mode,
         action_kind=action_kind,
         why=why,
         parent_refs=parent_refs,
         branch=branch,
+        icon=TEP_ICON,
     )
     if error:
         print(error)
@@ -2405,7 +2403,7 @@ def cmd_reason_step(
     if output_format == "json":
         print(json.dumps(reason, indent=2, ensure_ascii=False))
     else:
-        print(f"Recorded reason {reason['id']} status={reason.get('status')} mode={mode} kind={(action_kind or '') or 'none'}")
+        print(reason_step_text(reason, mode, action_kind))
     return 0
 
 
@@ -2421,28 +2419,12 @@ def cmd_reason_review(
     tool: str,
     output_format: str,
 ) -> int:
-    validation = validate_reason_ledger(root)
-    if not validation["ok"]:
-        print("Reason ledger tampered or invalid:")
-        for error in validation["errors"]:
-            print(f"- {error}")
-        return 1
-    entries = validation["entries"]
-    reason = next((entry for entry in entries if str(entry.get("id", "")).strip() == reason_ref), None)
-    if not reason:
-        print(f"missing reason {reason_ref}")
-        return 1
-    if not grant:
-        if output_format == "json":
-            print(json.dumps(reason, indent=2, ensure_ascii=False))
-        else:
-            print(f"Reason {reason_ref} reviewed; grant=false")
-        return 0
-    access, error = grant_reason_access(
+    payload, error = reason_review_service(
         root,
         reason_ref=reason_ref,
         mode=mode,
         action_kind=action_kind,
+        grant=grant,
         ttl_seconds=ttl_seconds,
         command=command,
         cwd=cwd,
@@ -2452,10 +2434,9 @@ def cmd_reason_review(
         print(error)
         return 1
     if output_format == "json":
-        print(json.dumps({"reason": reason, "grant": access}, indent=2, ensure_ascii=False))
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        print(f"Granted reason authorization {access['id']} for reason {reason_ref}")
-        print("\n".join(reason_access_text_lines(access)))
+        print(reason_review_text(payload, reason_ref, grant))
     return 0
 
 
