@@ -31,24 +31,12 @@ def agent_reasoning_runtime_dir(root: Path, agent_ref: str) -> Path:
     return reasoning_runtime_dir(root) / "agents" / _safe_agent_ref(agent_ref)
 
 
-def legacy_reasons_ledger_path(root: Path) -> Path:
-    return reasoning_runtime_dir(root) / "reasons.jsonl"
+def reasons_ledger_path(root: Path, agent_ref: str) -> Path:
+    return agent_reasoning_runtime_dir(root, agent_ref) / "reasons.jsonl"
 
 
-def legacy_reasoning_seal_path(root: Path) -> Path:
-    return reasoning_runtime_dir(root) / "seal.json"
-
-
-def reasons_ledger_path(root: Path, agent_ref: str | None = None) -> Path:
-    if agent_ref:
-        return agent_reasoning_runtime_dir(root, agent_ref) / "reasons.jsonl"
-    return legacy_reasons_ledger_path(root)
-
-
-def reasoning_seal_path(root: Path, agent_ref: str | None = None) -> Path:
-    if agent_ref:
-        return agent_reasoning_runtime_dir(root, agent_ref) / "seal.json"
-    return legacy_reasoning_seal_path(root)
+def reasoning_seal_path(root: Path, agent_ref: str) -> Path:
+    return agent_reasoning_runtime_dir(root, agent_ref) / "seal.json"
 
 
 def hypotheses_index_path(root: Path) -> Path:

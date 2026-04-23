@@ -633,8 +633,6 @@ A probe result is navigation metadata until backed by canonical records.
 `runtime/reasoning/agents/AGENT-*/reasons.jsonl` is an append-only runtime
 ledger for justified reasoning by one local agent identity. Protected actions
 are one consumer of that ledger, not the ledger's only purpose.
-`runtime/reasoning/reasons.jsonl` is legacy migration input only and is not
-written by the 0.4 runtime.
 
 Ledger entries are not canonical truth records. They are runtime control
 evidence:

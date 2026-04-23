@@ -598,7 +598,6 @@ Required fields:
 Rules:
 
 - append-only JSONL ledger at `runtime/reasoning/agents/AGENT-*/reasons.jsonl`
-- `runtime/reasoning/reasons.jsonl` is legacy migration input only
 - direct file writes blocked by hooks
 - validator verifies hash chain and parent existence
 - validator rejects WCTX/agent identity mismatch

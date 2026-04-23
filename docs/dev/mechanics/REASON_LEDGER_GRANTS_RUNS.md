@@ -15,8 +15,6 @@ runtime/reasoning/agents/AGENT-*/reasons.jsonl
 runtime/reasoning/agents/AGENT-*/seal.json
 ```
 
-The old shared `runtime/reasoning/reasons.jsonl` path is migration input only.
-
 Rules:
 
 - task-local
@@ -68,7 +66,8 @@ transitively reach RUN.
 ## API Requirements
 
 - Hooks must block direct runtime ledger writes.
-- `reason-step` appends reviewed or draft steps based on chain validation.
+- `reason-step` appends only reviewed steps from chains that validate for the
+  requested mode; decision-invalid chains must be fixed before ledger write.
 - `reason-review --grant` creates `GRANT-*`.
 - PreToolUse must enforce grant policy for protected actions.
 - PostToolUse should record or connect `RUN-*` for mutating shell commands when

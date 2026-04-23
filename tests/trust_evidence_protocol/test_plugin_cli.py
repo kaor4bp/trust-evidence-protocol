@@ -635,7 +635,7 @@ def strictness_approval(context: Path, value: str, permission_id: str | None = N
 def test_skill_package_is_core_plus_workflows_without_legacy_identity_artifacts() -> None:
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     assert len(skill.splitlines()) <= 160
-    assert "route / next_step -> lookup -> support capture -> REASON step/review -> action/final" in skill
+    assert "route / next_step -> lookup -> support capture -> augment/validate chain -> REASON step/review -> action/final" in skill
     assert "Command details belong in the plugin README, runtime help, and developer docs." in skill
     assert "workflows/plugin-commands.md" not in skill
 
@@ -5789,6 +5789,21 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
     assert first["parent_refs"] == []
     assert first["branch"] == "main"
     assert first["signed_chain"]["nodes"][0]["ref"] == claim_id
+
+    invalid_decision = run_cli(
+        context,
+        "reason-step",
+        "--mode",
+        "permission",
+        "--chain",
+        str(chain),
+        "--why",
+        "try to append a reason without a permission-valid chain",
+        check=False,
+    )
+    assert invalid_decision.returncode == 1
+    assert "decision_valid=`False`" in invalid_decision.stdout
+    assert "requires a requested_permission node" in invalid_decision.stdout
 
     duplicate = run_cli(
         context,

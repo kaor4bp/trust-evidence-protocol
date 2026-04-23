@@ -14,7 +14,6 @@ if plugin_root not in sys.path:
 
 from tep_runtime.core_validators import validate_active_focus, validate_core_graph  # noqa: E402
 from tep_runtime.agent_identity import sign_working_context_payload  # noqa: E402
-from tep_runtime.paths import legacy_reasons_ledger_path, reasoning_seal_path  # noqa: E402
 from tep_runtime.reason_ledger import (  # noqa: E402
     append_reason_entry,
     chain_payload_hash,
@@ -334,7 +333,6 @@ def test_v04_active_focus_requires_active_compatible_records(tmp_path: Path) -> 
 
 def test_reason_ledger_state_validation_is_read_only_when_empty(tmp_path: Path) -> None:
     assert messages(validate_records_state(tmp_path, {})) == []
-    assert not reasoning_seal_path(tmp_path).exists()
     assert not (tmp_path / "runtime" / "reasoning" / "agents").exists()
 
 
@@ -351,7 +349,7 @@ def test_reason_ledger_write_path_creates_per_agent_files(tmp_path: Path) -> Non
     assert ledger.exists()
     assert ledger.parent.name.startswith("AGENT-")
     assert (ledger.parent / "seal.json").exists()
-    assert not legacy_reasons_ledger_path(tmp_path).exists()
+    assert not (tmp_path / "runtime" / "reasoning" / "reasons.jsonl").exists()
 
 
 def test_reason_ledger_state_validation_detects_tamper(tmp_path: Path) -> None:
@@ -378,7 +376,7 @@ def test_reason_ledger_state_validation_detects_tamper(tmp_path: Path) -> None:
     assert entry is not None, error
     assert entry["agent_identity_ref"].startswith("AGENT-")
     assert entry["agent_key_fingerprint"].startswith("sha256:")
-    assert not legacy_reasons_ledger_path(tmp_path).exists()
+    assert not (tmp_path / "runtime" / "reasoning" / "reasons.jsonl").exists()
     assert messages(validate_records_state(tmp_path, {})) == []
 
     ledger = current_reasons_ledger_path(tmp_path)

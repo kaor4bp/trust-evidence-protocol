@@ -18,8 +18,6 @@ from .hydration import compute_context_fingerprint
 from .hypotheses import active_hypothesis_entry_by_claim
 from .io import write_json_file
 from .paths import (
-    legacy_reasoning_seal_path,
-    legacy_reasons_ledger_path,
     reasoning_runtime_dir,
     reasoning_seal_path,
     reasons_ledger_path,
@@ -49,7 +47,6 @@ class LedgerScope:
     path: Path
     seal_path: Path
     secret: str
-    legacy: bool = False
 
 
 def _now() -> datetime:
@@ -356,7 +353,6 @@ def _read_reason_entries_for_scope(scope: LedgerScope) -> tuple[list[dict[str, A
     entries, errors = _read_reason_entries_file(scope.path)
     for entry in entries:
         entry["_ledger_agent_ref"] = scope.agent_ref
-        entry["_ledger_legacy"] = scope.legacy
     return entries, errors
 
 
@@ -380,10 +376,6 @@ def _read_only_ledger_scopes(root: Path) -> list[LedgerScope]:
             seal_path = reasoning_seal_path(root, current_agent)
             scopes.append(LedgerScope(current_agent, path, seal_path, _read_reasoning_secret_file(seal_path)))
             seen.add(path)
-    legacy_path = legacy_reasons_ledger_path(root)
-    legacy_seal = legacy_reasoning_seal_path(root)
-    if legacy_path.exists() or legacy_seal.exists():
-        scopes.append(LedgerScope("", legacy_path, legacy_seal, _read_reasoning_secret_file(legacy_seal), legacy=True))
     return scopes
 
 
@@ -460,7 +452,7 @@ def _validate_reason_ledger_scope(
             errors.append(f"{entry_id}: duplicate id")
         global_ids.add(entry_id)
         entry_agent_ref = str(entry.get("agent_identity_ref", "")).strip()
-        if not scope.legacy and int(entry.get("version", 1) or 1) >= 2:
+        if int(entry.get("version", 1) or 1) >= 2:
             if not entry_agent_ref:
                 errors.append(f"{entry_id or index}: missing agent_identity_ref")
             elif entry_agent_ref != scope.agent_ref:
@@ -897,11 +889,15 @@ def create_reason_step(
                 f"reason step would duplicate parent {parent} for mode={mode}; "
                 "extend the chain with a new fact/observation/hypothesis/open question or fork a named branch"
             )
+    if not decision_payload.get("decision_valid"):
+        blockers = "; ".join(str(item) for item in decision_payload.get("blockers", []) if str(item).strip())
+        suffix = f": {blockers}" if blockers else ""
+        return None, f"REASON-* requires a decision-valid evidence chain for mode={mode}{suffix}"
     return append_reason_entry(
         root,
         {
             "entry_type": "step",
-            "status": "reviewed" if decision_payload.get("decision_valid") else "draft",
+            "status": "reviewed",
             "workspace_ref": current_workspace_ref(root),
             "project_ref": current_project_ref(root),
             "task_ref": task_ref,

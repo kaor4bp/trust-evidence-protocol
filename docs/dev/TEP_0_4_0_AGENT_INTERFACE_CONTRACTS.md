@@ -307,8 +307,7 @@ Rules:
   fork/adopted WCTX with `parent_context_ref` and `supersedes_refs` links.
 - REASON/GRANT created under a WCTX must bind the same `agent_identity_ref` or
   be rejected by validation. Runtime writes use
-  `runtime/reasoning/agents/AGENT-*/reasons.jsonl`; the old shared
-  `runtime/reasoning/reasons.jsonl` path is migration input only.
+  `runtime/reasoning/agents/AGENT-*/reasons.jsonl`.
 
 ## 4. Evidence Capture Contract
 

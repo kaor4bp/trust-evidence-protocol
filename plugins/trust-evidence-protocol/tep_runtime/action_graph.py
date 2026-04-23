@@ -41,8 +41,8 @@ def _intent_route(intent: str, task: str) -> tuple[str, list[str]]:
     query_arg = f' --query "{task}"' if task else ' --query "..."'
     routes = {
         "answer": ("answering", [f"lookup{query_arg} --reason answering --kind auto --format json", f"brief-context{task_arg}", "record-detail / linked-records before citing proof"]),
-        "plan": ("planning", [f"lookup{query_arg} --reason planning --kind auto --format json", "validate-task-decomposition --task TASK-*", f"brief-context{task_arg}", "publish Reasoning Checkpoint", "validate evidence chain if decisive"]),
-        "edit": ("editing", ["validate-task-decomposition --task TASK-*", f"lookup{query_arg} --reason editing --kind auto --format json", f"guidelines-for{task_arg}", "build/validate evidence chain", "preflight-task --mode edit"]),
+        "plan": ("planning", [f"lookup{query_arg} --reason planning --kind auto --format json", "validate-task-decomposition --task TASK-*", f"brief-context{task_arg}", "augment-chain -> validate-decision --mode planning", "reason-step --mode planning"]),
+        "edit": ("editing", ["validate-task-decomposition --task TASK-*", f"lookup{query_arg} --reason editing --kind auto --format json", f"guidelines-for{task_arg}", "augment-chain -> validate-decision --mode edit", "reason-step --mode edit", "preflight-task --mode edit"]),
         "test": ("testing", [f"lookup{query_arg} --reason debugging --kind auto --format json", f"brief-context{task_arg}", "record-evidence for meaningful test output", "hydrate-context after mutation"]),
         "persist": ("persisting", [f"lookup{query_arg} --reason migration --kind auto --format json", "classify input/source first", "record-evidence or record-* through context_cli", "hydrate-context"]),
         "permission": ("permission", [f"lookup{query_arg} --reason permission --kind policy --format json", "build-reasoning-case", "cite CLM/GLD/PRM ids + quotes", "request explicit approval if needed"]),
@@ -68,6 +68,7 @@ def _route_graph(intent: str) -> dict:
         ],
         "plan": [
             {"if": "task needs decomposition", "then": "confirm-atomic-task|decompose-task"},
+            {"if": "no current valid chain", "then": "lookup -> augment-chain -> validate-decision -> reason-step"},
             {"if": "proof chain explicit", "then": "validate-evidence-chain"},
             {"if": "scope/task drift", "then": "task-drift-check|switch-task"},
             {"if": "permission needed", "then": "permission"},
@@ -76,6 +77,7 @@ def _route_graph(intent: str) -> dict:
             {"if": "current task is parent/invalid", "then": "switch to leaf task|decompose-task"},
             {"if": "guidelines missing", "then": "guidelines-for"},
             {"if": "proof gap", "then": "build/validate evidence chain"},
+            {"if": "no current valid chain", "then": "lookup -> augment-chain -> validate-decision -> reason-step"},
             {"if": "grant missing", "then": "reason-step|reason-review --grant"},
             {"if": "blocked by policy", "then": "permission|debug"},
             {"if": "edited", "then": "after-mutation"},
@@ -112,6 +114,7 @@ def _route_graph(intent: str) -> dict:
         "stop_conditions": [
             "hydration stale/errors/conflicts before decisive action",
             "missing source-backed proof for truth claim",
+            "missing validated chain before REASON/GRANT/final",
             "restriction or permission gap blocks requested scope",
         ],
     }
@@ -206,6 +209,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
             "route_graph_required": True,
             "drill_down_tools": ["brief-context", "search-records", "claim-graph", "record-detail", "linked-records"],
             "proof_rule": "Navigation output is not proof; cite canonical records with quotes before decisions.",
+            "chain_rule": "Before REASON/GRANT/final, build a public chain with lookup/record-detail, run augment-chain, then validate-decision for the intended mode.",
             "grant_rule": "Mutating protected actions in evidence-authorized or implementation-choice require a fresh one-shot GRANT-* bound to current workspace/project/task/fingerprint.",
             "write_rule": "Use record-support/record-evidence so FILE/RUN/SRC/CLM links are built mechanically; low-level record-source/record-claim are for plugin-dev or migration.",
             "task_rule": "Mutating work belongs on a valid atomic leaf TASK-*; parent tasks are orchestration only.",

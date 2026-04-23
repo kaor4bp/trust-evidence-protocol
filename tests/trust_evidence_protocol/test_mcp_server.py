@@ -111,13 +111,6 @@ def test_mcp_migration_dry_run_uses_service_without_writing_target(tmp_path: Pat
         json.dumps({"id": "CLM-20260423-demo", "record_type": "claim"}) + "\n",
         encoding="utf-8",
     )
-    ledger = source / "runtime" / "reasoning" / "reasons.jsonl"
-    ledger.parent.mkdir(parents=True, exist_ok=True)
-    ledger.write_text(
-        json.dumps({"id": "GRANT-20260423-demo", "entry_type": "grant"}) + "\n",
-        encoding="utf-8",
-    )
-
     responses = run_mcp(
         [
             {
@@ -154,7 +147,7 @@ def test_mcp_migration_dry_run_uses_service_without_writing_target(tmp_path: Pat
     assert payload["contract_version"] == "0.4"
     assert payload["mode"] == "dry-run"
     assert payload["preserved_refs"] == ["CLM-20260423-demo"]
-    assert payload["revoked_grants"] == ["GRANT-20260423-demo"]
+    assert payload["revoked_grants"] == []
     assert payload["applied"] is False
     assert not target.exists()
 

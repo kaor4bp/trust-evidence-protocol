@@ -21,7 +21,7 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def test_migration_dry_run_reports_preserved_refs_and_revoked_grants(tmp_path: Path) -> None:
+def test_migration_dry_run_reports_preserved_refs_without_shared_ledger_support(tmp_path: Path) -> None:
     source = tmp_path / ".codex_context"
     target = tmp_path / ".tep_context"
     write_json(
@@ -32,12 +32,6 @@ def test_migration_dry_run_reports_preserved_refs_and_revoked_grants(tmp_path: P
         source / "records" / "source" / "SRC-20260423-demo.json",
         {"id": "SRC-20260423-demo", "record_type": "source"},
     )
-    ledger = source / "runtime" / "reasoning" / "reasons.jsonl"
-    ledger.parent.mkdir(parents=True, exist_ok=True)
-    ledger.write_text(
-        json.dumps({"id": "GRANT-20260423-demo", "entry_type": "grant"}) + "\n",
-        encoding="utf-8",
-    )
 
     report = build_migration_dry_run_report(source, target).to_payload()
 
@@ -45,7 +39,7 @@ def test_migration_dry_run_reports_preserved_refs_and_revoked_grants(tmp_path: P
     assert report["mode"] == "dry-run"
     assert report["applied"] is False
     assert report["preserved_refs"] == ["CLM-20260423-demo", "SRC-20260423-demo"]
-    assert report["revoked_grants"] == ["GRANT-20260423-demo"]
+    assert report["revoked_grants"] == []
     assert report["created_refs"] == []
     assert {
         "action": "create_migration_input",
@@ -66,15 +60,10 @@ def test_migration_dry_run_reports_invalid_legacy_records_without_writing(tmp_pa
     bad_record.parent.mkdir(parents=True, exist_ok=True)
     bad_record.write_text("[1, 2, 3]\n", encoding="utf-8")
 
-    ledger = source / "runtime" / "reasoning" / "reasons.jsonl"
-    ledger.parent.mkdir(parents=True, exist_ok=True)
-    ledger.write_text("{not-json}\n", encoding="utf-8")
-
     report = build_migration_dry_run_report(source, target).to_payload()
 
     reasons = {item["reason"] for item in report["unresolved"]}
     assert "invalid_json_record" in reasons
-    assert "invalid_reason_ledger_json" in reasons
     assert report["preserved_refs"] == []
     assert report["applied"] is False
     assert not target.exists()

@@ -6,7 +6,6 @@ from typing import Any
 
 from .contracts import MigrationReport
 from .io import context_write_lock, parse_json_file, write_json_file
-from .paths import legacy_reasons_ledger_path
 from .schema_migrations import registered_schema_migrations
 from .schemas import validate_record
 
@@ -63,56 +62,6 @@ def collect_legacy_record_refs(root: Path) -> tuple[list[str], list[dict[str, An
     return sorted(set(refs)), unresolved
 
 
-def collect_legacy_grant_refs(root: Path) -> tuple[list[str], list[dict[str, Any]]]:
-    ledger = legacy_reasons_ledger_path(root)
-    if not ledger.is_file():
-        return [], []
-
-    grants: list[str] = []
-    unresolved: list[dict[str, Any]] = []
-    for line_number, raw_line in enumerate(ledger.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw_line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError as exc:
-            unresolved.append(
-                {
-                    "path": legacy_batch_key(ledger, root),
-                    "line": line_number,
-                    "reason": "invalid_reason_ledger_json",
-                    "detail": str(exc),
-                }
-            )
-            continue
-        if not isinstance(entry, dict):
-            unresolved.append(
-                {
-                    "path": legacy_batch_key(ledger, root),
-                    "line": line_number,
-                    "reason": "non_object_reason_ledger_entry",
-                }
-            )
-            continue
-        entry_id = str(entry.get("id") or "").strip()
-        entry_type = str(entry.get("entry_type") or "").strip()
-        if entry_id.startswith("GRANT-") or entry_type in {"grant", "access_granted", "auth_granted"}:
-            if entry_id.startswith("GRANT-"):
-                grants.append(entry_id)
-            else:
-                unresolved.append(
-                    {
-                        "path": legacy_batch_key(ledger, root),
-                        "line": line_number,
-                        "reason": "legacy_non_grant_authorization_entry",
-                        "legacy_id": entry_id,
-                    }
-                )
-
-    return sorted(set(grants)), unresolved
-
-
 def migration_batch_actions(root: Path) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     for path in legacy_record_files(root):
@@ -141,9 +90,7 @@ def build_migration_dry_run_report(source_root: str | Path, target_root: str | P
         planned_actions.extend(migration_batch_actions(source))
 
     preserved_refs, record_issues = collect_legacy_record_refs(source)
-    revoked_grants, grant_issues = collect_legacy_grant_refs(source)
     unresolved.extend(record_issues)
-    unresolved.extend(grant_issues)
 
     if target.exists():
         planned_actions.append({"action": "backup_existing_target", "target": str(target)})
@@ -156,7 +103,7 @@ def build_migration_dry_run_report(source_root: str | Path, target_root: str | P
         planned_actions=planned_actions,
         created_refs=(),
         preserved_refs=preserved_refs,
-        revoked_grants=revoked_grants,
+        revoked_grants=(),
         unresolved=unresolved,
         applied=False,
     )

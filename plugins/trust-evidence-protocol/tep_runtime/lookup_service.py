@@ -559,11 +559,12 @@ def build_lookup_chain_starter(
     chain["next_commands"] = [
         "augment-chain --file evidence-chain.json --format json",
         f"validate-decision --mode {decision_mode} --chain evidence-chain.json --format json",
+        f"reason-step --mode {decision_mode} --chain evidence-chain.json --why \"public chain validated for {decision_mode}\"",
     ]
     chain["notes"] = [
         "Lookup chain starters are mechanical drafts, not proof.",
         "CIX/backend/map candidates are intentionally omitted because they are navigation, not proof.",
-        "Use augment-chain before presenting the chain to the user or requesting permission.",
+        "Use augment-chain and validate-decision before presenting the chain to the user, appending REASON-*, or requesting permission.",
     ]
     if not fact_refs:
         chain["notes"].append("No supported/corroborated CLM fact matched; open record-detail/claim-graph before relying on this draft.")
@@ -676,7 +677,7 @@ def lookup_payload(
         "agent_role": "choose and justify a route; API validates proof boundaries and allowed writes",
         "if_answering": "open record-detail or linked-records before citing a record as proof",
         "if_new_support_found": "use record-support/record-evidence so FILE/RUN/SRC/CLM links are created mechanically",
-        "if_chain_needed": "draft ids/quotes, run augment-chain, then validate-evidence-chain or validate-decision",
+        "if_chain_needed": "draft ids/quotes, run augment-chain, then validate-evidence-chain or validate-decision; REASON/GRANT/final require a validated chain",
         "if_map_context_returned": "open map_view/map_drilldown first, then record-detail and chain validation before citing support",
         "if_continuing_reason": "prefer new chain nodes not already present in current REASON-*; only fall back to revisiting old nodes when lookup finds no new candidates",
         "if_theory_should_rank_high": "promote supported/user-confirmed theory into MODEL/FLOW through validated write paths",
@@ -715,7 +716,7 @@ def lookup_payload(
                 {"if": "candidate record found", "then": "record-detail|linked-records"},
                 {"if": "map cell found", "then": "map-open|map-drilldown"},
                 {"if": "new source support found", "then": "record-support|record-evidence"},
-                {"if": "chain needed", "then": "augment-chain|validate-evidence-chain"},
+                {"if": "chain needed", "then": "augment-chain|validate-decision|reason-step"},
                 {"if": "integrated theory needed", "then": "record-model|record-flow after user-confirmed theory support"},
                 {"if": "route underdetermined", "then": "record-open-question|record-proposal"},
             ],
@@ -730,6 +731,7 @@ def lookup_payload(
             "Treat MAP-* cells as navigation memory; use map-drilldown, record-detail, and chain validation before proof use.",
             "Open record-detail or linked-records before citing a canonical record.",
             "When new support is found, prefer record-support or record-evidence over separate manual record-source/record-claim calls.",
+            "Before REASON/GRANT/final, turn lookup output into a public chain and validate it for the intended mode.",
             "When a current REASON-* exists, lookup defaults to proposing new chain nodes before revisiting old chain nodes.",
             "Use code-search through TEP; do not call external code backends directly in normal work.",
         ],

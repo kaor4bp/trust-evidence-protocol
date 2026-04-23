@@ -148,8 +148,7 @@ Additional transient index:
 
 `runtime/` is generated runtime bookkeeping, not a source of truth.
 `runtime/reasoning/agents/AGENT-*/reasons.jsonl` is the append-only sealed
-per-agent `REASON-*` reasoning ledger. `runtime/reasoning/reasons.jsonl` is
-legacy migration input only and is not written by the 0.4 runtime.
+per-agent `REASON-*` reasoning ledger.
 It is not truth storage, but protected actions use reviewed `REASON-*` access grants as their authority.
 Direct writes to the ledger or seal are blocked by hooks and detected by ledger validation.
 Same-mode continuation cannot mechanically duplicate the direct parent chain; extend the evidence chain or fork a named alternative branch.

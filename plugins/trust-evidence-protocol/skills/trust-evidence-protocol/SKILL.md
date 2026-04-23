@@ -15,7 +15,7 @@ This skill only defines the mental model and the few obligations that remain on 
 The agent may think freely, but durable work must pass through the graph API.
 
 ```text
-route / next_step -> lookup -> support capture -> REASON step/review -> action/final
+route / next_step -> lookup -> support capture -> augment/validate chain -> REASON step/review -> action/final
 ```
 
 Navigation output is not proof.
@@ -41,8 +41,8 @@ They should rank above scattered claims, but they must come from supported or us
 1. If unsure what to do, call `next_step` or CLI `next-step`.
 2. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason. If a current `REASON-*` exists, lookup will prefer records that can extend the chain with new nodes.
 3. If the route says task decomposition is missing, use `validate-task-decomposition`, `confirm-atomic-task`, or `decompose-task`.
-4. If making or relying on a claim, use the support-capture API and then validate or augment the chain.
-5. Before planning continuation or final answers for an active task, append a relevant `REASON-*` step. Before protected edits, model/flow updates, autonomous `done`, or permission-sensitive writes, get the relevant `REASON-*` reviewed into a `GRANT-*`. Bash mutations need a command-bound `GRANT-*`.
+4. If making or relying on a claim, use the support-capture API, build a public chain, run `augment-chain`, then validate it for the intended mode.
+5. Before planning continuation or final answers for an active task, append a relevant `REASON-*` step from that validated chain. Before protected edits, model/flow updates, autonomous `done`, or permission-sensitive writes, get the relevant `REASON-*` reviewed into a `GRANT-*`. Bash mutations need a command-bound `GRANT-*`.
 
 Do not browse raw records as the normal path.
 Use lookup, record detail, linked records, graph/map views, and chain tools.
@@ -85,9 +85,9 @@ For user-facing decisions, permission requests, edits, model/flow updates, and f
 fact: CLM-* "quote" -> observation: SRC/RUN/INP/ART "quote" -> decision
 ```
 
-Then run chain validation when the decision matters.
-If the chain does not validate, do not treat the conclusion as proved.
-Protected actions need a reviewed `REASON-*` ledger step, not just a loose chain file.
+Then run chain validation for the intended mode.
+If the chain does not validate, do not treat the conclusion as proved and do not append `REASON-*`.
+Protected actions need a reviewed `REASON-*` ledger step from a validated chain, not just a loose chain file.
 Planning continuation for an active task needs a valid `REASON-*` whose chain still validates for `planning`.
 Final answers for an active task need a reviewed `REASON-* mode=final`; autonomous `TEP TASK OUTCOME: done` also needs a fresh `GRANT-* mode=final`.
 Bash authorization is append-only: `REASON-* -> GRANT-* -> RUN-*`.

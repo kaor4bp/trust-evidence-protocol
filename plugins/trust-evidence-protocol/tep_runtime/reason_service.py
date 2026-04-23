@@ -14,6 +14,7 @@ from .reason_ledger import (
     validate_reason_ledger,
 )
 from .reasoning import (
+    decision_validation_text_lines,
     decision_validation_payload,
     evidence_chain_report_lines,
     validate_evidence_chain_payload,
@@ -42,6 +43,8 @@ def reason_step_service(
     if validation.errors:
         return None, "\n".join(evidence_chain_report_lines(validation, chain_payload, icon))
     decision = decision_validation_payload(records, hypothesis_entries, chain_payload, mode)
+    if not decision.get("decision_valid"):
+        return None, "\n".join(decision_validation_text_lines(decision, icon))
     return create_reason_step(
         root,
         chain_payload=chain_payload,
