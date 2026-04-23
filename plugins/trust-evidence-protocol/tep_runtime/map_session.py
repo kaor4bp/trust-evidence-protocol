@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .agent_identity import local_agent_owns_working_context, sign_working_context_payload
+from .agent_identity import AgentIdentityRequiredError, local_agent_owns_working_context, sign_working_context_payload
 from .cli_common import public_record_payload, refresh_generated_outputs, validate_mutated_records
 from .contracts import MapViewResponse
 from .hydration import invalidate_hydration_state
@@ -179,7 +179,10 @@ def _persist_wctx(root: Path, records: dict[str, dict], wctx_payload: dict, *, r
         workspace_ref = current_workspace_ref(root)
         if workspace_ref:
             wctx_payload["workspace_refs"] = [workspace_ref]
-    signed, agent_record = sign_working_context_payload(root, records, wctx_payload, timestamp=timestamp)
+    try:
+        signed, agent_record = sign_working_context_payload(root, records, wctx_payload, timestamp=timestamp)
+    except AgentIdentityRequiredError as exc:
+        return None, str(exc)
     mutations: dict[str, dict] = {str(signed["id"]): signed, str(agent_record["id"]): agent_record}
     for task_ref in _safe_list(signed, "task_refs"):
         task = records.get(task_ref)

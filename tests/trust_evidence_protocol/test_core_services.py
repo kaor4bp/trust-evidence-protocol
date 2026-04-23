@@ -269,6 +269,8 @@ from tep_runtime.generated_views import (  # noqa: E402
 )
 from tep_runtime.actions import build_action_payload  # noqa: E402
 from tep_runtime.agent_identity import (  # noqa: E402
+    agent_identity_scope,
+    agent_secret_path,
     ensure_local_agent_identity,
     sign_working_context_payload,
     signed_wctx_payload_hash,
@@ -2250,7 +2252,8 @@ def test_agent_identity_signs_working_context_without_public_secret(tmp_path: Pa
         note="Auto-created WCTX.",
     )
 
-    signed, agent = sign_working_context_payload(root, {}, context, timestamp=timestamp)
+    with agent_identity_scope("test-agent-token-a"):
+        signed, agent = sign_working_context_payload(root, {}, context, timestamp=timestamp)
 
     assert agent["record_type"] == "agent_identity"
     assert agent["record_version"] == 1
@@ -2263,11 +2266,16 @@ def test_agent_identity_signs_working_context_without_public_secret(tmp_path: Pa
     assert signed["handoff_policy"] == "fork-required"
     assert signed["owner_signature"]["signed_payload_hash"] == signed_wctx_payload_hash(signed)
     assert signed["owner_signature"]["signature"].startswith("hmac-sha256:")
-    secret_file = root / "runtime" / "agent_identity" / "local_agent_key.json"
+    secret_file = agent_secret_path(root, "test-agent-token-a")
     secret_payload = json.loads(secret_file.read_text(encoding="utf-8"))
     assert secret_payload["secret"]
-    reused_agent, _ = ensure_local_agent_identity(root, {agent["id"]: agent}, timestamp=timestamp)
+    with agent_identity_scope("test-agent-token-a"):
+        reused_agent, _ = ensure_local_agent_identity(root, {agent["id"]: agent}, timestamp=timestamp)
     assert reused_agent == agent
+    with agent_identity_scope("test-agent-token-b"):
+        other_agent, _ = ensure_local_agent_identity(root, {agent["id"]: agent}, timestamp=timestamp)
+    assert other_agent["id"] != agent["id"]
+    assert other_agent["key_fingerprint"] != agent["key_fingerprint"]
 
 
 def test_topic_index_core_builds_navigation_prefilter_and_reports(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -19,6 +20,7 @@ def run_cli(context: Path, *args: str, check: bool = True) -> subprocess.Complet
     result = subprocess.run(
         [sys.executable, str(CLI), "--context", str(context), *args],
         cwd=REPO_ROOT,
+        env={**os.environ, "TEP_AGENT_SECRET_TOKEN": "pytest-mcp-cli-agent-token"},
         capture_output=True,
         text=True,
         check=False,
@@ -87,7 +89,7 @@ def load_mcp_server_module():
 def test_mcp_manifest_declares_readonly_server() -> None:
     plugin_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_manifest["mcpServers"] == "./.mcp.json"
-    assert plugin_manifest["version"] == "0.4.0"
+    assert plugin_manifest["version"] == "0.4.1"
 
     claude_manifest = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert claude_manifest["version"] == plugin_manifest["version"]
@@ -247,7 +249,7 @@ def test_mcp_schema_migration_plan_and_apply_use_service(tmp_path: Path) -> None
                 "method": "tools/call",
                 "params": {
                     "name": "schema_migration_apply",
-                    "arguments": {"context": str(context), "format": "json"},
+                    "arguments": {"context": str(context), "agent_token": "mcp-schema-migration-agent", "format": "json"},
                 },
             },
         ]
@@ -264,6 +266,7 @@ def test_mcp_schema_migration_plan_and_apply_use_service(tmp_path: Path) -> None
 
 def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monkeypatch) -> None:
     context = bootstrap_context(tmp_path)
+    agent_token = "mcp-front-door-agent-token"
     run_cli(
         context,
         "record-workspace",
@@ -366,6 +369,7 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
             "query": "direct service lookup",
             "reason": "orientation",
             "kind": "facts",
+            "agent_token": agent_token,
             "format": "json",
         }
     )
@@ -392,6 +396,7 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
             "claim_text": "MCP record_evidence writes support through the service layer.",
             "claim_status": "supported",
             "note": "direct mcp record_evidence service test",
+            "agent_token": agent_token,
             "format": "json",
         }
     )
@@ -431,6 +436,7 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
             "mode": "edit",
             "action_kind": "write",
             "why": "prove MCP can create ledger steps through the service layer",
+            "agent_token": agent_token,
             "format": "json",
         }
     )
@@ -451,6 +457,7 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
             "mode": "edit",
             "action_kind": "write",
             "grant": True,
+            "agent_token": agent_token,
             "format": "json",
         }
     )
@@ -831,13 +838,14 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "map_refresh",
-                    "arguments": {
-                        "context": str(context),
-                        "volume": "compact",
-                        "scope": "all",
-                        "limit": 2,
-                        "format": "json",
-                    },
+                        "arguments": {
+                            "context": str(context),
+                            "volume": "compact",
+                            "scope": "all",
+                            "limit": 2,
+                            "agent_token": "mcp-readonly-agent-token",
+                            "format": "json",
+                        },
                 },
             },
             {
@@ -846,12 +854,13 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "map_open",
-                    "arguments": {
-                        "context": str(context),
-                        "query": "Facility Program relationship",
-                        "scope": "all",
-                        "format": "json",
-                    },
+                        "arguments": {
+                            "context": str(context),
+                            "query": "Facility Program relationship",
+                            "scope": "all",
+                            "agent_token": "mcp-readonly-agent-token",
+                            "format": "json",
+                        },
                 },
             },
             {
@@ -863,10 +872,11 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                     "arguments": {
                         "context": str(context),
                         "query": "MCP gateway code lookup",
-                        "reason": "orientation",
-                        "kind": "auto",
-                        "format": "json",
-                    },
+                            "reason": "orientation",
+                            "kind": "auto",
+                            "agent_token": "mcp-readonly-agent-token",
+                            "format": "json",
+                        },
                 },
             },
             {
@@ -1215,7 +1225,12 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "map_view",
-                    "arguments": {"context": str(context), "map_session_ref": map_session_ref, "format": "json"},
+                        "arguments": {
+                            "context": str(context),
+                            "map_session_ref": map_session_ref,
+                            "agent_token": "mcp-readonly-agent-token",
+                            "format": "json",
+                        },
                 },
             },
             {
@@ -1224,7 +1239,13 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "map_move",
-                    "arguments": {"context": str(context), "map_session_ref": map_session_ref, "target": map_target, "format": "json"},
+                        "arguments": {
+                            "context": str(context),
+                            "map_session_ref": map_session_ref,
+                            "target": map_target,
+                            "agent_token": "mcp-readonly-agent-token",
+                            "format": "json",
+                        },
                 },
             },
             {
@@ -1233,7 +1254,13 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "map_drilldown",
-                    "arguments": {"context": str(context), "map_session_ref": map_session_ref, "record": anchor_ref, "format": "json"},
+                        "arguments": {
+                            "context": str(context),
+                            "map_session_ref": map_session_ref,
+                            "record": anchor_ref,
+                            "agent_token": "mcp-readonly-agent-token",
+                            "format": "json",
+                        },
                 },
             },
             {
@@ -1242,7 +1269,13 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "map_checkpoint",
-                    "arguments": {"context": str(context), "map_session_ref": map_session_ref, "note": "mcp checkpoint", "format": "json"},
+                        "arguments": {
+                            "context": str(context),
+                            "map_session_ref": map_session_ref,
+                            "note": "mcp checkpoint",
+                            "agent_token": "mcp-readonly-agent-token",
+                            "format": "json",
+                        },
                 },
             },
         ]

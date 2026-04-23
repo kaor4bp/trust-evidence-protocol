@@ -38,11 +38,12 @@ They should rank above scattered claims, but they must come from supported or us
 
 ## Start Here
 
-1. If unsure what to do, call `next_step` or CLI `next-step`.
-2. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason. If a current `REASON-*` exists, lookup will prefer records that can extend the chain with new nodes.
-3. If the route says task decomposition is missing, use `validate-task-decomposition`, `confirm-atomic-task`, or `decompose-task`.
-4. If making or relying on a claim, use the support-capture API, build a public chain, run `augment-chain`, then validate it for the intended mode.
-5. Before planning continuation or final answers for an active task, append a relevant `REASON-*` step from that validated chain. Before protected edits, model/flow updates, autonomous `done`, or permission-sensitive writes, get the relevant `REASON-*` reviewed into a `GRANT-*`. Bash mutations need a command-bound `GRANT-*`.
+1. Invent a private per-agent secret token at the start of a work session and reuse it for every mutating MCP call as `agent_token`, or expose it to CLI/hooks as `TEP_AGENT_SECRET_TOKEN`. Do not share this token with another agent.
+2. If unsure what to do, call `next_step` or CLI `next-step`.
+3. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason. If a current `REASON-*` exists, lookup will prefer records that can extend the chain with new nodes.
+4. If the route says task decomposition is missing, use `validate-task-decomposition`, `confirm-atomic-task`, or `decompose-task`.
+5. If making or relying on a claim, use the support-capture API, build a public chain, run `augment-chain`, then validate it for the intended mode.
+6. Before planning continuation or final answers for an active task, append a relevant `REASON-*` step from that validated chain. Before protected edits, model/flow updates, autonomous `done`, or permission-sensitive writes, get the relevant `REASON-*` reviewed into a `GRANT-*`. Bash mutations need a command-bound `GRANT-*`.
 
 Do not browse raw records as the normal path.
 Use lookup, record detail, linked records, graph/map views, and chain tools.

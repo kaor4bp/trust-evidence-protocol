@@ -19,10 +19,19 @@ CLI = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "context_c
 INSTALL_LOCAL_PLUGIN = REPO_ROOT / "scripts" / "install-local-plugin.sh"
 
 
-def run_cli(context: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    context: Path,
+    *args: str,
+    check: bool = True,
+    agent_token: str | None = "pytest-cli-agent-token",
+) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ)
+    if agent_token is not None:
+        env["TEP_AGENT_SECRET_TOKEN"] = agent_token
     result = subprocess.run(
         [sys.executable, str(CLI), "--context", str(context), *args],
         cwd=REPO_ROOT,
+        env=env,
         capture_output=True,
         text=True,
         check=False,
@@ -2342,7 +2351,7 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert agent["record_version"] == 1
     assert agent["key_fingerprint"] == auto_wctx["agent_key_fingerprint"]
     assert "secret" not in agent
-    assert (context / "runtime" / "agent_identity" / "local_agent_key.json").exists()
+    assert any((context / "runtime" / "agent_identity" / "agents").glob("*.json"))
     assert lookup_facts["primary_tool"] == "claim-graph"
     assert lookup_facts["api_contract_version"] == 1
     assert lookup_facts["evidence_profile"]["normal_entrypoint"] == "lookup"
@@ -3478,6 +3487,7 @@ def test_lookup_ignores_active_working_context_linked_to_paused_task(tmp_path: P
             "facts",
             "--format",
             "json",
+            agent_token="pytest-other-cli-agent-token",
         ).stdout
     )
     assert lookup["focus"]["auto_created_working_context"] is True
@@ -3536,24 +3546,6 @@ def test_lookup_forks_focus_when_active_wctx_is_owned_by_another_agent(tmp_path:
         "working_context",
     )
 
-    secret_path = context / "runtime" / "agent_identity" / "local_agent_key.json"
-    secret_path.write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "agent_identity_ref": "AGENT-20260423-feedfeed",
-                "agent_name": "pytest-other-agent",
-                "key_algorithm": "hmac-sha256",
-                "key_scope": "local-agent",
-                "secret": "other-agent-secret",
-                "created_at": "2026-04-23T00:00:00+03:00",
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
     close_attempt = run_cli(
         context,
         "working-context",
@@ -3563,6 +3555,7 @@ def test_lookup_forks_focus_when_active_wctx_is_owned_by_another_agent(tmp_path:
         "--note",
         "should fail for non-owner",
         check=False,
+        agent_token="pytest-other-cli-agent-token",
     )
     assert close_attempt.returncode == 1
     assert "owned by another local agent" in close_attempt.stdout
@@ -3579,12 +3572,14 @@ def test_lookup_forks_focus_when_active_wctx_is_owned_by_another_agent(tmp_path:
             "facts",
             "--format",
             "json",
+            agent_token="pytest-other-cli-agent-token",
         ).stdout
     )
     assert lookup["focus"]["auto_created_working_context"] is True
     assert lookup["focus"]["working_context_ref"] != foreign_wctx_id
+    foreign = load_record(context, "working_context", foreign_wctx_id)
     created = load_record(context, "working_context", lookup["focus"]["working_context_ref"])
-    assert created["agent_identity_ref"] == "AGENT-20260423-feedfeed"
+    assert created["agent_identity_ref"] != foreign["agent_identity_ref"]
     assert created["owner_signature"]["algorithm"] == "hmac-sha256"
 
 
@@ -5656,7 +5651,9 @@ def test_reason_ledger_grants_one_shot_access_and_detects_tamper(tmp_path: Path)
     assert access_match, decision.stdout
     reason_id = reason_match.group(1)
     access_id = access_match.group(1)
-    agent_secret = json.loads((context / "runtime" / "agent_identity" / "local_agent_key.json").read_text(encoding="utf-8"))
+    agent_secret_files = sorted((context / "runtime" / "agent_identity" / "agents").glob("*.json"))
+    assert agent_secret_files
+    agent_secret = json.loads(agent_secret_files[0].read_text(encoding="utf-8"))
     agent_ref = agent_secret["agent_identity_ref"]
     ledger = context / "runtime" / "reasoning" / "agents" / agent_ref / "reasons.jsonl"
     assert ledger.exists()

@@ -7,6 +7,9 @@ import hmac
 import json
 import os
 import secrets
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +20,8 @@ from .paths import runtime_dir
 
 
 LOCAL_AGENT_SECRET_VERSION = 1
+AGENT_SECRET_TOKEN_ENV = "TEP_AGENT_SECRET_TOKEN"
+_AGENT_SECRET_TOKEN: ContextVar[str] = ContextVar("tep_agent_secret_token", default="")
 WCTX_SIGNED_FIELDS = (
     "id",
     "record_type",
@@ -56,8 +61,15 @@ def _sha256_text(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def local_agent_secret_path(root: Path) -> Path:
-    return runtime_dir(root) / "agent_identity" / "local_agent_key.json"
+def agent_secret_token_hash(token: str) -> str:
+    return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+
+
+def agent_secret_path(root: Path, token: str | None = None) -> Path:
+    normalized = _normalize_agent_token(token if token is not None else current_agent_secret_token())
+    if not normalized:
+        raise AgentIdentityRequiredError()
+    return runtime_dir(root) / "agent_identity" / "agents" / f"{agent_secret_token_hash(normalized)}.json"
 
 
 def agent_key_fingerprint(secret: str) -> str:
@@ -72,21 +84,63 @@ def _local_agent_name() -> str:
     return str(os.environ.get("TEP_AGENT_NAME") or os.environ.get("USER") or "local-agent").strip() or "local-agent"
 
 
-def _new_secret_payload(records: dict[str, dict], timestamp: str) -> dict[str, str | int]:
-    secret = secrets.token_hex(32)
+class AgentIdentityRequiredError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__(
+            "agent_identity_required: provide a per-agent secret token with "
+            "agent_token or TEP_AGENT_SECRET_TOKEN before WCTX/REASON/GRANT mutations"
+        )
+
+
+def _normalize_agent_token(token: str | None) -> str:
+    return str(token or "").strip()
+
+
+def current_agent_secret_token() -> str:
+    return _normalize_agent_token(_AGENT_SECRET_TOKEN.get() or os.environ.get(AGENT_SECRET_TOKEN_ENV))
+
+
+@contextmanager
+def agent_identity_scope(token: str | None) -> Iterator[None]:
+    normalized = _normalize_agent_token(token)
+    if not normalized:
+        yield
+        return
+    reset_token = _AGENT_SECRET_TOKEN.set(normalized)
+    try:
+        yield
+    finally:
+        _AGENT_SECRET_TOKEN.reset(reset_token)
+
+
+def require_agent_secret_token(token: str | None = None) -> str:
+    normalized = _normalize_agent_token(token if token is not None else current_agent_secret_token())
+    if not normalized:
+        raise AgentIdentityRequiredError()
+    return normalized
+
+
+def _signing_secret_from_token(token: str) -> str:
+    return hashlib.sha256(f"tep-agent-signing-v1\0{token}".encode("utf-8")).hexdigest()
+
+
+def _new_secret_payload(records: dict[str, dict], timestamp: str, token: str) -> dict[str, str | int]:
+    token_hash = agent_secret_token_hash(token)
     return {
         "version": LOCAL_AGENT_SECRET_VERSION,
         "agent_identity_ref": next_record_id(records, "AGENT-"),
         "agent_name": _local_agent_name(),
         "key_algorithm": "hmac-sha256",
         "key_scope": "local-agent",
-        "secret": secret,
+        "token_hash": token_hash,
+        "secret": _signing_secret_from_token(token),
         "created_at": timestamp,
     }
 
 
 def load_or_create_local_agent_secret(root: Path, records: dict[str, dict], timestamp: str | None = None) -> dict:
-    path = local_agent_secret_path(root)
+    token = require_agent_secret_token()
+    path = agent_secret_path(root, token)
     if path.exists():
         try:
             payload = parse_json_file(path)
@@ -95,11 +149,12 @@ def load_or_create_local_agent_secret(root: Path, records: dict[str, dict], time
         if (
             int(payload.get("version", 0) or 0) == LOCAL_AGENT_SECRET_VERSION
             and str(payload.get("agent_identity_ref", "")).startswith("AGENT-")
+            and str(payload.get("token_hash", "")).strip() == agent_secret_token_hash(token)
             and str(payload.get("secret", "")).strip()
         ):
             return payload
 
-    payload = _new_secret_payload(records, timestamp or now_timestamp())
+    payload = _new_secret_payload(records, timestamp or now_timestamp(), token)
     write_json_file(path, payload)
     try:
         path.chmod(0o600)
@@ -109,7 +164,10 @@ def load_or_create_local_agent_secret(root: Path, records: dict[str, dict], time
 
 
 def load_local_agent_secret(root: Path) -> dict:
-    path = local_agent_secret_path(root)
+    token = current_agent_secret_token()
+    if not token:
+        return {}
+    path = agent_secret_path(root, token)
     if not path.exists():
         return {}
     try:
@@ -119,6 +177,7 @@ def load_local_agent_secret(root: Path) -> dict:
     if (
         int(payload.get("version", 0) or 0) != LOCAL_AGENT_SECRET_VERSION
         or not str(payload.get("agent_identity_ref", "")).startswith("AGENT-")
+        or str(payload.get("token_hash", "")).strip() != agent_secret_token_hash(token)
         or not str(payload.get("secret", "")).strip()
     ):
         return {}

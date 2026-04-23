@@ -20,6 +20,7 @@ CLAUDE_HOOK_DIR = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / 
 
 def run_script(script: Path, payload: dict | None = None, *, check: bool = True) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
+    env["TEP_AGENT_SECRET_TOKEN"] = "pytest-hooks-agent-token"
     if payload:
         cwd = payload.get("cwd")
         if isinstance(cwd, str):
@@ -44,6 +45,7 @@ def run_cli(context: Path, *args: str, check: bool = True) -> subprocess.Complet
     result = subprocess.run(
         [sys.executable, str(CLI), "--context", str(context), *args],
         cwd=REPO_ROOT,
+        env={**os.environ, "TEP_AGENT_SECRET_TOKEN": "pytest-hooks-agent-token"},
         capture_output=True,
         text=True,
         check=False,
@@ -64,6 +66,7 @@ def run_runtime(
     result = subprocess.run(
         [sys.executable, str(RUNTIME_GATE), "--context", str(context), *args],
         cwd=cwd or REPO_ROOT,
+        env={**os.environ, "TEP_AGENT_SECRET_TOKEN": "pytest-hooks-agent-token"},
         capture_output=True,
         text=True,
         check=False,

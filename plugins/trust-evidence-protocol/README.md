@@ -561,6 +561,7 @@ Commands:
 - `lookup --query "..." --reason orientation|planning|answering|permission|editing|debugging|retrospective|curiosity|migration --kind facts|code|theory|research|policy|auto [--format text|json]`
   - one front door for normal lookup routing
   - `--reason` is mandatory and is written into telemetry
+  - owner-bound mutations require a private per-agent token: pass `agent_token` in MCP calls, or set `TEP_AGENT_SECRET_TOKEN` for CLI/hooks; agents must invent their own token and not share another agent's token
   - ensures a `WCTX-*` operational context exists when a workspace is known; auto-created WCTX is not proof and not authorization
   - returns the primary tool, ordered route commands, `next_allowed_commands`, `route_graph`, `evidence_profile`, `output_contract`, navigation-only `map_navigation`, `start_briefing`, `reason_pressure`, and a compact `chain_starter`
   - `start_briefing` is navigation/control metadata over the current REASON branch, recent REASON steps, recent actions/runs, and checks to perform before continuing

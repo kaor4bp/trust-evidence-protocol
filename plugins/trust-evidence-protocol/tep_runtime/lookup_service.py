@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .attention import ATTENTION_MODES
-from .agent_identity import local_agent_owns_working_context, sign_working_context_payload
+from .agent_identity import AgentIdentityRequiredError, local_agent_owns_working_context, sign_working_context_payload
 from .claims import claim_is_fallback
 from .cli_common import public_record_payload, refresh_generated_outputs, validate_mutated_records
 from .hydration import invalidate_hydration_state
@@ -219,7 +219,10 @@ def ensure_lookup_working_context(root: Path, records: dict[str, dict], query: s
         tags=["auto-wctx", f"lookup-reason:{reason}"],
         note="Auto-created by lookup to keep agent operational context explicit. Not proof and not authorization.",
     )
-    payload, agent_record = sign_working_context_payload(root, records, payload, timestamp=timestamp)
+    try:
+        payload, agent_record = sign_working_context_payload(root, records, payload, timestamp=timestamp)
+    except AgentIdentityRequiredError as exc:
+        return "", None, str(exc)
     error = persist_working_context_with_task_links(root, records, payload, extra_records=(agent_record,))
     if error:
         return "", None, f"failed to auto-create WCTX for lookup: {error}"

@@ -13,7 +13,7 @@ if plugin_root not in sys.path:
     sys.path.insert(0, plugin_root)
 
 from tep_runtime.core_validators import validate_active_focus, validate_core_graph  # noqa: E402
-from tep_runtime.agent_identity import sign_working_context_payload  # noqa: E402
+from tep_runtime.agent_identity import agent_identity_scope, sign_working_context_payload  # noqa: E402
 from tep_runtime.reason_ledger import (  # noqa: E402
     append_reason_entry,
     chain_payload_hash,
@@ -250,13 +250,15 @@ def test_v04_core_validator_detects_tampered_local_wctx_signature(tmp_path: Path
         updated_at=TS,
         workspace_refs=[WORKSPACE_REF],
     )
-    signed, owner = sign_working_context_payload(root, {}, context, timestamp=TS)
+    with agent_identity_scope("validator-agent-token"):
+        signed, owner = sign_working_context_payload(root, {}, context, timestamp=TS)
     records = base_records(owner, signed)
     assert messages(validate_core_graph(root, records)) == []
 
     tampered = dict(signed)
     tampered["title"] = "Tampered focus"
-    errors = messages(validate_core_graph(root, base_records(owner, tampered)))
+    with agent_identity_scope("validator-agent-token"):
+        errors = messages(validate_core_graph(root, base_records(owner, tampered)))
 
     assert "WCTX owner_signature.signed_payload_hash mismatch" in errors
     assert "WCTX owner_signature.signature mismatch" in errors
@@ -341,10 +343,12 @@ def test_reason_ledger_write_path_creates_per_agent_files(tmp_path: Path) -> Non
         json.dumps({"reasoning": {"pow": {"enabled": False}}}),
         encoding="utf-8",
     )
-    validation = validate_reason_ledger(tmp_path)
+    with agent_identity_scope("ledger-agent-token"):
+        validation = validate_reason_ledger(tmp_path, create_secret=True)
 
     assert validation["ok"]
-    ledger = current_reasons_ledger_path(tmp_path)
+    with agent_identity_scope("ledger-agent-token"):
+        ledger = current_reasons_ledger_path(tmp_path)
     assert ledger is not None
     assert ledger.exists()
     assert ledger.parent.name.startswith("AGENT-")
@@ -362,24 +366,26 @@ def test_reason_ledger_state_validation_detects_tamper(tmp_path: Path) -> None:
         "nodes": [{"role": "task", "ref": "TASK-20260423-a0000012", "quote": "validate ledger"}],
         "edges": [],
     }
-    entry, error = append_reason_entry(
-        tmp_path,
-        {
-            "entry_type": "step",
-            "status": "reviewed",
-            "task_ref": "TASK-20260423-a0000012",
-            "mode": "edit",
-            "chain_hash": chain_payload_hash(chain_payload),
-            "chain_payload": chain_payload,
-        },
-    )
+    with agent_identity_scope("ledger-tamper-agent-token"):
+        entry, error = append_reason_entry(
+            tmp_path,
+            {
+                "entry_type": "step",
+                "status": "reviewed",
+                "task_ref": "TASK-20260423-a0000012",
+                "mode": "edit",
+                "chain_hash": chain_payload_hash(chain_payload),
+                "chain_payload": chain_payload,
+            },
+        )
     assert entry is not None, error
     assert entry["agent_identity_ref"].startswith("AGENT-")
     assert entry["agent_key_fingerprint"].startswith("sha256:")
     assert not (tmp_path / "runtime" / "reasoning" / "reasons.jsonl").exists()
     assert messages(validate_records_state(tmp_path, {})) == []
 
-    ledger = current_reasons_ledger_path(tmp_path)
+    with agent_identity_scope("ledger-tamper-agent-token"):
+        ledger = current_reasons_ledger_path(tmp_path)
     assert ledger is not None
     ledger.write_text(
         ledger.read_text(encoding="utf-8").replace("ledger validation", "tampered validation", 1),
@@ -400,29 +406,30 @@ def write_pow_disabled_settings(root: Path) -> None:
 
 def grant_for_run(root: Path, *, command: str = "echo hi", max_runs: int = 1) -> dict:
     write_pow_disabled_settings(root)
-    grant, error = append_reason_entry(
-        root,
-        {
-            "entry_type": "grant",
-            "status": "active",
-            "grant_type": "exact_command",
-            "reason_ref": "REASON-20260423-a0000013",
-            "workspace_ref": WORKSPACE_REF,
-            "project_ref": "PRJ-20260423-a0000011",
-            "task_ref": "TASK-20260423-a0000012",
-            "mode": "edit",
-            "action_kind": "write",
-            "command": command,
-            "command_sha256": command_hash(command),
-            "cwd": normalize_cwd(root),
-            "tool": "bash",
-            "max_runs": max_runs,
-            "valid_from": "2026-04-23T00:00:00+03:00",
-            "expires_at": "2026-04-24T00:00:00+03:00",
-            "context_fingerprint": "pytest",
-        },
-        id_prefix="GRANT",
-    )
+    with agent_identity_scope("grant-run-agent-token"):
+        grant, error = append_reason_entry(
+            root,
+            {
+                "entry_type": "grant",
+                "status": "active",
+                "grant_type": "exact_command",
+                "reason_ref": "REASON-20260423-a0000013",
+                "workspace_ref": WORKSPACE_REF,
+                "project_ref": "PRJ-20260423-a0000011",
+                "task_ref": "TASK-20260423-a0000012",
+                "mode": "edit",
+                "action_kind": "write",
+                "command": command,
+                "command_sha256": command_hash(command),
+                "cwd": normalize_cwd(root),
+                "tool": "bash",
+                "max_runs": max_runs,
+                "valid_from": "2026-04-23T00:00:00+03:00",
+                "expires_at": "2026-04-24T00:00:00+03:00",
+                "context_fingerprint": "pytest",
+            },
+            id_prefix="GRANT",
+        )
     assert grant is not None, error
     return grant
 

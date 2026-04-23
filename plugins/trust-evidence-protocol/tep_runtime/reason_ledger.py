@@ -12,7 +12,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from .agent_identity import agent_key_fingerprint, load_local_agent_secret, load_or_create_local_agent_secret
+from .agent_identity import (
+    AgentIdentityRequiredError,
+    agent_key_fingerprint,
+    load_local_agent_secret,
+    load_or_create_local_agent_secret,
+)
 from .errors import ValidationError
 from .hydration import compute_context_fingerprint
 from .hypotheses import active_hypothesis_entry_by_claim
@@ -411,7 +416,7 @@ def read_reason_entries(root: Path, *, agent_ref: str | None = None) -> tuple[li
     return entries, errors
 
 
-def validate_reason_ledger(root: Path, *, create_secret: bool = True, agent_ref: str | None = None) -> dict[str, Any]:
+def validate_reason_ledger(root: Path, *, create_secret: bool = False, agent_ref: str | None = None) -> dict[str, Any]:
     scopes = _ledger_scopes(root, create_secret=create_secret, agent_ref=agent_ref)
     if not scopes:
         return {"ok": True, "entries": [], "errors": [], "head_hash": ZERO_LEDGER_HASH}
@@ -658,7 +663,10 @@ def append_reason_entry(
     if not validation["ok"]:
         return None, "; ".join(validation["errors"])
     entries = validation["entries"]
-    agent = _current_agent_metadata(root, create=True)
+    try:
+        agent = _current_agent_metadata(root, create=True)
+    except AgentIdentityRequiredError as exc:
+        return None, str(exc)
     agent_ref = str(agent.get("agent_identity_ref", "")).strip()
     if not agent_ref:
         return None, "local agent identity is required for reason ledger entries"
@@ -945,6 +953,16 @@ def grant_reason_access(
     reason = reason_by_id(entries, reason_ref)
     if not reason:
         return None, f"missing reason {reason_ref}"
+    try:
+        agent = _current_agent_metadata(root, create=True)
+    except AgentIdentityRequiredError as exc:
+        return None, str(exc)
+    current_agent_ref = str(agent.get("agent_identity_ref", "")).strip()
+    reason_agent_ref = str(reason.get("agent_identity_ref", "")).strip()
+    if not current_agent_ref:
+        return None, "agent_identity_required: reason grants require the current per-agent identity"
+    if reason_agent_ref and reason_agent_ref != current_agent_ref:
+        return None, f"{reason_ref} belongs to another agent identity {reason_agent_ref}"
     if str(reason.get("entry_type", "")).strip() != "step":
         return None, f"{reason_ref} is not a reason step"
     if not _justification_valid(reason):
@@ -1104,8 +1122,25 @@ def validate_reason_access(
         for entry in entries
         if str(entry.get("entry_type", "")).strip() in GRANT_ENTRY_TYPES
     ]
+    current_agent = current_reasoning_agent_ref(root, create=False)
+    if not current_agent:
+        reason = "agent_identity_required: provide the current per-agent token before using a reason grant"
+        if telemetry:
+            append_reason_access_event(
+                root,
+                "reason_grant_rejected",
+                mode=mode,
+                action_kind=action_kind,
+                reason=reason,
+                channel=telemetry.get("channel", "cli"),
+                tool=telemetry.get("tool", "validate-reason-access"),
+            )
+        return {"ok": False, "access": None, "reason": reason, "checked_count": len(candidates)}
     for access in reversed(candidates):
         access_id = str(access.get("id", "")).strip() or "unknown"
+        if current_agent and str(access.get("agent_identity_ref", "")).strip() != current_agent:
+            failures.append(f"{access_id}: agent identity mismatch")
+            continue
         if str(access.get("mode", "")).strip() != mode:
             failures.append(f"{access_id}: mode mismatch")
             continue

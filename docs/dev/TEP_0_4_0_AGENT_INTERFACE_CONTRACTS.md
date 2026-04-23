@@ -313,9 +313,12 @@ Rules:
 
 - WCTX is operational state, not proof.
 - Private agent key material is never stored in the public WCTX record.
-- The local HMAC key is runtime-private state under
-  `.tep_context/runtime/agent_identity/`; only its `sha256:` fingerprint is
-  exposed through `AGENT-*`.
+- Each agent must invent and reuse a private `agent_token` for owner-bound
+  mutations. MCP mutating tools accept this as `agent_token`; CLI/hooks can read
+  the same value from `TEP_AGENT_SECRET_TOKEN`.
+- The token is scoped into runtime-private state under
+  `.tep_context/runtime/agent_identity/agents/<token_hash>.json`; public records
+  expose only `sha256:` fingerprints through `AGENT-*`.
 - The WCTX owner signature covers the canonical focus payload that the runtime
   uses for `next_step`, lookup routing, map sessions, and protected actions.
 - `map_sessions` is part of the signed WCTX payload. Tampering with a map
@@ -328,7 +331,8 @@ Rules:
   fork/adopted WCTX with `parent_context_ref` and `supersedes_refs` links.
 - REASON/GRANT created under a WCTX must bind the same `agent_identity_ref` or
   be rejected by validation. Runtime writes use
-  `runtime/reasoning/agents/AGENT-*/reasons.jsonl`.
+  `runtime/reasoning/agents/AGENT-*/reasons.jsonl`; another agent's ledger can
+  be inspected but must not authorize current-agent actions.
 
 ## 4. Evidence Capture Contract
 
