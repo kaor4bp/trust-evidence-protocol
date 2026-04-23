@@ -232,6 +232,9 @@ The runtime creates or reuses a local agent identity:
 {
   "id": "AGENT-*",
   "record_type": "agent_identity",
+  "contract_version": "0.4",
+  "record_version": 1,
+  "scope": "agent.local",
   "key_algorithm": "hmac-sha256",
   "key_fingerprint": "sha256:*",
   "key_scope": "local-agent",
@@ -245,6 +248,8 @@ Every active `WCTX-*` must be owner-bound:
 {
   "id": "WCTX-*",
   "record_type": "working_context",
+  "contract_version": "0.4",
+  "record_version": 1,
   "agent_identity_ref": "AGENT-*",
   "agent_key_fingerprint": "sha256:*",
   "ownership_mode": "owner-only",

@@ -130,6 +130,7 @@ Legacy sequential ids such as `CLM-YYYYMMDD-NNNN` remain valid for existing cont
 Use the templates bundled with the plugin:
 
 - `templates/codex_context/input.json`
+- `templates/codex_context/agent_identity.json`
 - `templates/codex_context/map.json`
 - `templates/codex_context/source.json`
 - `templates/codex_context/claim.json`

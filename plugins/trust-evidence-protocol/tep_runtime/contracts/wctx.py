@@ -4,12 +4,20 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from .common import CONTRACT_VERSION, compact_object_schema, jsonable, loose_array, loose_object
+from .common import (
+    CONTRACT_VERSION,
+    RECORD_VERSION,
+    compact_object_schema,
+    jsonable,
+    loose_array,
+    loose_object,
+)
 
 
 @dataclass(frozen=True)
 class AgentIdentityRecord:
     id: str
+    scope: str
     agent_name: str
     key_fingerprint: str
     created_at: str
@@ -17,7 +25,9 @@ class AgentIdentityRecord:
     key_algorithm: str = "hmac-sha256"
     key_scope: str = "local-agent"
     status: str = "active"
+    note: str = "Public local-agent identity metadata only."
     contract_version: str = CONTRACT_VERSION
+    record_version: int = RECORD_VERSION
 
     def to_payload(self) -> dict[str, Any]:
         return jsonable(self)
@@ -51,6 +61,7 @@ class WorkingContextRecord:
     tags: tuple[str, ...] = ()
     note: str = ""
     contract_version: str = CONTRACT_VERSION
+    record_version: int = RECORD_VERSION
 
     def to_payload(self) -> dict[str, Any]:
         return jsonable(self)
@@ -82,25 +93,31 @@ AGENT_IDENTITY_RECORD_SCHEMA = compact_object_schema(
     ),
     required=(
         "contract_version",
+        "record_version",
         "id",
         "record_type",
+        "scope",
         "agent_name",
         "key_algorithm",
         "key_fingerprint",
         "key_scope",
         "status",
         "created_at",
+        "note",
     ),
     properties={
         "contract_version": {"type": "string", "const": CONTRACT_VERSION},
+        "record_version": {"type": "integer", "const": RECORD_VERSION},
         "id": {"type": "string", "pattern": "^AGENT-"},
         "record_type": {"type": "string", "const": "agent_identity"},
+        "scope": {"type": "string", "minLength": 1},
         "agent_name": {"type": "string", "minLength": 1},
         "key_algorithm": {"type": "string", "const": "hmac-sha256"},
         "key_fingerprint": {"type": "string", "pattern": "^sha256:"},
         "key_scope": {"type": "string", "const": "local-agent"},
         "status": {"type": "string", "enum": ["active", "revoked", "archived"]},
         "created_at": {"type": "string"},
+        "note": {"type": "string", "minLength": 1},
     },
 )
 
@@ -114,6 +131,7 @@ WORKING_CONTEXT_RECORD_SCHEMA = compact_object_schema(
     ),
     required=(
         "contract_version",
+        "record_version",
         "id",
         "record_type",
         "scope",
@@ -127,9 +145,11 @@ WORKING_CONTEXT_RECORD_SCHEMA = compact_object_schema(
         "owner_signature",
         "created_at",
         "updated_at",
+        "note",
     ),
     properties={
         "contract_version": {"type": "string", "const": CONTRACT_VERSION},
+        "record_version": {"type": "integer", "const": RECORD_VERSION},
         "id": {"type": "string", "pattern": "^WCTX-"},
         "record_type": {"type": "string", "const": "working_context"},
         "scope": {"type": "string", "minLength": 1},

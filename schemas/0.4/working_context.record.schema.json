@@ -5,6 +5,7 @@
   "type": "object",
   "required": [
     "contract_version",
+    "record_version",
     "id",
     "record_type",
     "scope",
@@ -17,10 +18,12 @@
     "handoff_policy",
     "owner_signature",
     "created_at",
-    "updated_at"
+    "updated_at",
+    "note"
   ],
   "properties": {
     "contract_version": {"type": "string", "const": "0.4"},
+    "record_version": {"type": "integer", "const": 1},
     "id": {"type": "string", "pattern": "^WCTX-"},
     "record_type": {"type": "string", "const": "working_context"},
     "scope": {"type": "string", "minLength": 1},

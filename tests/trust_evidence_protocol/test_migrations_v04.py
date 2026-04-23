@@ -121,14 +121,62 @@ def map_payload(**overrides: object) -> dict:
     return payload
 
 
+def agent_payload(**overrides: object) -> dict:
+    payload: dict = {
+        "id": "AGENT-20260423-demo",
+        "record_type": "agent_identity",
+        "contract_version": "0.4",
+        "scope": "agent.local",
+        "agent_name": "pytest-agent",
+        "key_algorithm": "hmac-sha256",
+        "key_fingerprint": "sha256:agent-key",
+        "key_scope": "local-agent",
+        "status": "active",
+        "created_at": "2026-04-23T00:00:00+03:00",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def wctx_payload(**overrides: object) -> dict:
+    payload: dict = {
+        "id": "WCTX-20260423-demo",
+        "record_type": "working_context",
+        "contract_version": "0.4",
+        "scope": "pytest.wctx",
+        "title": "Legacy WCTX shape",
+        "status": "active",
+        "context_kind": "investigation",
+        "agent_identity_ref": "AGENT-20260423-demo",
+        "agent_key_fingerprint": "sha256:agent-key",
+        "ownership_mode": "owner-only",
+        "handoff_policy": "fork-required",
+        "owner_signature": {
+            "algorithm": "hmac-sha256",
+            "signed_payload_hash": "sha256:wctx",
+            "signature": "hmac-sha256:signature",
+        },
+        "created_at": "2026-04-23T00:00:00+03:00",
+        "updated_at": "2026-04-23T00:00:00+03:00",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_schema_migration_plan_is_read_only_and_each_change_has_module(tmp_path: Path) -> None:
     context = tmp_path / ".tep_context"
     map_file = context / "records" / "map" / "MAP-20260423-demo.json"
     write_json(map_file, map_payload())
 
     migrations = registered_schema_migrations()
-    assert [migration.id for migration in migrations] == ["20260423_map_record_v1"]
-    assert migrations[0].__class__.__module__.endswith(".map_record_v1")
+    assert [migration.id for migration in migrations] == [
+        "20260423_agent_identity_v1",
+        "20260423_working_context_v1",
+        "20260423_map_record_v1",
+    ]
+    assert migrations[0].__class__.__module__.endswith(".agent_identity_v1")
+    assert migrations[1].__class__.__module__.endswith(".working_context_v1")
+    assert migrations[2].__class__.__module__.endswith(".map_record_v1")
 
     report = build_schema_migration_report(context).to_payload()
 
@@ -140,6 +188,43 @@ def test_schema_migration_plan_is_read_only_and_each_change_has_module(tmp_path:
     stored = json.loads(map_file.read_text(encoding="utf-8"))
     assert stored["schema_version"] == "0.4"
     assert "record_version" not in stored
+
+
+def test_schema_migration_versions_agent_identity_and_wctx_records(tmp_path: Path) -> None:
+    context = tmp_path / ".tep_context"
+    agent_file = context / "records" / "agent_identity" / "AGENT-20260423-demo.json"
+    wctx_file = context / "records" / "working_context" / "WCTX-20260423-demo.json"
+    write_json(agent_file, agent_payload())
+    write_json(wctx_file, wctx_payload())
+
+    report = build_schema_migration_report(context, apply=True).to_payload()
+
+    assert report["applied"] is True
+    assert report["unresolved"] == []
+    assert report["preserved_refs"] == ["AGENT-20260423-demo", "WCTX-20260423-demo"]
+    agent = json.loads(agent_file.read_text(encoding="utf-8"))
+    wctx = json.loads(wctx_file.read_text(encoding="utf-8"))
+    assert agent["record_version"] == 1
+    assert agent["note"]
+    assert wctx["record_version"] == 1
+    assert wctx["note"]
+
+
+def test_schema_migration_refuses_unsafe_identity_and_wctx_policy_changes(tmp_path: Path) -> None:
+    context = tmp_path / ".tep_context"
+    agent_file = context / "records" / "agent_identity" / "AGENT-20260423-demo.json"
+    wctx_file = context / "records" / "working_context" / "WCTX-20260423-demo.json"
+    write_json(agent_file, agent_payload(key_algorithm="ed25519"))
+    write_json(wctx_file, wctx_payload(ownership_mode="shared"))
+
+    report = build_schema_migration_report(context, apply=True).to_payload()
+
+    reasons = {item["reason"] for item in report["unresolved"]}
+    assert "unsupported_agent_key_algorithm" in reasons
+    assert "unsupported_wctx_ownership_mode" in reasons
+    assert report["applied"] is False
+    assert "record_version" not in json.loads(agent_file.read_text(encoding="utf-8"))
+    assert "record_version" not in json.loads(wctx_file.read_text(encoding="utf-8"))
 
 
 def test_schema_migration_reports_unknown_selected_migration(tmp_path: Path) -> None:

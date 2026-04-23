@@ -10,10 +10,10 @@ agent-owned WCTX signatures, REASON progression, chain-ledger hash/seal/PoW
 verification, and GRANT/RUN authorization.
 
 Canonical records created in 0.4 use `contract_version` for the public runtime
-contract and `record_version` for the concrete JSON record shape. New 0.4-only
-records, starting with `MAP-*`, require both fields. Legacy records without
-`record_version` stay readable until an explicit migration rewrites or wraps
-them.
+contract and `record_version` for the concrete JSON record shape. Records with
+strict 0.4 ownership or navigation contracts, including `AGENT-*`, `WCTX-*`,
+and `MAP-*`, require both fields. Legacy records without `record_version` stay
+readable until an explicit migration rewrites or wraps them.
 
 `AGENT-*` identity records expose only local-agent key metadata and fingerprints.
 Private key material is runtime-private. `WCTX-*` records are owner-bound with

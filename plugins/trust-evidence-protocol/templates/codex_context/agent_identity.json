@@ -1,0 +1,14 @@
+{
+  "id": "AGENT-YYYYMMDD-xxxxxxxx",
+  "record_type": "agent_identity",
+  "scope": "agent.local",
+  "contract_version": "0.4",
+  "record_version": 1,
+  "agent_name": "local-agent-name",
+  "key_algorithm": "hmac-sha256",
+  "key_fingerprint": "sha256:...",
+  "key_scope": "local-agent",
+  "status": "active",
+  "created_at": "ISO-8601",
+  "note": "Public local-agent identity metadata only. Private key material is runtime-private."
+}

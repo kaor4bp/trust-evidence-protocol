@@ -77,9 +77,9 @@ Rules:
 - Every durable record must have `workspace_refs`, except explicitly marked
   legacy migration records.
 - `project_refs` are optional only for genuinely cross-project records.
-- `AGENT-*` is local agent identity metadata; private key material is not a
-  public record.
-- `WCTX-*` is owner-bound agent working context, not truth.
+- `AGENT-*` is versioned local agent identity metadata; private key material is
+  not a public record.
+- `WCTX-*` is a versioned owner-bound agent working context, not truth.
 - `REASON-*` belongs to one task focus and cannot parent across tasks.
 
 ### 2.3 Provenance Surfaces

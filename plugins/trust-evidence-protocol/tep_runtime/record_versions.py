@@ -6,7 +6,7 @@ from __future__ import annotations
 CURRENT_RECORD_CONTRACT_VERSION = "0.4"
 CURRENT_RECORD_VERSION = 1
 SUPPORTED_RECORD_CONTRACT_VERSIONS = {CURRENT_RECORD_CONTRACT_VERSION}
-RECORD_VERSION_REQUIRED_TYPES = {"map"}
+RECORD_VERSION_REQUIRED_TYPES = {"agent_identity", "map", "working_context"}
 
 
 def record_contract_version(record: dict) -> str:
@@ -28,7 +28,7 @@ def validate_record_version(record_type: str, record: dict) -> list[str]:
 
     raw_record_version = record.get("record_version")
     if raw_record_version is None:
-        if record_type in RECORD_VERSION_REQUIRED_TYPES:
+        if record_type in RECORD_VERSION_REQUIRED_TYPES and (contract_version or record_type == "map"):
             errors.append(f"{record_type} record_version is required")
         return errors
     if not contract_version:

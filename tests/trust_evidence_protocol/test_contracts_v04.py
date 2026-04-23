@@ -74,6 +74,10 @@ def test_v04_schema_files_exist_and_match_exported_contract_metadata() -> None:
     assert validate_record_version("claim", {"record_version": 1}) == [
         "contract_version is required when record_version is set"
     ]
+    assert validate_record_version("working_context", {"contract_version": "0.4"}) == [
+        "working_context record_version is required"
+    ]
+    assert validate_record_version("working_context", {}) == []
     for name, exported in SCHEMA_EXPORTS.items():
         schema = load_schema(name)
         assert schema["$id"] == exported["$id"]
@@ -133,21 +137,25 @@ def test_working_context_contract_is_agent_owned_and_signed() -> None:
     wctx_schema = load_schema("working_context.record.schema.json")
 
     assert agent_schema["properties"]["key_algorithm"]["const"] == "hmac-sha256"
+    assert agent_schema["properties"]["record_version"]["const"] == 1
     assert agent_schema["properties"]["key_scope"]["const"] == "local-agent"
 
     required = set(wctx_schema["required"])
-    assert {"agent_identity_ref", "agent_key_fingerprint", "ownership_mode", "owner_signature"} <= required
+    assert {"record_version", "agent_identity_ref", "agent_key_fingerprint", "ownership_mode", "owner_signature"} <= required
     assert wctx_schema["properties"]["ownership_mode"]["const"] == "owner-only"
     assert wctx_schema["properties"]["handoff_policy"]["const"] == "fork-required"
+    assert wctx_schema["properties"]["record_version"]["const"] == 1
     assert wctx_schema["properties"]["owner_signature"]["properties"]["algorithm"]["const"] == "hmac-sha256"
 
     agent = AgentIdentityRecord(
         id="AGENT-20260423-demo",
+        scope="agent.local",
         agent_name="pytest-agent",
         key_fingerprint="sha256:agent-key",
         created_at="2026-04-23T00:00:00+03:00",
     ).to_payload()
     assert agent["record_type"] == "agent_identity"
+    assert agent["record_version"] == 1
     assert agent["key_fingerprint"] == "sha256:agent-key"
 
     context = WorkingContextRecord(
@@ -166,6 +174,7 @@ def test_working_context_contract_is_agent_owned_and_signed() -> None:
         updated_at="2026-04-23T00:00:00+03:00",
     ).to_payload()
     assert context["record_type"] == "working_context"
+    assert context["record_version"] == 1
     assert context["ownership_mode"] == "owner-only"
     assert context["handoff_policy"] == "fork-required"
     assert context["agent_identity_ref"] == agent["id"]

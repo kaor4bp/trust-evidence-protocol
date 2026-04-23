@@ -5,25 +5,31 @@
   "type": "object",
   "required": [
     "contract_version",
+    "record_version",
     "id",
     "record_type",
+    "scope",
     "agent_name",
     "key_algorithm",
     "key_fingerprint",
     "key_scope",
     "status",
-    "created_at"
+    "created_at",
+    "note"
   ],
   "properties": {
     "contract_version": {"type": "string", "const": "0.4"},
+    "record_version": {"type": "integer", "const": 1},
     "id": {"type": "string", "pattern": "^AGENT-"},
     "record_type": {"type": "string", "const": "agent_identity"},
+    "scope": {"type": "string", "minLength": 1},
     "agent_name": {"type": "string", "minLength": 1},
     "key_algorithm": {"type": "string", "const": "hmac-sha256"},
     "key_fingerprint": {"type": "string", "pattern": "^sha256:"},
     "key_scope": {"type": "string", "const": "local-agent"},
     "status": {"type": "string", "enum": ["active", "revoked", "archived"]},
-    "created_at": {"type": "string"}
+    "created_at": {"type": "string"},
+    "note": {"type": "string", "minLength": 1}
   },
   "additionalProperties": true,
   "description": "Local agent identity metadata. The private key material is never stored in this public record; the record only exposes the fingerprint needed to verify owner-bound WCTX signatures."

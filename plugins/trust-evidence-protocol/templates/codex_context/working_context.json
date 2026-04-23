@@ -1,10 +1,22 @@
 {
   "id": "WCTX-YYYYMMDD-xxxxxxxx",
   "record_type": "working_context",
+  "contract_version": "0.4",
+  "record_version": 1,
   "scope": "project-or-task.scope",
   "title": "Short working context title",
   "status": "active",
   "context_kind": "investigation",
+  "agent_identity_ref": "AGENT-YYYYMMDD-xxxxxxxx",
+  "agent_key_fingerprint": "sha256:...",
+  "ownership_mode": "owner-only",
+  "handoff_policy": "fork-required",
+  "owner_signature": {
+    "algorithm": "hmac-sha256",
+    "signed_payload_hash": "sha256:...",
+    "signature": "hmac-sha256:...",
+    "signed_fields": []
+  },
   "pinned_refs": [],
   "focus_paths": [],
   "topic_terms": [],

@@ -73,6 +73,9 @@ Progress:
   after all planned record rewrites pass post-migration validation.
 - Added dev/CI CLI mirror as `schema-migration plan|apply`; this is not a
   normal agent front door.
+- Added dedicated `AGENT-*` and `WCTX-*` schema migrations for `record_version=1`.
+  They backfill structural 0.4 fields, but block unsafe identity/ownership
+  changes and never synthesize private keys or owner signatures.
 
 ## Milestone 3: Core Validators
 

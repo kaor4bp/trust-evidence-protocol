@@ -91,10 +91,11 @@ use numeric schema versions. New canonical records must not use
 `schema_version` as the 0.4 contract marker.
 
 Legacy records without `record_version` remain readable so migrations can run
-in stages. New canonical record types introduced in 0.4, starting with
-`MAP-*`, must include both `contract_version` and `record_version`.
-Migration code should branch on these fields and backfill or wrap legacy records
-only through explicit migration provenance.
+in stages. New 0.4 record shapes with strict ownership or navigation semantics
+must include both `contract_version` and `record_version`; this currently
+includes `AGENT-*`, owner-bound `WCTX-*`, and `MAP-*`. Migration code should
+branch on these fields and backfill or wrap legacy records only through
+explicit migration provenance.
 
 Record-shape changes are handled by the schema migration chain. Each schema
 change has one dedicated module under `tep_runtime/schema_migrations/`, and

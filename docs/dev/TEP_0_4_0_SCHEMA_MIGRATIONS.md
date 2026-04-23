@@ -43,7 +43,7 @@ The module exports one `MIGRATION` object and is registered in
 - `schema_version` must not be treated as `contract_version`. Canonical records
   use `contract_version` and `record_version`.
 
-## First Migration
+## Current Migrations
 
 `20260423_map_record_v1` normalizes early `MAP-*` records:
 
@@ -52,6 +52,25 @@ The module exports one `MIGRATION` object and is registered in
 - writes `record_version=1`
 - fills missing structural arrays and `scope_refs` keys
 - refuses records that claim `map_is_proof=true`
+
+`20260423_agent_identity_v1` normalizes early `AGENT-*` records:
+
+- writes `contract_version="0.4"` and `record_version=1`
+- fills structural metadata such as `scope`, `status`, and the public
+  local-agent note
+- refuses unsupported `key_algorithm` and `key_scope` values instead of
+  rewriting identity semantics
+- never creates, stores, or infers private key material
+
+`20260423_working_context_v1` normalizes early owner-bound `WCTX-*` records:
+
+- writes `contract_version="0.4"` and `record_version=1`
+- fills structural arrays, `parent_context_ref`, `ownership_mode`, and
+  `handoff_policy`
+- refuses non-owner-only ownership or non-fork handoff policies instead of
+  silently changing who may use the working context
+- preserves existing owner signatures; migrations do not synthesize
+  signatures for unsigned contexts
 
 ## MCP Surface
 
