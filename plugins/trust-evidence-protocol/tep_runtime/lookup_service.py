@@ -308,6 +308,8 @@ def map_record_matches_focus(root: Path, records: dict[str, dict], record: dict,
 def map_lookup_score(records: dict[str, dict], map_record: dict, terms: set[str], selected_kind: str) -> int:
     anchor_summaries = " ".join(record_summary(records.get(ref, {})) for ref in safe_ref_list(map_record, "anchor_refs"))
     derived_summaries = " ".join(record_summary(records.get(ref, {})) for ref in safe_ref_list(map_record, "derived_from_refs")[:8])
+    down_summaries = " ".join(record_summary(records.get(ref, {})) for ref in safe_ref_list(map_record, "down_refs")[:6])
+    up_summaries = " ".join(record_summary(records.get(ref, {})) for ref in safe_ref_list(map_record, "up_refs")[:4])
     text = " ".join(
         [
             str(map_record.get("summary", "")),
@@ -315,6 +317,8 @@ def map_lookup_score(records: dict[str, dict], map_record: dict, terms: set[str]
             str(map_record.get("map_kind", "")),
             anchor_summaries,
             derived_summaries,
+            down_summaries,
+            up_summaries,
         ]
     ).lower()
     score = sum(1 for term in terms if term in text)
@@ -322,11 +326,26 @@ def map_lookup_score(records: dict[str, dict], map_record: dict, terms: set[str]
     kind_bonus = 0
     if selected_kind in {"theory", "research"} and level in {"L2", "L3"}:
         kind_bonus += 2
+    if level == "L2" and safe_ref_list(map_record, "down_refs"):
+        kind_bonus += 4
     if selected_kind == "facts" and level == "L1":
         kind_bonus += 1
     if selected_kind == "code" and str(map_record.get("map_kind")) == "code_area_cell":
         kind_bonus += 3
     return score * 10 + kind_bonus + {"L3": 3, "L2": 2, "L1": 1}.get(level, 0)
+
+
+def active_l2_coverage(active_maps: list[dict]) -> dict[str, list[str]]:
+    coverage: dict[str, list[str]] = {}
+    active_map_ids = {str(record.get("id", "")) for record in active_maps}
+    for record in active_maps:
+        if str(record.get("level", "")).strip() != "L2":
+            continue
+        l2_ref = str(record.get("id", "")).strip()
+        for down_ref in safe_ref_list(record, "down_refs"):
+            if down_ref in active_map_ids:
+                coverage.setdefault(down_ref, []).append(l2_ref)
+    return {record_ref: sorted(refs) for record_ref, refs in coverage.items()}
 
 
 def build_lookup_map_navigation(
@@ -356,10 +375,20 @@ def build_lookup_map_navigation(
     if not matching and active_maps:
         matching = [(0, record) for record in sorted(active_maps, key=lambda item: str(item.get("updated_at", "")), reverse=True)[:limit]]
     ranked = sorted(matching, key=lambda item: (item[0], str(item[1].get("updated_at", ""))), reverse=True)[:limit]
+    coverage = active_l2_coverage(active_maps)
+    ranked_l2_refs = {str(record.get("id", "")) for _, record in ranked if str(record.get("level", "")).strip() == "L2"}
+    if ranked_l2_refs:
+        ranked = [
+            (score, record)
+            for score, record in ranked
+            if str(record.get("level", "")).strip() != "L1"
+            or not set(coverage.get(str(record.get("id", "")), [])) & ranked_l2_refs
+        ][:limit]
     cells = []
     for score, record in ranked:
         record_ref = str(record.get("id") or "")
         proof_routes = record.get("proof_routes", []) if isinstance(record.get("proof_routes"), list) else []
+        covered_by_map_refs = coverage.get(record_ref, [])
         cells.append(
             {
                 "ref": record_ref,
@@ -368,9 +397,13 @@ def build_lookup_map_navigation(
                 "status": str(record.get("status") or ""),
                 "summary": concise(str(record.get("summary") or ""), 220),
                 "anchor_refs": safe_ref_list(record, "anchor_refs")[:8],
+                "up_refs": safe_ref_list(record, "up_refs")[:8],
+                "down_refs": safe_ref_list(record, "down_refs")[:8],
+                "covered_by_map_refs": covered_by_map_refs[:8],
                 "proof_routes": proof_routes[:3],
                 "relevance_score": score,
                 "map_is_proof": False,
+                "navigation_role": "abstraction" if str(record.get("level", "")).strip() in {"L2", "L3"} else "evidence_patch",
                 "route_hint": {
                     "tool": "map_drilldown",
                     "map_session_ref": f"{wctx_ref}#map-session" if wctx_ref else "WCTX-*#map-session",

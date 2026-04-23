@@ -478,7 +478,9 @@ from tep_runtime.logic_check import (  # noqa: E402
     structural_logic_check_text_lines,
     z3_logic_check_text_lines,
 )
+from tep_runtime.lookup_service import build_lookup_map_navigation  # noqa: E402
 from tep_runtime.map_refresh import build_map_refresh_plan, map_refresh_triggers  # noqa: E402
+from tep_runtime.map_session import build_map_view_payload  # noqa: E402
 from tep_runtime.topic_index import (  # noqa: E402
     build_lexical_topic_index,
     infer_topic_terms_from_refs,
@@ -3033,6 +3035,94 @@ def test_map_refresh_plan_creates_l2_mechanism_cell_from_shared_l1_sources(tmp_p
         "anchor_refs": [shared_claim_id],
         "down_refs": [first_map_id, second_map_id],
     } in payload["planned_actions"]
+
+
+def test_l2_map_cells_dominate_lookup_and_expose_view_hierarchy(tmp_path: Path) -> None:
+    root = tmp_path / ".tep_context"
+    shared_claim_id = "CLM-20260423-aaaa1111"
+    first_map_id = "MAP-20260423-bbbb2222"
+    second_map_id = "MAP-20260423-cccc3333"
+    l2_map_id = "MAP-20260423-dddd4444"
+    records = {
+        shared_claim_id: {
+            "id": shared_claim_id,
+            "record_type": "claim",
+            "status": "supported",
+            "claim_kind": "factual",
+            "statement": "Shared cache visibility mechanism connects evidence patches.",
+            "recorded_at": "2026-04-23T09:00:00+03:00",
+        },
+        first_map_id: {
+            "id": first_map_id,
+            "record_type": "map",
+            "scope": "map_refresh.general.all",
+            "level": "L1",
+            "map_kind": "evidence_patch",
+            "status": "active",
+            "summary": "First cache visibility evidence patch.",
+            "anchor_refs": [shared_claim_id],
+            "derived_from_refs": [shared_claim_id],
+            "up_refs": [l2_map_id],
+            "updated_at": "2026-04-23T10:00:00+03:00",
+        },
+        second_map_id: {
+            "id": second_map_id,
+            "record_type": "map",
+            "scope": "map_refresh.general.all",
+            "level": "L1",
+            "map_kind": "evidence_patch",
+            "status": "active",
+            "summary": "Second cache visibility evidence patch.",
+            "anchor_refs": [shared_claim_id],
+            "derived_from_refs": [shared_claim_id],
+            "up_refs": [l2_map_id],
+            "updated_at": "2026-04-23T10:01:00+03:00",
+        },
+        l2_map_id: {
+            "id": l2_map_id,
+            "record_type": "map",
+            "scope": "map_refresh.general.all",
+            "level": "L2",
+            "map_kind": "mechanism_cell",
+            "status": "active",
+            "summary": "Cache visibility mechanism over two evidence patches.",
+            "anchor_refs": [shared_claim_id],
+            "derived_from_refs": [first_map_id, second_map_id, shared_claim_id],
+            "down_refs": [first_map_id, second_map_id],
+            "source_set_fingerprint": "sha256:l2-cache-visibility",
+            "updated_at": "2026-04-23T10:02:00+03:00",
+        },
+    }
+
+    navigation = build_lookup_map_navigation(
+        root,
+        records,
+        "cache visibility mechanism",
+        "theory",
+        "all",
+        "general",
+        "WCTX-20260423-a0000001",
+    )
+
+    assert [cell["ref"] for cell in navigation["cells"]] == [l2_map_id]
+    assert navigation["cells"][0]["navigation_role"] == "abstraction"
+    assert navigation["cells"][0]["down_refs"] == [first_map_id, second_map_id]
+
+    view = build_map_view_payload(
+        root,
+        records,
+        {"id": "WCTX-20260423-a0000001"},
+        {
+            "session_ref": "WCTX-20260423-a0000001#map-session",
+            "selected_map_ref": l2_map_id,
+            "scope": "all",
+            "mode": "general",
+        },
+    )
+
+    assert view["zone"]["map_ref"] == l2_map_id
+    assert view["hierarchy"]["hierarchy_is_proof"] is False
+    assert [cell["ref"] for cell in view["hierarchy"]["down_cells"]] == [first_map_id, second_map_id]
 
 
 def test_validation_core_normalizes_optional_lists_and_confidence() -> None:

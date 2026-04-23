@@ -380,6 +380,9 @@ Rules:
 - `MAP-L1` is useful for proof-route discovery.
 - Lookup should not return many raw `MAP-L1` cells when a `MAP-L2` or
   `CLM(meta_aggregated)` already summarizes them.
+- Current implementation ranks active `L2` cells with `down_refs` above covered
+  `L1` cells and includes `up_refs`, `down_refs`, and `covered_by_map_refs` in
+  `lookup.map_navigation.cells`.
 - If the current `REASON-*` branch exists, lookup should prefer map cells that
   add new chain nodes or expose unresolved tensions.
 
@@ -477,6 +480,8 @@ Current implementation status:
   `CLM-*`, `MODEL-*`, or `FLOW-*` source can materialize a bounded
   `L2/mechanism_cell`. The L2 cell uses the shared source as `anchor_refs`,
   the source L1 cells as `down_refs`, and updates those L1 cells with `up_refs`.
+- `map_view` exposes `hierarchy.up_cells` and `hierarchy.down_cells` so an agent
+  can move between abstraction and evidence without treating either as proof.
 - The generated `curiosity-map`, `attention-map`, HTML map, and `map-brief`
   remain read-only navigation views.
 

@@ -289,6 +289,9 @@ Progress:
   `L2/mechanism_cell` records from existing active `L1/evidence_patch` cells
   that share a non-terminal `CLM-*`, `MODEL-*`, or `FLOW-*` source, then link
   those L1 cells upward through `up_refs`.
+- `lookup.map_navigation` now prefers active L2 abstractions over covered L1
+  evidence patches, and `map_view` exposes hierarchy cells for up/down
+  navigation.
 - Remaining work: richer move ranking, dismissed/deferred candidate memory,
   explicit multi-session support, richer L2 ranking, and L3 map-cell creation.
 

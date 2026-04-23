@@ -109,16 +109,25 @@ def _active_map_records(root: Path, records: dict[str, dict], *, scope: str) -> 
 
 def _map_relevance(records: dict[str, dict], map_record: dict, query: str) -> int:
     tokens = _tokenize(query)
-    if not tokens:
-        return 0
     text = " ".join(
         [
             str(map_record.get("summary", "")),
+            str(map_record.get("map_kind", "")),
             " ".join(_record_summary(records, ref) for ref in _safe_list(map_record, "anchor_refs")),
             " ".join(_record_summary(records, ref) for ref in _safe_list(map_record, "derived_from_refs")[:5]),
+            " ".join(_record_summary(records, ref) for ref in _safe_list(map_record, "down_refs")[:6]),
+            " ".join(_record_summary(records, ref) for ref in _safe_list(map_record, "up_refs")[:4]),
         ]
     ).lower()
-    return sum(1 for token in tokens if token in text)
+    score = sum(1 for token in tokens if token in text) if tokens else 0
+    level = str(map_record.get("level") or "")
+    if level == "L2" and _safe_list(map_record, "down_refs"):
+        score += 3
+    elif level == "L3":
+        score += 2
+    elif level == "L1" and _safe_list(map_record, "up_refs"):
+        score += 1
+    return score
 
 
 def _zone_id(map_ref: str) -> str:
@@ -292,6 +301,18 @@ def _signal_lists(records: dict[str, dict], map_record: dict | None, ignored: li
     }
 
 
+def _map_cell_item(records: dict[str, dict], map_record: dict, *, reason: str) -> dict[str, Any]:
+    return {
+        "ref": str(map_record.get("id") or ""),
+        "level": str(map_record.get("level") or ""),
+        "map_kind": str(map_record.get("map_kind") or ""),
+        "summary": concise(str(map_record.get("summary") or ""), 180),
+        "status": str(map_record.get("status") or ""),
+        "reason": reason,
+        "map_is_proof": False,
+    }
+
+
 def build_map_view_payload(root: Path, records: dict[str, dict], wctx: dict, session: dict[str, Any]) -> dict[str, Any]:
     scope = str(session.get("scope") or "current")
     selected_map_ref = str(session.get("selected_map_ref") or "")
@@ -303,6 +324,16 @@ def build_map_view_payload(root: Path, records: dict[str, dict], wctx: dict, ses
     if current_map:
         for key in ("adjacent_map_refs", "up_refs", "down_refs", "refines_map_refs"):
             bridge_refs.extend(_safe_list(current_map, key))
+    up_cells = [
+        _map_cell_item(records, map_records[ref], reason="higher abstraction")
+        for ref in _safe_list(current_map or {}, "up_refs")
+        if ref in map_records
+    ][:6]
+    down_cells = [
+        _map_cell_item(records, map_records[ref], reason="lower evidence patch")
+        for ref in _safe_list(current_map or {}, "down_refs")
+        if ref in map_records
+    ][:6]
     ignored_refs = []
     for record in map_records.values():
         if record.get("id") == selected_map_ref:
@@ -344,6 +375,11 @@ def build_map_view_payload(root: Path, records: dict[str, dict], wctx: dict, ses
     view["wctx_ref"] = str(wctx.get("id") or "")
     view["visited_map_refs"] = _safe_list(session, "visited_map_refs")
     view["checkpoint_count"] = len(session.get("checkpoints", [])) if isinstance(session.get("checkpoints"), list) else 0
+    view["hierarchy"] = {
+        "hierarchy_is_proof": False,
+        "up_cells": up_cells,
+        "down_cells": down_cells,
+    }
     view["recommended_next"] = ["map_drilldown"] if anchor_refs else ["map_refresh"]
     return view
 
