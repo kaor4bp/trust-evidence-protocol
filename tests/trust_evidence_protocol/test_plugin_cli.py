@@ -644,7 +644,7 @@ def strictness_approval(context: Path, value: str, permission_id: str | None = N
 def test_skill_package_is_core_plus_workflows_without_legacy_identity_artifacts() -> None:
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     assert len(skill.splitlines()) <= 160
-    assert "route / next_step -> lookup -> support capture -> augment/validate chain -> REASON step/review -> action/final" in skill
+    assert "route / next_step -> lookup -> support capture -> CLM relation -> STEP review -> action/final" in skill
     assert "Command details belong in the plugin README, runtime help, and developer docs." in skill
     assert "workflows/plugin-commands.md" not in skill
 
@@ -2378,14 +2378,14 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert chain_starter["validation_preview"]["ok"] is True
     assert any(node["ref"] == facility_claim_id and node["role"] == "fact" for node in chain_starter["nodes"])
     assert any(node["ref"] == program_claim_id and node["role"] == "fact" for node in chain_starter["nodes"])
-    assert any(command.startswith("augment-chain") for command in chain_starter["next_commands"])
-    assert any(command.startswith("validate-decision --mode curiosity") for command in chain_starter["next_commands"])
+    assert any(command.startswith("reason-step --mode curiosity --claim") for command in chain_starter["next_commands"])
+    assert any(command.startswith("legacy fallback: augment-chain") for command in chain_starter["next_commands"])
     lookup_text = run_cli(context, "lookup", "--query", "Facility Program relationship", "--reason", "curiosity", "--kind", "facts").stdout
     assert "## MAP Navigation" in lookup_text
     assert "## Start Briefing" in lookup_text
     assert "reason-pressure" in lookup_text
     assert "## Chain Starter" in lookup_text
-    assert "validate-decision --mode curiosity" in lookup_text
+    assert "reason-step --mode curiosity --claim" in lookup_text
     lookup_code = json.loads(
         run_cli(
             context,
@@ -5981,6 +5981,203 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
     assert f"parent reason {first['id']} belongs to another TASK-*" in cross_task_parent.stdout
 
 
+def test_claim_step_ledger_follows_relation_clm_and_blocks_overlaps(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "claim-step-ledger",
+            "--title",
+            "Claim step ledger workspace",
+            "--note",
+            "workspace for claim-step ledger test",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    first_claim = user_confirmed_theory_claim(context, "demo.claim-step", "The first CLM can start a STEP chain.")
+    second_claim = user_confirmed_theory_claim(context, "demo.claim-step", "The second CLM follows from the first CLM.")
+    third_claim = user_confirmed_theory_claim(context, "demo.claim-step", "A third CLM needs a merged relation.")
+    relation_source = recorded_id(
+        run_cli(
+            context,
+            "record-source",
+            "--scope",
+            "demo.claim-step",
+            "--source-kind",
+            "theory",
+            "--critique-status",
+            "accepted",
+            "--origin-kind",
+            "user",
+            "--origin-ref",
+            "pytest relation source",
+            "--quote",
+            "first supports second",
+            "--note",
+            "relation source",
+        ),
+        "source",
+    )
+    relation_claim = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.claim-step",
+            "--plane",
+            "theory",
+            "--status",
+            "supported",
+            "--claim-kind",
+            "relation",
+            "--relation-kind",
+            "supports",
+            "--relation-subject",
+            first_claim,
+            "--relation-object",
+            second_claim,
+            "--statement",
+            "The first CLM supports the second CLM.",
+            "--source",
+            relation_source,
+            "--note",
+            "relation claim for STEP transition",
+        ),
+        "claim",
+    )
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "demo.claim-step",
+            "--title",
+            "Follow CLM claim steps",
+            "--related-claim",
+            first_claim,
+            "--note",
+            "active task for claim-step ledger",
+        ),
+        "task",
+    )
+    lookup = json.loads(
+        run_cli(
+            context,
+            "lookup",
+            "--query",
+            "claim-step relation graph",
+            "--reason",
+            "planning",
+            "--kind",
+            "facts",
+            "--format",
+            "json",
+        ).stdout
+    )
+    wctx_ref = lookup["focus"]["working_context_ref"]
+
+    first_step = json.loads(
+        run_cli(
+            context,
+            "reason-step",
+            "--mode",
+            "planning",
+            "--claim",
+            first_claim,
+            "--wctx",
+            wctx_ref,
+            "--why",
+            "bootstrap the CLM semantic chain",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert first_step["id"].startswith("STEP-")
+    assert first_step["entry_type"] == "claim_step"
+    assert first_step["task_ref"] == task_id
+    assert first_step["claim_ref"] == first_claim
+    assert first_step["prev_claim_ref"] == ""
+
+    second_step = json.loads(
+        run_cli(
+            context,
+            "reason-step",
+            "--mode",
+            "planning",
+            "--claim",
+            second_claim,
+            "--prev-step",
+            first_step["id"],
+            "--prev-claim",
+            first_claim,
+            "--relation-claim",
+            relation_claim,
+            "--wctx",
+            wctx_ref,
+            "--why",
+            "advance only through the explicit relation CLM",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert second_step["id"].startswith("STEP-")
+    assert second_step["prev_step_ref"] == first_step["id"]
+    assert second_step["prev_claim_ref"] == first_claim
+    assert second_step["relation_claim_ref"] == relation_claim
+    assert second_step["claim_ref"] == second_claim
+
+    missing_relation = run_cli(
+        context,
+        "reason-step",
+        "--mode",
+        "planning",
+        "--claim",
+        third_claim,
+        "--prev-step",
+        second_step["id"],
+        "--prev-claim",
+        second_claim,
+        "--wctx",
+        wctx_ref,
+        "--why",
+        "try to jump without a relation CLM",
+        check=False,
+    )
+    assert missing_relation.returncode == 1
+    assert "relation_claim_ref must reference relation CLM" in missing_relation.stdout
+
+    overlap = run_cli(
+        context,
+        "record-claim",
+        "--scope",
+        "demo.claim-step",
+        "--plane",
+        "theory",
+        "--status",
+        "supported",
+        "--claim-kind",
+        "relation",
+        "--relation-kind",
+        "supports",
+        "--relation-subject",
+        first_claim,
+        "--relation-object",
+        third_claim,
+        "--statement",
+        "The first CLM also supports the third CLM.",
+        "--source",
+        relation_source,
+        "--note",
+        "overlapping relation claim",
+        check=False,
+    )
+    assert overlap.returncode == 1
+    assert "archive it or record one merged relation" in overlap.stdout
+
+
 def test_lookup_defaults_to_new_reason_chain_nodes(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     workspace_id = recorded_id(
@@ -6853,7 +7050,7 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     assert next_step_payload["reason_pressure"]["pressure_is_proof"] is False
     assert next_step_payload["route_steps"][0].startswith("validate-task-decomposition ")
     assert any(step.startswith("lookup ") for step in next_step_payload["route_steps"])
-    assert {"if": "proof gap", "then": "build/validate evidence chain"} in next_step_payload["route_graph"]["branches"]
+    assert {"if": "proof gap", "then": "record support and relation CLM"} in next_step_payload["route_graph"]["branches"]
 
     reasoning = run_cli(
         context,

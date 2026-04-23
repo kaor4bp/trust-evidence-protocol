@@ -19,6 +19,7 @@ Move stable data contracts to `docs/reference/`. Move exploratory material to
 - [TEP 0.4.0 Mechanics Requirements](TEP_0_4_0_MECHANICS_REQUIREMENTS.md)
 - [TEP 0.4.0 Mechanics Deep Dives](mechanics/README.md)
 - [TEP 0.4.1 Release Notes](TEP_0_4_1_RELEASE_NOTES.md)
+- [TEP 0.4.2 Release Notes](TEP_0_4_2_RELEASE_NOTES.md)
 - [TEP Map Graph v1](TEP_MAP_GRAPH_V1.md)
 - [TEP Core Rewrite Working Context](TEP_CORE_REWRITE_CONTEXT.md)
 - [TEP Core Baseline](TEP_CORE_BASELINE.md)

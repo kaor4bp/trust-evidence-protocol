@@ -7,15 +7,20 @@ from typing import Any
 from .common import ACTION_KINDS, CONTRACT_VERSION, compact_object_schema, jsonable, loose_object
 
 
-REASON_MODES = ("planning", "edit", "test", "debug", "permission", "final")
+REASON_MODES = ("planning", "edit", "test", "debugging", "permission", "final", "curiosity")
 
 
 @dataclass(frozen=True)
 class ReasonStepRequest:
     task_ref: str
     mode: str
-    chain: Mapping[str, Any]
     intent: str
+    chain: Mapping[str, Any] | None = None
+    claim_ref: str | None = None
+    prev_claim_ref: str | None = None
+    relation_claim_ref: str | None = None
+    prev_step_ref: str | None = None
+    wctx_ref: str | None = None
     parent_reason_ref: str | None = None
     branch: str = "main"
     action_kind: str | None = None
@@ -48,14 +53,19 @@ class ReasonLedgerEntry:
 REASON_STEP_REQUEST_SCHEMA = compact_object_schema(
     schema_id="https://trust-evidence-protocol.local/schemas/0.4/reason_step.request.schema.json",
     title="TEP 0.4 reason_step request",
-    description="Task-local REASON ledger append request.",
-    required=("task_ref", "mode", "chain", "intent"),
+    description="Task-local STEP claim-step or legacy REASON ledger append request.",
+    required=("task_ref", "mode", "intent"),
     properties={
         "task_ref": {"type": "string", "pattern": "^TASK-"},
         "mode": {"type": "string", "enum": list(REASON_MODES)},
         "parent_reason_ref": {"type": ["string", "null"], "pattern": "^REASON-"},
         "branch": {"type": "string", "minLength": 1},
         "chain": loose_object("Public evidence/explanatory chain payload."),
+        "claim_ref": {"type": ["string", "null"], "pattern": "^CLM-"},
+        "prev_claim_ref": {"type": ["string", "null"], "pattern": "^CLM-"},
+        "relation_claim_ref": {"type": ["string", "null"], "pattern": "^CLM-"},
+        "prev_step_ref": {"type": ["string", "null"], "pattern": "^STEP-"},
+        "wctx_ref": {"type": ["string", "null"], "pattern": "^WCTX-"},
         "intent": {"type": "string", "minLength": 1},
         "action_kind": {"type": "string", "enum": list(ACTION_KINDS)},
     },
@@ -84,10 +94,10 @@ REASON_LEDGER_ENTRY_SCHEMA = compact_object_schema(
     ),
     properties={
         "contract_version": {"type": "string", "const": CONTRACT_VERSION},
-        "id": {"type": "string", "pattern": "^(REASON|GRANT)-"},
+        "id": {"type": "string", "pattern": "^(STEP|REASON|GRANT)-"},
         "record_type": {"type": "string", "const": "reason"},
         "version": {"type": "integer", "minimum": 2},
-        "entry_type": {"type": "string", "enum": ["step", "grant"]},
+        "entry_type": {"type": "string", "enum": ["step", "claim_step", "grant"]},
         "created_at": {"type": "string"},
         "prev_ledger_hash": {"type": "string", "pattern": "^sha256:"},
         "entry_hash": {"type": "string", "pattern": "^sha256:"},
@@ -113,5 +123,10 @@ REASON_LEDGER_ENTRY_SCHEMA = compact_object_schema(
         },
         "signed_chain": loose_object("Public compact chain summary sealed into the ledger entry."),
         "chain_payload": loose_object("Full public chain payload used to compute chain_hash."),
+        "claim_ref": {"type": "string", "pattern": "^CLM-"},
+        "prev_claim_ref": {"type": "string", "pattern": "^CLM-"},
+        "relation_claim_ref": {"type": "string", "pattern": "^CLM-"},
+        "prev_step_ref": {"type": "string", "pattern": "^STEP-"},
+        "claim_step_hash": {"type": "string"},
     },
 )

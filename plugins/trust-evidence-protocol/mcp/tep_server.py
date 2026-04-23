@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.4.1"
+SERVER_VERSION = "0.4.2"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 plugin_root = str(PLUGIN_ROOT)
@@ -199,8 +199,8 @@ TOOLS: list[JsonObject] = [
     {
         "name": "reason_step",
         "description": (
-            "Append a validated REASON-* ledger step from a public evidence chain. "
-            "Use only after lookup/augment-chain/validate-decision returns justification_valid/decision_chain_valid for the requested mode."
+            "Append a validated STEP-* claim-step from CLM transitions, or a legacy REASON-* step from a public evidence chain. "
+            "Prefer claim_ref + relation_claim_ref so the ledger follows the CLM graph."
         ),
         "inputSchema": schema(
             {
@@ -210,6 +210,11 @@ TOOLS: list[JsonObject] = [
                     "description": "Evidence-chain JSON object to validate and sign into the reason ledger.",
                     "additionalProperties": True,
                 },
+                "claim_ref": {"type": "string", "description": "CLM-* to append as the next semantic step."},
+                "prev_claim_ref": {"type": "string", "description": "Previous CLM-* in the semantic chain."},
+                "relation_claim_ref": {"type": "string", "description": "Relation CLM-* connecting prev_claim_ref -> claim_ref."},
+                "prev_step_ref": {"type": "string", "description": "Previous STEP-* ledger entry for linear continuation."},
+                "wctx_ref": {"type": "string", "description": "Owner-bound WCTX-* focus for this claim step."},
                 "intent": {"type": "string", "default": "planning"},
                 "mode": {
                     "type": "string",
@@ -227,7 +232,7 @@ TOOLS: list[JsonObject] = [
                 "agent_token": agent_token_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
-            ["chain_payload", "why"],
+            ["why"],
         ),
     },
     {
@@ -1349,13 +1354,21 @@ def tool_reason_step(args: JsonObject) -> tuple[bool, str]:
     if token_error:
         return False, token_error
     chain_payload = args.get("chain_payload")
-    if not isinstance(chain_payload, dict):
+    claim_ref = str(args.get("claim_ref") or "").strip()
+    if chain_payload is not None and not isinstance(chain_payload, dict):
         return False, "chain_payload must be an object"
+    if not claim_ref and chain_payload is None:
+        return False, "reason_step requires claim_ref for STEP-* or chain_payload for legacy REASON-*"
     with agent_identity_scope(agent_token_arg(args)):
         reason, error = reason_step_service(
             root,
             records,
             chain_payload=chain_payload,
+            claim_ref=claim_ref or None,
+            prev_claim_ref=str(args.get("prev_claim_ref") or "").strip() or None,
+            relation_claim_ref=str(args.get("relation_claim_ref") or "").strip() or None,
+            prev_step_ref=str(args.get("prev_step_ref") or "").strip() or None,
+            wctx_ref=str(args.get("wctx_ref") or "").strip() or None,
             intent=str(args.get("intent") or "planning"),
             mode=str(args.get("mode") or "planning"),
             action_kind=str(args.get("action_kind") or "").strip() or None,

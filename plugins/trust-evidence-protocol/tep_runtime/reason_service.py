@@ -8,6 +8,7 @@ from typing import Any
 
 from .hypotheses import active_hypothesis_entry_by_claim
 from .reason_ledger import (
+    create_claim_step,
     create_reason_step,
     grant_reason_access,
     reason_access_text_lines,
@@ -25,7 +26,12 @@ def reason_step_service(
     root: Path,
     records: dict[str, dict],
     *,
-    chain_payload: dict[str, Any],
+    chain_payload: dict[str, Any] | None = None,
+    claim_ref: str | None = None,
+    prev_claim_ref: str | None = None,
+    relation_claim_ref: str | None = None,
+    prev_step_ref: str | None = None,
+    wctx_ref: str | None = None,
     intent: str,
     mode: str,
     action_kind: str | None,
@@ -34,8 +40,23 @@ def reason_step_service(
     branch: str = "main",
     icon: str = "TEP",
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """Validate a public chain and append one REASON-* step."""
+    """Validate a public chain or CLM transition and append one ledger step."""
 
+    if claim_ref:
+        return create_claim_step(
+            root,
+            records,
+            claim_ref=claim_ref,
+            prev_claim_ref=prev_claim_ref,
+            relation_claim_ref=relation_claim_ref,
+            prev_step_ref=prev_step_ref,
+            wctx_ref=wctx_ref,
+            intent=intent,
+            mode=mode,
+            action_kind=action_kind,
+            reason=why,
+            branch=branch,
+        )
     if not isinstance(chain_payload, dict):
         return None, "chain_payload must be an object"
     hypothesis_entries = active_hypothesis_entry_by_claim(root, records)
@@ -70,7 +91,7 @@ def reason_review_service(
     cwd: str | Path | None,
     tool: str = "bash",
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """Review a REASON-* and optionally create a GRANT-* entry."""
+    """Review a STEP-* or legacy REASON-* and optionally create a GRANT-* entry."""
 
     validation = validate_reason_ledger(root)
     if not validation["ok"]:
@@ -98,6 +119,11 @@ def reason_review_service(
 
 
 def reason_step_text(reason: dict[str, Any], mode: str, action_kind: str | None) -> str:
+    if reason.get("entry_type") == "claim_step":
+        return (
+            f"Recorded claim step {reason['id']} claim={reason.get('claim_ref')} "
+            f"prev={reason.get('prev_claim_ref') or 'none'} mode={mode} kind={(action_kind or '') or 'none'}"
+        )
     return f"Recorded reason {reason['id']} status={reason.get('status')} mode={mode} kind={(action_kind or '') or 'none'}"
 
 

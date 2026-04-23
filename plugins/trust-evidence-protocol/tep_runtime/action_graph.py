@@ -42,9 +42,9 @@ def _intent_route(intent: str, task: str) -> tuple[str, list[str]]:
     query_arg = f' --query "{task}"' if task else ' --query "..."'
     routes = {
         "answer": ("answering", [f"lookup{query_arg} --reason answering --kind auto --format json", f"brief-context{task_arg}", "record-detail / linked-records before citing proof"]),
-        "plan": ("planning", [f"lookup{query_arg} --reason planning --kind auto --format json", "validate-task-decomposition --task TASK-*", f"brief-context{task_arg}", "augment-chain -> validate-decision --mode planning", "reason-step --mode planning"]),
-        "edit": ("editing", ["validate-task-decomposition --task TASK-*", f"lookup{query_arg} --reason editing --kind auto --format json", f"guidelines-for{task_arg}", "augment-chain -> validate-decision --mode edit", "reason-step --mode edit", "preflight-task --mode edit"]),
-        "test": ("testing", [f"lookup{query_arg} --reason debugging --kind auto --format json", f"brief-context{task_arg}", "augment-chain -> validate-decision --mode test", "reason-step --mode test", "record-evidence for meaningful test output", "hydrate-context after mutation"]),
+        "plan": ("planning", [f"lookup{query_arg} --reason planning --kind auto --format json", "validate-task-decomposition --task TASK-*", f"brief-context{task_arg}", "record/reuse relation CLM", "reason-step --mode planning --claim CLM-*"]),
+        "edit": ("editing", ["validate-task-decomposition --task TASK-*", f"lookup{query_arg} --reason editing --kind auto --format json", f"guidelines-for{task_arg}", "record/reuse proof-capable relation CLM", "reason-step --mode edit --claim CLM-*", "preflight-task --mode edit"]),
+        "test": ("testing", [f"lookup{query_arg} --reason debugging --kind auto --format json", f"brief-context{task_arg}", "record/reuse proof-capable relation CLM", "reason-step --mode test --claim CLM-*", "record-evidence for meaningful test output", "hydrate-context after mutation"]),
         "persist": ("persisting", [f"lookup{query_arg} --reason migration --kind auto --format json", "classify input/source first", "record-evidence or record-* through context_cli", "hydrate-context"]),
         "permission": ("permission", [f"lookup{query_arg} --reason permission --kind policy --format json", "build-reasoning-case", "cite CLM/GLD/PRM ids + quotes", "request explicit approval if needed"]),
         "debug": ("debugging", ["show-hydration", f"lookup{query_arg} --reason debugging --kind auto --format json", "review-context", "scan-conflicts / reindex-context if needed"]),
@@ -69,22 +69,22 @@ def _route_graph(intent: str) -> dict:
         ],
         "plan": [
             {"if": "task needs decomposition", "then": "confirm-atomic-task|decompose-task"},
-            {"if": "no current valid chain", "then": "lookup -> augment-chain -> validate-decision -> reason-step"},
-            {"if": "proof chain explicit", "then": "validate-evidence-chain"},
+            {"if": "no current valid STEP", "then": "lookup -> record/reuse relation CLM -> reason-step --claim"},
+            {"if": "legacy proof chain explicit", "then": "validate-evidence-chain"},
             {"if": "scope/task drift", "then": "task-drift-check|switch-task"},
             {"if": "permission needed", "then": "permission"},
         ],
         "edit": [
             {"if": "current task is parent/invalid", "then": "switch to leaf task|decompose-task"},
             {"if": "guidelines missing", "then": "guidelines-for"},
-            {"if": "proof gap", "then": "build/validate evidence chain"},
-            {"if": "no current valid chain", "then": "lookup -> augment-chain -> validate-decision -> reason-step"},
-            {"if": "grant missing", "then": "reason-step|reason-review --grant"},
+            {"if": "proof gap", "then": "record support and relation CLM"},
+            {"if": "no current valid STEP", "then": "lookup -> relation CLM -> reason-step --claim"},
+            {"if": "grant missing", "then": "reason-step --claim|reason-review --grant"},
             {"if": "blocked by policy", "then": "permission|debug"},
             {"if": "edited", "then": "after-mutation"},
         ],
         "test": [
-            {"if": "no current test reason", "then": "lookup -> augment-chain -> validate-decision --mode test -> reason-step"},
+            {"if": "no current test STEP", "then": "lookup -> relation CLM -> reason-step --mode test --claim"},
             {"if": "test output meaningful", "then": "record-evidence"},
             {"if": "failure unexplained", "then": "debug"},
             {"if": "state changed", "then": "after-mutation"},
@@ -116,7 +116,7 @@ def _route_graph(intent: str) -> dict:
         "stop_conditions": [
             "hydration stale/errors/conflicts before decisive action",
             "missing source-backed proof for truth claim",
-            "missing validated chain before REASON/GRANT/final",
+            "missing valid STEP/claim relation before GRANT/final",
             "restriction or permission gap blocks requested scope",
         ],
     }
@@ -178,7 +178,7 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
             "action_kind": "<action-kind>",
             "ok": bool(grant_check.get("ok")),
             "reason": str(grant_check.get("reason") or ""),
-            "command": "reason-review --reason REASON-* --mode edit --kind <action-kind> --grant",
+            "command": "reason-review --reason STEP-* --mode edit --kind <action-kind> --grant",
         }
         grant_step = grant_status["command"]
         if grant_step not in route_steps:
@@ -215,8 +215,8 @@ def build_next_step_payload(records: dict[str, dict], root: Path, intent: str = 
             "route_graph_required": True,
             "drill_down_tools": ["brief-context", "search-records", "claim-graph", "record-detail", "linked-records"],
             "proof_rule": "Navigation output is not proof; cite canonical records with quotes before decisions.",
-            "chain_rule": "Before REASON/GRANT/final, build a public chain with lookup/record-detail, run augment-chain, then validate-decision for the intended mode.",
-            "reason_rule": "Treat REASON-* as the agent's task cursor: start by checking the briefing, then extend or fork the ledger when intent, evidence, tests, or direction change.",
+            "chain_rule": "Before STEP/GRANT/final, advance through connected CLM records; relation CLM records are the semantic edges.",
+            "reason_rule": "Treat STEP-* as the agent's task/WCTX cursor: start by checking the briefing, then extend or fork the ledger when intent, evidence, tests, or direction change.",
             "grant_rule": "Mutating protected actions in evidence-authorized or implementation-choice require a fresh one-shot GRANT-* bound to current workspace/project/task/fingerprint.",
             "write_rule": "Use record-support/record-evidence so FILE/RUN/SRC/CLM links are built mechanically; low-level record-source/record-claim are for plugin-dev or migration.",
             "task_rule": "Mutating work belongs on a valid atomic leaf TASK-*; parent tasks are orchestration only.",

@@ -89,7 +89,7 @@ def load_mcp_server_module():
 def test_mcp_manifest_declares_readonly_server() -> None:
     plugin_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_manifest["mcpServers"] == "./.mcp.json"
-    assert plugin_manifest["version"] == "0.4.1"
+    assert plugin_manifest["version"] == "0.4.2"
 
     claude_manifest = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert claude_manifest["version"] == plugin_manifest["version"]
@@ -1300,11 +1300,11 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert lookup_payload["map_navigation"]["map_navigation_is_proof"] is False
     assert lookup_payload["map_navigation"]["cells"]
     assert all(not node["ref"].startswith("MAP-") for node in lookup_payload["chain_starter"]["nodes"])
-    assert lookup_payload["output_contract"]["if_chain_needed"].startswith("draft ids/quotes")
+    assert lookup_payload["output_contract"]["if_chain_needed"].startswith("record/reuse relation CLM")
     assert lookup_payload["chain_starter"]["chain_starter_is_proof"] is False
     assert lookup_payload["chain_starter"]["decision_mode"] == "planning"
     assert any(node["ref"] == claim_id and node["role"] == "fact" for node in lookup_payload["chain_starter"]["nodes"])
-    assert any(command.startswith("augment-chain") for command in lookup_payload["chain_starter"]["next_commands"])
+    assert any(command.startswith("reason-step --mode planning --claim") for command in lookup_payload["chain_starter"]["next_commands"])
 
     next_step = by_id[21]["result"]
     assert next_step["isError"] is False

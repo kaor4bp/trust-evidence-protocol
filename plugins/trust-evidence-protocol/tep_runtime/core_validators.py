@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .agent_identity import verify_working_context_signature
+from .claim_relations import relation_claim_overlaps
 from .claims import claim_is_fallback
 from .errors import ValidationError
 from .paths import settings_path
@@ -210,10 +211,21 @@ def validate_model_flow_authority(records: dict[str, dict]) -> list[ValidationEr
     return errors
 
 
+def validate_relation_claim_dedup(records: dict[str, dict]) -> list[ValidationError]:
+    """Active relation CLM-* records must not hide duplicate or partial edges."""
+
+    errors: list[ValidationError] = []
+    for record in records.values():
+        for message in relation_claim_overlaps(records, record):
+            errors.append(ValidationError(_path(record), message))
+    return errors
+
+
 def validate_core_graph(root: Path, records: dict[str, dict]) -> list[ValidationError]:
     errors: list[ValidationError] = []
     errors.extend(validate_workspace_focus(root, records))
     errors.extend(validate_wctx_ownership(root, records))
     errors.extend(validate_provenance_graph(records))
     errors.extend(validate_model_flow_authority(records))
+    errors.extend(validate_relation_claim_dedup(records))
     return errors

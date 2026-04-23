@@ -1,4 +1,4 @@
-"""Reason-ledge briefing and pressure helpers for agent routes."""
+"""Claim-step ledger briefing and pressure helpers for agent routes."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ def build_start_briefing(root: Path, records: dict[str, dict], *, intent: str = 
     task_steps = [
         entry
         for entry in entries
-        if str(entry.get("entry_type", "")).strip() == "step"
+        if str(entry.get("entry_type", "")).strip() in {"step", "claim_step"}
         and (not task_ref or str(entry.get("task_ref", "")).strip() == task_ref)
     ]
     current = latest_reason_step(entries, task_ref) if validation.get("ok") else None
@@ -80,7 +80,7 @@ def build_start_briefing(root: Path, records: dict[str, dict], *, intent: str = 
         slot["step_count"] += 1
         slot["latest_reason_ref"] = str(step.get("id", "")).strip()
         slot["latest_mode"] = str(step.get("mode", "")).strip()
-        slot["latest_why"] = str(step.get("why", "")).strip()
+        slot["latest_why"] = str(step.get("why") or step.get("reason") or "").strip()
 
     scoped_records = [
         record
@@ -92,12 +92,12 @@ def build_start_briefing(root: Path, records: dict[str, dict], *, intent: str = 
     expected_mode = reason_mode_for_intent(intent)
     checks = [
         "confirm current task and WCTX still match the user request",
-        "confirm the current REASON branch still matches the next intent",
+        "confirm the current STEP branch still matches the next intent",
     ]
     if not current:
-        checks.append("create the first REASON-* step before substantial work")
+        checks.append("create the first STEP-* claim step before substantial work")
     elif str(current.get("mode", "")).strip() != expected_mode:
-        checks.append(f"extend or fork REASON-* for mode={expected_mode}")
+        checks.append(f"extend or fork STEP-* for mode={expected_mode}")
 
     return {
         "briefing_is_proof": False,
@@ -115,7 +115,10 @@ def build_start_briefing(root: Path, records: dict[str, dict], *, intent: str = 
                 "mode": str(step.get("mode", "")).strip(),
                 "branch": str(step.get("branch", "main")).strip() or "main",
                 "parent_refs": [str(ref).strip() for ref in step.get("parent_refs", []) if str(ref).strip()],
-                "why": str(step.get("why", "")).strip(),
+                "prev_step_ref": str(step.get("prev_step_ref", "")).strip(),
+                "claim_ref": str(step.get("claim_ref", "")).strip(),
+                "relation_claim_ref": str(step.get("relation_claim_ref", "")).strip(),
+                "why": str(step.get("why") or step.get("reason") or "").strip(),
                 "created_at": str(step.get("created_at", "")).strip(),
             }
             for step in task_steps[-limit:]
@@ -133,7 +136,7 @@ def build_reason_pressure(
     intent: str = "auto",
     chain_starter: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return route pressure that makes REASON-* the easiest next step."""
+    """Return route pressure that makes STEP-* the easiest next step."""
 
     briefing = build_start_briefing(root, records, intent=intent)
     expected_mode = str(briefing.get("expected_reason_mode") or reason_mode_for_intent(intent))
@@ -152,23 +155,23 @@ def build_reason_pressure(
 
     if not briefing.get("ledger_ok"):
         level = "blocked"
-        reasons.append("reason ledger is invalid or tampered")
+        reasons.append("claim-step ledger is invalid or tampered")
         recommended_tool = "reason-current"
     elif not current_reason_ref:
         level = "high" if intent in {"plan", "edit", "test", "final", "answer", "permission"} else "medium"
-        reasons.append("current task has no REASON-* step")
+        reasons.append("current task has no STEP-* claim step")
         recommended_tool = "reason_step" if chain_ready else "lookup"
     elif current_mode != expected_mode and intent in {"plan", "edit", "test", "answer", "permission"}:
         level = "medium"
-        reasons.append(f"current REASON-* mode is {current_mode or 'none'}, expected {expected_mode}")
+        reasons.append(f"current STEP-* mode is {current_mode or 'none'}, expected {expected_mode}")
         recommended_tool = "reason_step" if chain_ready else "lookup"
     else:
         level = "low"
-        reasons.append("current REASON-* exists; extend it when observations or direction change")
+        reasons.append("current STEP-* exists; extend it through relation CLM when observations or direction change")
         recommended_tool = "lookup"
 
     if chain_ready:
-        reasons.append("lookup chain_starter is ready for reason_step")
+        reasons.append("lookup candidates can seed the next claim step")
 
     return {
         "pressure_is_proof": False,
@@ -178,9 +181,9 @@ def build_reason_pressure(
         "recommended_mode": recommended_mode,
         "chain_starter_ready": chain_ready,
         "next_action": (
-            f"reason_step mode={recommended_mode} using lookup.chain_starter"
+            f"reason_step mode={recommended_mode} using claim_ref and relation_claim_ref"
             if recommended_tool == "reason_step"
-            else "run lookup to build a chain_starter for the next REASON-*"
+            else "run lookup to find CLM candidates for the next STEP-*"
             if recommended_tool == "lookup"
             else "inspect reason-current and repair the ledger"
         ),

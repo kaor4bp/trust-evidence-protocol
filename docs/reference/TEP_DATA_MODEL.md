@@ -270,6 +270,68 @@ Lifecycle states:
 
 Do not conflate `status` and `lifecycle.state`.
 
+## Relation Claims
+
+`CLM-* claim_kind=relation` records are first-class claims about the relation
+between other `CLM-*` records. They are the semantic edges used by the 0.4.2
+claim-step ledger.
+
+The relation block is directional:
+
+```json
+{
+  "claim_kind": "relation",
+  "relation": {
+    "kind": "supports",
+    "subject_ref": "CLM-...",
+    "object_ref": "CLM-..."
+  }
+}
+```
+
+Allowed relation kinds:
+
+- `supports`
+- `causes`
+- `depends_on`
+- `implies`
+- `refines`
+- `co_relevant`
+
+`co_relevant` is navigation-only. It may help planning, debugging, and
+curiosity, but it must not authorize proof/action modes. Relation claims must
+not use `scope_refs`; they are general facts. If a relation needs local
+operational context, record that context in `WCTX-*` and reference the relation
+from the current `STEP-*` entry.
+
+Relation deduplication is strict for active single-subject relations. Do not
+record both `CLM-A supports CLM-B` and `CLM-A supports CLM-C` as separate
+active claims with the same trust/status when the intended fact is one merged
+relation. Archive or resolve the old relation first, or create a single relation
+claim with the full `object_refs` set.
+
+## Claim-Step Ledger
+
+`STEP-* entry_type=claim_step` entries are append-only runtime ledger entries
+over the CLM graph. The ledger proves that an agent advanced through a connected
+claim path; it does not turn the ledger entry itself into a fact.
+
+Required semantic fields:
+
+- `task_ref`
+- `wctx_ref`
+- `claim_ref`
+- `prev_step_ref` when continuing a chain
+- `prev_claim_ref` when continuing a chain
+- `relation_claim_ref` when continuing a chain
+- `reason`, a human explanation for why the step was appended
+
+The first step may start with only `claim_ref`, `task_ref`, and `wctx_ref`.
+Every later step must connect `prev_claim_ref -> claim_ref` through a relation
+CLM. For proof/action modes, the current claim and relation must be
+supported/corroborated and proof-capable. Planning/debugging/curiosity may carry
+at most one tentative hop. Two tentative hops in sequence are invalid.
+
 ## Meta Claims
 
 `CLM-* plane=meta` records are plugin-generated claims about the TEP corpus.

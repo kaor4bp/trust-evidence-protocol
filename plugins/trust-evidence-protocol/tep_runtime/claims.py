@@ -21,6 +21,7 @@ def build_claim_payload(
     claim_kind: str | None,
     confidence: str | None,
     comparison: dict | None,
+    relation: dict | None,
     logic: dict | None,
     recorded_at: str | None,
     project_refs: list[str],
@@ -53,6 +54,8 @@ def build_claim_payload(
         payload["confidence"] = confidence
     if comparison:
         payload["comparison"] = comparison
+    if relation:
+        payload["relation"] = relation
     if logic:
         payload["logic"] = logic
     return payload

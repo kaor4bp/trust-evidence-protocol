@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .claim_relations import RELATION_CLAIM_KIND, normalize_relation_payload, relation_shape_for_claim
 from .claims import claim_blocks_current_action, claim_is_fallback, claim_lifecycle
 from .conflicts import validate_claim_comparison
 from .errors import ValidationError
@@ -28,7 +29,7 @@ INPUT_KINDS = {"user_prompt", "file_reference", "attachment", "tool_payload"}
 CRITIQUE_STATUSES = {"accepted", "audited", "unresolved"}
 CLAIM_PLANES = {"theory", "code", "runtime"}
 CLAIM_STATUSES = {"tentative", "supported", "corroborated", "contested", "rejected"}
-CLAIM_KINDS = {"factual", "implied", "statistical", "opinion", "prediction", "unfalsifiable"}
+CLAIM_KINDS = {"factual", "implied", "statistical", "opinion", "prediction", "unfalsifiable", "relation"}
 CLAIM_LIFECYCLE_STATES = {"active", "resolved", "historical", "archived"}
 CLAIM_ATTENTION_LEVELS = {"normal", "low", "fallback-only", "explicit-only"}
 ACTION_STATUSES = {"planned", "executed", "abandoned"}
@@ -443,7 +444,7 @@ def validate_record(record_id: str, data: dict) -> list[str]:
                 errors.extend(validate_claim_logic(logic))
         claim_kind = str(data.get("claim_kind", "")).strip()
         if claim_kind and claim_kind not in CLAIM_KINDS:
-            errors.append("claim_kind must be factual, implied, statistical, opinion, prediction, or unfalsifiable")
+            errors.append("claim_kind must be factual, implied, statistical, opinion, prediction, unfalsifiable, or relation")
         if claim_kind in {"opinion", "prediction", "unfalsifiable"} and status in {
             "supported",
             "corroborated",
@@ -453,6 +454,15 @@ def validate_record(record_id: str, data: dict) -> list[str]:
             errors.append(
                 "opinion, prediction, and unfalsifiable claims must stay tentative until re-expressed as checkable factual claims"
             )
+        if claim_kind == RELATION_CLAIM_KIND:
+            relation = data.get("relation")
+            if not isinstance(relation, dict):
+                errors.append("relation claim must define relation object")
+            else:
+                _, relation_errors = normalize_relation_payload(relation)
+                errors.extend(relation_errors)
+        elif "relation" in data:
+            errors.append("relation object is allowed only when claim_kind=relation")
         if "lifecycle" in data:
             lifecycle = data.get("lifecycle")
             if not isinstance(lifecycle, dict):
@@ -1203,6 +1213,13 @@ def validate_refs(records: dict[str, dict]) -> list[ValidationError]:
             for ref in support_refs + contradiction_refs + derived_from:
                 if ref in records and records[ref].get("record_type") != "claim":
                     errors.append(ValidationError(path, f"{ref} must reference a claim record"))
+            relation_shape = relation_shape_for_claim(data)
+            if relation_shape:
+                for ref in relation_shape.subject_refs + relation_shape.object_refs:
+                    if ref and ref not in records:
+                        errors.append(ValidationError(path, f"missing ref in relation: {ref}"))
+                    elif ref in records and records[ref].get("record_type") != "claim":
+                        errors.append(ValidationError(path, f"relation ref {ref} must reference a claim record"))
             for ref in safe_list(lifecycle, "resolved_by_claim_refs"):
                 if ref and ref not in records:
                     errors.append(ValidationError(path, f"missing ref in lifecycle.resolved_by_claim_refs: {ref}"))

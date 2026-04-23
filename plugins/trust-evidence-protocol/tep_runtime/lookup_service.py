@@ -443,14 +443,21 @@ def current_lookup_reason_context(root: Path) -> dict:
     task_ref = current_task_ref(root)
     reason = latest_reason_step(validation.get("entries", []), task_ref)
     if not reason:
-        return {"ok": True, "reason_ref": "", "used_refs": set(), "message": "no current REASON-*"}
-    chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
-    nodes = chain_payload.get("nodes", []) if isinstance(chain_payload.get("nodes"), list) else []
-    used_refs = {
-        str(node.get("ref", "")).strip()
-        for node in nodes
-        if isinstance(node, dict) and str(node.get("ref", "")).strip()
-    }
+        return {"ok": True, "reason_ref": "", "used_refs": set(), "message": "no current STEP-*"}
+    if str(reason.get("entry_type", "")).strip() == "claim_step":
+        used_refs = {
+            str(reason.get(key, "")).strip()
+            for key in ("prev_claim_ref", "claim_ref", "relation_claim_ref")
+            if str(reason.get(key, "")).strip()
+        }
+    else:
+        chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
+        nodes = chain_payload.get("nodes", []) if isinstance(chain_payload.get("nodes"), list) else []
+        used_refs = {
+            str(node.get("ref", "")).strip()
+            for node in nodes
+            if isinstance(node, dict) and str(node.get("ref", "")).strip()
+        }
     return {
         "ok": True,
         "reason_ref": str(reason.get("id", "")).strip(),
@@ -563,20 +570,20 @@ def build_lookup_chain_starter(
     }
     chain["write_hint"] = "write the chain_starter object to evidence-chain.json"
     chain["next_commands"] = [
-        "augment-chain --file evidence-chain.json --format json",
-        f"validate-decision --mode {decision_mode} --chain evidence-chain.json --format json",
-        f"reason-step --mode {decision_mode} --chain evidence-chain.json --why \"public chain validated for {decision_mode}\"",
+        "record/reuse a relation CLM connecting the previous claim to the next claim",
+        f"reason-step --mode {decision_mode} --claim CLM-* --relation-claim CLM-* --why \"connected CLM transition for {decision_mode}\"",
+        "legacy fallback: augment-chain --file evidence-chain.json --format json",
     ]
     chain["notes"] = [
         "Lookup chain starters are mechanical drafts, not proof.",
         "CIX/backend/map candidates are intentionally omitted because they are navigation, not proof.",
-        "Use augment-chain and validate-decision before presenting the chain to the user, appending REASON-*, or requesting permission.",
+        "Prefer STEP-* claim steps over connected CLM records; legacy chain validation remains a fallback.",
     ]
     if not fact_refs:
         chain["notes"].append("No supported/corroborated CLM fact matched; open record-detail/claim-graph before relying on this draft.")
     if reason_context.get("reason_ref") and not any(str(node.get("ref", "")).strip() not in used_refs and node.get("role") == "fact" for node in nodes):
         chain["notes"].append(
-            "No new fact node was found for the current REASON-*; fallback is to review existing nodes and create a supported hypothesis/open question."
+            "No new fact node was found for the current STEP-*; fallback is to review existing nodes and create a supported hypothesis/open question."
         )
     return chain
 
@@ -685,9 +692,9 @@ def lookup_payload(
         "agent_role": "choose and justify a route; API validates proof boundaries and allowed writes",
         "if_answering": "open record-detail or linked-records before citing a record as proof",
         "if_new_support_found": "use record-support/record-evidence so FILE/RUN/SRC/CLM links are created mechanically",
-        "if_chain_needed": "draft ids/quotes, run augment-chain, then validate-evidence-chain or validate-decision; REASON/GRANT/final require a validated chain",
+        "if_chain_needed": "record/reuse relation CLM edges, then append a STEP-* claim step; legacy evidence-chain validation is a fallback",
         "if_map_context_returned": "open map_view/map_drilldown first, then record-detail and chain validation before citing support",
-        "if_continuing_reason": "prefer new chain nodes not already present in current REASON-*; only fall back to revisiting old nodes when lookup finds no new candidates",
+        "if_continuing_reason": "prefer CLM refs not already present in current STEP-*; only fall back to revisiting old nodes when lookup finds no new candidates",
         "if_theory_should_rank_high": "promote supported/user-confirmed theory into MODEL/FLOW through validated write paths",
         "if_uncertain": "record a tentative CLM, OPEN-*, or PRP-* instead of silently relying on a guess",
     }
@@ -724,7 +731,7 @@ def lookup_payload(
                 {"if": "candidate record found", "then": "record-detail|linked-records"},
                 {"if": "map cell found", "then": "map-open|map-drilldown"},
                 {"if": "new source support found", "then": "record-support|record-evidence"},
-                {"if": "chain needed", "then": "augment-chain|validate-decision|reason-step"},
+                {"if": "chain needed", "then": "record/reuse relation CLM|reason-step --claim"},
                 {"if": "integrated theory needed", "then": "record-model|record-flow after user-confirmed theory support"},
                 {"if": "route underdetermined", "then": "record-open-question|record-proposal"},
             ],
@@ -737,13 +744,13 @@ def lookup_payload(
         "reason_pressure": reason_pressure,
         "rules": [
             "Use lookup first when unsure where to search.",
-            "At the start of work, review start_briefing and either extend, fork, or create REASON-* before substantial action.",
+            "At the start of work, review start_briefing and either extend, fork, or create STEP-* before substantial action.",
             "Treat lookup and generated maps as navigation only, not proof.",
             "Treat MAP-* cells as navigation memory; use map-drilldown, record-detail, and chain validation before proof use.",
             "Open record-detail or linked-records before citing a canonical record.",
             "When new support is found, prefer record-support or record-evidence over separate manual record-source/record-claim calls.",
-            "Before REASON/GRANT/final, turn lookup output into a public chain and validate it for the intended mode.",
-            "When a current REASON-* exists, lookup defaults to proposing new chain nodes before revisiting old chain nodes.",
+            "Before STEP/GRANT/final, connect CLM records through relation CLM edges and append a valid claim step.",
+            "When a current STEP-* exists, lookup defaults to proposing new CLM nodes before revisiting old chain nodes.",
             "Use code-search through TEP; do not call external code backends directly in normal work.",
         ],
     }
@@ -761,7 +768,7 @@ def lookup_text_lines(payload: dict) -> list[str]:
     ]
     briefing = payload.get("start_briefing") or {}
     lines.append(
-        f"- reason=`{briefing.get('current_reason_ref') or 'none'}` mode=`{briefing.get('current_mode') or 'none'}` "
+        f"- step=`{briefing.get('current_reason_ref') or 'none'}` mode=`{briefing.get('current_mode') or 'none'}` "
         f"branch=`{briefing.get('current_branch') or 'none'}` recent_steps=`{len(briefing.get('recent_steps') or [])}` "
         f"recent_actions=`{len(briefing.get('recent_actions') or [])}` proof=`false`"
     )

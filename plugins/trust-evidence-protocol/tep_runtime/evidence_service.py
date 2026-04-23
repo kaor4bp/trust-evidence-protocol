@@ -220,6 +220,7 @@ def record_evidence_service(
             claim_kind=claim_kind,
             confidence=confidence,
             comparison=None,
+            relation=None,
             logic=None,
             recorded_at=recorded_at,
             project_refs=resolved_project_refs,

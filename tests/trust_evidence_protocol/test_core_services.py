@@ -1286,14 +1286,14 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     assert payload["route_steps"][0].startswith("validate-task-decomposition ")
     assert any(step.startswith("lookup ") for step in payload["route_steps"])
     assert payload["task_decomposition"]["accepted"] is False
-    assert {"if": "proof gap", "then": "build/validate evidence chain"} in payload["route_graph"]["branches"]
+    assert {"if": "proof gap", "then": "record support and relation CLM"} in payload["route_graph"]["branches"]
     assert {"if": "current task is parent/invalid", "then": "switch to leaf task|decompose-task"} in payload["route_graph"]["branches"]
     assert "missing source-backed proof for truth claim" in payload["route_graph"]["stop_conditions"]
     compact_lines = next_step_text_lines(payload, "TEP", detail="compact")
     assert any(line.startswith("- graph: ") for line in compact_lines)
     assert any(line.startswith("- briefing: ") for line in compact_lines)
     assert any(line.startswith("- reason-pressure: high") for line in compact_lines)
-    assert any("proof gap=>build/validate evidence chain" in line for line in compact_lines)
+    assert any("proof gap=>record support and relation CLM" in line for line in compact_lines)
     assert any("task-decomposition: status=needs-decomposition accepted=False" in line for line in compact_lines)
     assert "missing source-backed proof for truth claim" not in "\n".join(compact_lines)
     full_lines = next_step_text_lines(payload, "TEP", detail="full")
@@ -1305,8 +1305,8 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
 
     test_payload = build_next_step_payload(records, root, intent="test", task="verify action graph")
     assert test_payload["reason_pressure"]["recommended_mode"] == "test"
-    assert any("validate-decision --mode test" in step for step in test_payload["route_steps"])
-    assert {"if": "no current test reason", "then": "lookup -> augment-chain -> validate-decision --mode test -> reason-step"} in test_payload["route_graph"]["branches"]
+    assert any("reason-step --mode test --claim CLM-*" in step for step in test_payload["route_steps"])
+    assert {"if": "no current test STEP", "then": "lookup -> relation CLM -> reason-step --mode test --claim"} in test_payload["route_graph"]["branches"]
 
     write_settings(
         root,
@@ -1319,8 +1319,8 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     evidence_payload = build_next_step_payload(records, root, intent="edit", task="change action graph")
     assert evidence_payload["grant"]["required"] is True
     assert evidence_payload["grant"]["ok"] is False
-    assert "reason-review --reason REASON-*" in evidence_payload["grant"]["command"]
-    assert any("reason-review --reason REASON-*" in step for step in evidence_payload["route_steps"])
+    assert "reason-review --reason STEP-*" in evidence_payload["grant"]["command"]
+    assert any("reason-review --reason STEP-*" in step for step in evidence_payload["route_steps"])
     evidence_lines = next_step_text_lines(evidence_payload, "TEP", detail="compact")
     assert any(line.startswith("- grant: missing") for line in evidence_lines)
 
@@ -3846,6 +3846,7 @@ def test_claim_core_builds_payload_with_optional_blocks() -> None:
         claim_kind="factual",
         confidence="high",
         comparison=comparison,
+        relation=None,
         logic=logic,
         recorded_at=None,
         project_refs=["PROJ-20260418-cccc3333"],
@@ -3891,6 +3892,7 @@ def test_claim_core_builds_payload_with_optional_blocks() -> None:
         claim_kind=None,
         confidence=None,
         comparison=None,
+        relation=None,
         logic=None,
         recorded_at=" 2026-04-18T09:00:00+03:00 ",
         project_refs=[],

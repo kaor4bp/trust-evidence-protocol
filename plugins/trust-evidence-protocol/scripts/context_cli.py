@@ -69,6 +69,7 @@ from context_lib import (
     PRIORITY_LEVELS,
     PROPOSAL_STATUSES,
     PROJECT_STATUSES,
+    RELATION_KINDS,
     RESTRICTION_APPLIES_TO,
     RESTRICTION_SEVERITIES,
     RESTRICTION_STATUSES,
@@ -226,6 +227,7 @@ from context_lib import (
     proposal_summary_line,
     public_record_summary,
     ranked_record_search,
+    relation_claim_overlaps,
     record_detail_payload,
     record_detail_text_lines,
     record_evidence_service,
@@ -2426,11 +2428,16 @@ def cmd_validate_decision(
 
 def cmd_reason_step(
     root: Path,
-    chain_file: Path,
+    chain_file: Path | None,
     intent: str,
     mode: str,
     action_kind: str | None,
     why: str,
+    claim_ref: str | None,
+    prev_claim_ref: str | None,
+    relation_claim_ref: str | None,
+    prev_step_ref: str | None,
+    wctx_ref: str | None,
     parent_refs: list[str],
     branch: str,
     output_format: str,
@@ -2438,15 +2445,22 @@ def cmd_reason_step(
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
-    try:
-        payload = json.loads(chain_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"{chain_file}: {exc}")
-        return 1
+    payload = None
+    if chain_file is not None:
+        try:
+            payload = json.loads(chain_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"{chain_file}: {exc}")
+            return 1
     reason, error = reason_step_service(
         root,
         records,
         chain_payload=payload,
+        claim_ref=claim_ref,
+        prev_claim_ref=prev_claim_ref,
+        relation_claim_ref=relation_claim_ref,
+        prev_step_ref=prev_step_ref,
+        wctx_ref=wctx_ref,
         intent=intent,
         mode=mode,
         action_kind=action_kind,
@@ -3078,7 +3092,7 @@ def cmd_help(topic: str) -> int:
             "brief-context --task ... | search-records --query ... | claim-graph --query ... | record-detail --record ... | linked-records --record ...",
             "guidelines-for --task ... | code-search [--query ...] [--fields target,symbols] | telemetry-report [--format json]",
             "build-reasoning-case --task ... | augment-chain --file evidence-chain.json | validate-evidence-chain --file evidence-chain.json | validate-decision --mode planning|permission|edit|test|model|flow|proposal|final --chain evidence-chain.json",
-            "reason-step --mode edit --kind write --chain evidence-chain.json --why ... | reason-review --reason REASON-* --mode edit --kind write --grant [--command ... --cwd ...] | reason-check-grant --mode edit --kind write --command ... --cwd ... | reason-current",
+            "reason-step --mode edit --kind write --claim CLM-* --relation-claim CLM-* --why ... | reason-review --reason STEP-* --mode edit --kind write --grant [--command ... --cwd ...] | reason-check-grant --mode edit --kind write --command ... --cwd ... | reason-current",
             "record-input ... | record-run --command ... | record-support --thought ... --kind file-line|command-output|user-confirmation | classify-input --input INP-* --derived-record REF",
             "curator-pool build --workspace WSP-* [--project PRJ-*] [--task TASK-*] --kind health|duplicates|conflicts|modeling|flow|staleness --query ... | curator-pool show --pool CURP-* [--format json]",
             "cleanup-candidates | cleanup-archives [--archive ARC-*] | cleanup-archive --dry-run|--apply | cleanup-restore --archive ARC-* --dry-run|--apply",
@@ -3304,14 +3318,21 @@ def current_lookup_reason_context(root: Path) -> dict:
     task_ref = current_task_ref(root)
     reason = latest_reason_step(validation.get("entries", []), task_ref)
     if not reason:
-        return {"ok": True, "reason_ref": "", "used_refs": set(), "message": "no current REASON-*"}
-    chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
-    nodes = chain_payload.get("nodes", []) if isinstance(chain_payload.get("nodes"), list) else []
-    used_refs = {
-        str(node.get("ref", "")).strip()
-        for node in nodes
-        if isinstance(node, dict) and str(node.get("ref", "")).strip()
-    }
+        return {"ok": True, "reason_ref": "", "used_refs": set(), "message": "no current STEP-*"}
+    if str(reason.get("entry_type", "")).strip() == "claim_step":
+        used_refs = {
+            str(reason.get(key, "")).strip()
+            for key in ("prev_claim_ref", "claim_ref", "relation_claim_ref")
+            if str(reason.get(key, "")).strip()
+        }
+    else:
+        chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
+        nodes = chain_payload.get("nodes", []) if isinstance(chain_payload.get("nodes"), list) else []
+        used_refs = {
+            str(node.get("ref", "")).strip()
+            for node in nodes
+            if isinstance(node, dict) and str(node.get("ref", "")).strip()
+        }
     return {
         "ok": True,
         "reason_ref": str(reason.get("id", "")).strip(),
@@ -3424,20 +3445,20 @@ def build_lookup_chain_starter(
     }
     chain["write_hint"] = "write the chain_starter object to evidence-chain.json"
     chain["next_commands"] = [
-        "augment-chain --file evidence-chain.json --format json",
-        f"validate-decision --mode {decision_mode} --chain evidence-chain.json --format json",
-        f"reason-step --mode {decision_mode} --chain evidence-chain.json --why \"public chain validated for {decision_mode}\"",
+        "record/reuse a relation CLM connecting the previous claim to the next claim",
+        f"reason-step --mode {decision_mode} --claim CLM-* --relation-claim CLM-* --why \"connected CLM transition for {decision_mode}\"",
+        "legacy fallback: augment-chain --file evidence-chain.json --format json",
     ]
     chain["notes"] = [
         "Lookup chain starters are mechanical drafts, not proof.",
         "CIX/backend/map candidates are intentionally omitted because they are navigation, not proof.",
-        "Use augment-chain and validate-decision before presenting the chain to the user, appending REASON-*, or requesting permission.",
+        "Prefer STEP-* claim steps over connected CLM records; legacy chain validation remains a fallback.",
     ]
     if not fact_refs:
         chain["notes"].append("No supported/corroborated CLM fact matched; open record-detail/claim-graph before relying on this draft.")
     if reason_context.get("reason_ref") and not any(str(node.get("ref", "")).strip() not in used_refs and node.get("role") == "fact" for node in nodes):
         chain["notes"].append(
-            "No new fact node was found for the current REASON-*; fallback is to review existing nodes and create a supported hypothesis/open question."
+            "No new fact node was found for the current STEP-*; fallback is to review existing nodes and create a supported hypothesis/open question."
         )
     return chain
 
@@ -3527,8 +3548,8 @@ def lookup_payload(
         "agent_role": "choose and justify a route; API validates proof boundaries and allowed writes",
         "if_answering": "open record-detail or linked-records before citing a record as proof",
         "if_new_support_found": "use record-support/record-evidence so FILE/RUN/SRC/CLM links are created mechanically",
-        "if_chain_needed": "draft ids/quotes, run augment-chain, then validate-evidence-chain or validate-decision; REASON/GRANT/final require a validated chain",
-        "if_continuing_reason": "prefer new chain nodes not already present in current REASON-*; only fall back to revisiting old nodes when lookup finds no new candidates",
+        "if_chain_needed": "record/reuse relation CLM edges, then append a STEP-* claim step; legacy evidence-chain validation is a fallback",
+        "if_continuing_reason": "prefer CLM refs not already present in current STEP-*; only fall back to revisiting old nodes when lookup finds no new candidates",
         "if_theory_should_rank_high": "promote supported/user-confirmed theory into MODEL/FLOW through validated write paths",
         "if_uncertain": "record a tentative CLM, OPEN-*, or PRP-* instead of silently relying on a guess",
     }
@@ -3563,7 +3584,7 @@ def lookup_payload(
             "branches": [
                 {"if": "candidate record found", "then": "record-detail|linked-records"},
                 {"if": "new source support found", "then": "record-support|record-evidence"},
-                {"if": "chain needed", "then": "augment-chain|validate-decision|reason-step"},
+                {"if": "chain needed", "then": "record/reuse relation CLM|reason-step --claim"},
                 {"if": "integrated theory needed", "then": "record-model|record-flow after user-confirmed theory support"},
                 {"if": "route underdetermined", "then": "record-open-question|record-proposal"},
             ],
@@ -3576,8 +3597,8 @@ def lookup_payload(
             "Treat lookup and generated maps as navigation only, not proof.",
             "Open record-detail or linked-records before citing a canonical record.",
             "When new support is found, prefer record-support or record-evidence over separate manual record-source/record-claim calls.",
-            "Before REASON/GRANT/final, turn lookup output into a public chain and validate it for the intended mode.",
-            "When a current REASON-* exists, lookup defaults to proposing new chain nodes before revisiting old chain nodes.",
+            "Before STEP/GRANT/final, connect CLM records through relation CLM edges and append a valid claim step.",
+            "When a current STEP-* exists, lookup defaults to proposing new CLM nodes before revisiting old chain nodes.",
             "Use code-search through TEP; do not call external code backends directly in normal work.",
         ],
     }
@@ -7816,6 +7837,9 @@ def cmd_record_claim(
     claim_kind: str | None,
     confidence: str | None,
     comparison: dict | None,
+    relation_kind: str | None,
+    relation_subject_refs: list[str],
+    relation_object_refs: list[str],
     logic: dict | None,
     recorded_at: str | None,
     project_refs: list[str],
@@ -7827,6 +7851,28 @@ def cmd_record_claim(
     records, exit_code = load_clean_context(root)
     if exit_code:
         return 1
+
+    relation: dict | None = None
+    normalized_relation_kind = str(relation_kind or "").strip()
+    if normalized_relation_kind:
+        subjects = sorted({ref.strip() for ref in relation_subject_refs if ref.strip()})
+        objects = sorted({ref.strip() for ref in relation_object_refs if ref.strip()})
+        if not subjects or not objects:
+            print("relation claims require --relation-subject and --relation-object")
+            return 1
+        relation = {"kind": normalized_relation_kind}
+        if len(subjects) == 1:
+            relation["subject_ref"] = subjects[0]
+        else:
+            relation["subject_refs"] = subjects
+        if len(objects) == 1:
+            relation["object_ref"] = objects[0]
+        else:
+            relation["object_refs"] = objects
+        if claim_kind and claim_kind != "relation":
+            print("--relation-kind requires --claim-kind relation or no explicit --claim-kind")
+            return 1
+        claim_kind = "relation"
 
     payload = build_claim_payload(
         record_id=next_record_id(records, "CLM-"),
@@ -7842,6 +7888,7 @@ def cmd_record_claim(
         claim_kind=claim_kind,
         confidence=confidence,
         comparison=comparison,
+        relation=relation,
         logic=logic,
         recorded_at=recorded_at,
         project_refs=project_refs_for_write(root, project_refs),
@@ -7850,6 +7897,11 @@ def cmd_record_claim(
         red_flags=red_flags,
         note=note,
     )
+    if relation:
+        overlap_errors = relation_claim_overlaps(records, payload)
+        if overlap_errors:
+            print("\n".join(overlap_errors))
+            return 1
     return persist_candidate(root, records, payload, "claim")
 
 
@@ -7958,6 +8010,7 @@ def cmd_record_link(
         claim_kind="factual",
         confidence=confidence,
         comparison=None,
+        relation=None,
         logic=None,
         recorded_at=None,
         project_refs=project_refs_for_write(root, project_refs),
@@ -8981,9 +9034,14 @@ def parse_args() -> argparse.Namespace:
     )
     reason_step = subparsers.add_parser(
         "reason-step",
-        help="Append a REASON-* step to the task-scoped reasoning ledger.",
+        help="Append a STEP-* claim-step or legacy REASON-* chain step to the task-scoped ledger.",
     )
-    reason_step.add_argument("--chain", type=Path, required=True)
+    reason_step.add_argument("--chain", type=Path)
+    reason_step.add_argument("--claim", dest="claim_ref")
+    reason_step.add_argument("--prev-claim", dest="prev_claim_ref")
+    reason_step.add_argument("--relation-claim", dest="relation_claim_ref")
+    reason_step.add_argument("--prev-step", dest="prev_step_ref")
+    reason_step.add_argument("--wctx", dest="wctx_ref")
     reason_step.add_argument("--intent", default="planning")
     reason_step.add_argument("--mode", choices=sorted(DECISION_MODES), default="planning")
     reason_step.add_argument("--kind", dest="action_kind")
@@ -8993,7 +9051,7 @@ def parse_args() -> argparse.Namespace:
     reason_step.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
     reason_review = subparsers.add_parser(
         "reason-review",
-        help="Review a REASON-* step and optionally append a GRANT-* authorization.",
+        help="Review a STEP-* claim step or legacy REASON-* step and optionally append a GRANT-* authorization.",
     )
     reason_review.add_argument("--reason", required=True)
     reason_review.add_argument("--mode", choices=sorted(DECISION_MODES), default="planning")
@@ -9004,7 +9062,7 @@ def parse_args() -> argparse.Namespace:
     reason_review.add_argument("--cwd", help="Bind the authorization to the command working directory.")
     reason_review.add_argument("--tool", default="bash")
     reason_review.add_argument("--format", dest="output_format", choices=("text", "json"), default="text")
-    subparsers.add_parser("reason-current", help="Show current REASON-* step and recent GRANT-* authorizations.")
+    subparsers.add_parser("reason-current", help="Show current STEP-* or legacy REASON-* step and recent GRANT-* authorizations.")
     reason_check = subparsers.add_parser(
         "reason-check-grant",
         help="Validate a command-bound GRANT-* before running a protected Bash command.",
@@ -9731,6 +9789,9 @@ def parse_args() -> argparse.Namespace:
     record_claim.add_argument("--derived-from", dest="derived_from", action="append", default=[])
     record_claim.add_argument("--claim-kind", choices=sorted(CLAIM_KINDS))
     record_claim.add_argument("--confidence", choices=sorted(CONFIDENCE_LEVELS))
+    record_claim.add_argument("--relation-kind", choices=sorted(RELATION_KINDS))
+    record_claim.add_argument("--relation-subject", dest="relation_subject_refs", action="append", default=[])
+    record_claim.add_argument("--relation-object", dest="relation_object_refs", action="append", default=[])
     record_claim.add_argument("--comparison-key")
     record_claim.add_argument("--comparison-subject")
     record_claim.add_argument("--comparison-aspect")
@@ -10524,14 +10585,20 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
             )
         )
     if args.command == "reason-step":
+        chain_file = Path(args.chain).expanduser().resolve() if args.chain else None
         raise SystemExit(
             cmd_reason_step(
                 root,
-                chain_file=Path(args.chain).expanduser().resolve(),
+                chain_file=chain_file,
                 intent=args.intent,
                 mode=args.mode,
                 action_kind=args.action_kind,
                 why=args.why,
+                claim_ref=args.claim_ref,
+                prev_claim_ref=args.prev_claim_ref,
+                relation_claim_ref=args.relation_claim_ref,
+                prev_step_ref=args.prev_step_ref,
+                wctx_ref=args.wctx_ref,
                 parent_refs=args.parent_refs,
                 branch=args.branch,
                 output_format=args.output_format,
@@ -11171,6 +11238,9 @@ def dispatch(args: argparse.Namespace, root: Path) -> None:
                 claim_kind=args.claim_kind,
                 confidence=args.confidence,
                 comparison=comparison,
+                relation_kind=args.relation_kind,
+                relation_subject_refs=args.relation_subject_refs,
+                relation_object_refs=args.relation_object_refs,
                 logic=logic,
                 recorded_at=args.recorded_at,
                 project_refs=args.project_refs,

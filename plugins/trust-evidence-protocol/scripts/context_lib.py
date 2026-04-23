@@ -83,6 +83,7 @@ from tep_runtime.code_index import (
 )
 from tep_runtime.reason_ledger import (
     chain_payload_hash,
+    create_claim_step,
     create_reason_step,
     decision_reason_status,
     final_reason_status,
@@ -190,6 +191,10 @@ from tep_runtime.claims import (
     claim_retrieval_tier,
     mutate_claim_lifecycle_payload,
     parse_timestamp,
+)
+from tep_runtime.claim_relations import (
+    RELATION_KINDS,
+    relation_claim_overlaps,
 )
 from tep_runtime.cleanup import (
     cleanup_archive_apply_payload,

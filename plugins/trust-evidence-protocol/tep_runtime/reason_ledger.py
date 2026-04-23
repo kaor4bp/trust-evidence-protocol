@@ -17,7 +17,10 @@ from .agent_identity import (
     agent_key_fingerprint,
     load_local_agent_secret,
     load_or_create_local_agent_secret,
+    local_agent_owns_working_context,
 )
+from .claim_relations import PROOF_RELATION_KINDS, NAVIGATION_RELATION_KINDS, relation_connects, relation_shape_for_claim
+from .claims import claim_is_archived
 from .errors import ValidationError
 from .hydration import compute_context_fingerprint
 from .hypotheses import active_hypothesis_entry_by_claim
@@ -29,7 +32,7 @@ from .paths import (
 )
 from .policy import is_mutating_action_kind
 from .records import load_records
-from .reasoning import decision_validation_payload
+from .reasoning import PROOF_DECISION_MODES, UNCERTAIN_DECISION_MODES, decision_validation_payload
 from .scopes import current_project_ref, current_task_ref, current_workspace_ref
 from .settings import chain_permit_ttl_seconds, load_effective_settings
 from .validation import safe_list
@@ -37,9 +40,10 @@ from .telemetry import append_access_event
 
 
 REASON_ENTRY_VERSION = 2
+CLAIM_STEP_ENTRY_VERSION = 3
 REASON_SIGNED_CHAIN_NODE_LIMIT = 8
 ZERO_LEDGER_HASH = "sha256:0"
-LEDGER_ID_PREFIXES = {"REASON", "GRANT", "AUTH", "USE"}
+LEDGER_ID_PREFIXES = {"STEP", "REASON", "GRANT", "AUTH", "USE"}
 GRANT_ENTRY_TYPES = {"grant", "access_granted", "auth_granted"}
 LEGACY_ACCESS_ENTRY_TYPES = {"access_granted", "auth_granted"}
 USE_ENTRY_TYPES = {"access_used", "auth_reserved"}
@@ -329,6 +333,130 @@ def current_task_node_count(chain_payload: dict[str, Any], task_ref: str) -> int
     )
 
 
+def _active_wctx_ref_for_task(root: Path, records: dict[str, dict], task_ref: str) -> str:
+    project_ref = current_project_ref(root)
+    candidates: list[dict[str, Any]] = []
+    task = records.get(task_ref) if task_ref else None
+    task_wctx_refs = safe_list(task, "working_context_refs") if isinstance(task, dict) else []
+    for ref in task_wctx_refs:
+        context = records.get(ref)
+        if isinstance(context, dict):
+            candidates.append(context)
+    for record in records.values():
+        if record.get("record_type") == "working_context":
+            candidates.append(record)
+    seen: set[str] = set()
+    usable: list[dict[str, Any]] = []
+    for context in candidates:
+        context_id = str(context.get("id", "")).strip()
+        if not context_id or context_id in seen:
+            continue
+        seen.add(context_id)
+        if str(context.get("status", "")).strip() != "active":
+            continue
+        if project_ref and safe_list(context, "project_refs") and project_ref not in safe_list(context, "project_refs"):
+            continue
+        if task_ref and safe_list(context, "task_refs") and task_ref not in safe_list(context, "task_refs"):
+            continue
+        if not local_agent_owns_working_context(root, context):
+            continue
+        usable.append(context)
+    if not usable:
+        return ""
+    return str(sorted(usable, key=lambda item: str(item.get("updated_at", "")), reverse=True)[0].get("id", "")).strip()
+
+
+def _claim_is_tentative(record: dict[str, Any] | None) -> bool:
+    return bool(record and str(record.get("status", "")).strip() == "tentative")
+
+
+def _claim_is_decisive(record: dict[str, Any] | None) -> bool:
+    return bool(
+        record
+        and record.get("record_type") == "claim"
+        and str(record.get("status", "")).strip() in {"supported", "corroborated"}
+        and not claim_is_archived(record)
+    )
+
+
+def validate_claim_step_transition(
+    records: dict[str, dict],
+    *,
+    claim_ref: str,
+    prev_claim_ref: str,
+    relation_claim_ref: str,
+    mode: str,
+) -> dict[str, Any]:
+    blockers: list[str] = []
+    hypothesis_refs: list[str] = []
+    claim = records.get(claim_ref)
+    previous_claim = records.get(prev_claim_ref) if prev_claim_ref else None
+    relation_claim = records.get(relation_claim_ref) if relation_claim_ref else None
+
+    if not claim or claim.get("record_type") != "claim":
+        blockers.append(f"claim_ref must reference CLM-*: {claim_ref or 'none'}")
+    elif claim_is_archived(claim):
+        blockers.append(f"claim_ref is archived/fallback: {claim_ref}")
+    if previous_claim and previous_claim.get("record_type") != "claim":
+        blockers.append(f"prev_claim_ref must reference CLM-*: {prev_claim_ref}")
+    if previous_claim and claim_is_archived(previous_claim):
+        blockers.append(f"prev_claim_ref is archived/fallback: {prev_claim_ref}")
+
+    relation_shape = None
+    relation_kind = ""
+    if prev_claim_ref:
+        if not relation_claim or relation_claim.get("record_type") != "claim":
+            blockers.append(f"relation_claim_ref must reference relation CLM-*: {relation_claim_ref or 'none'}")
+        else:
+            relation_shape = relation_shape_for_claim(relation_claim)
+            if relation_shape is None:
+                blockers.append(f"relation_claim_ref is not a valid relation CLM-*: {relation_claim_ref}")
+            else:
+                relation_kind = relation_shape.kind
+                if not relation_connects(relation_shape, prev_claim_ref, claim_ref):
+                    blockers.append(f"relation_claim_ref {relation_claim_ref} does not connect {prev_claim_ref} -> {claim_ref}")
+    elif relation_claim_ref:
+        blockers.append("relation_claim_ref requires prev_claim_ref")
+
+    status_records = [
+        (prev_claim_ref, previous_claim),
+        (relation_claim_ref, relation_claim),
+        (claim_ref, claim),
+    ]
+    for ref, record in status_records:
+        if ref and _claim_is_tentative(record):
+            hypothesis_refs.append(ref)
+
+    normalized_mode = mode if mode else "planning"
+    if normalized_mode in PROOF_DECISION_MODES:
+        for ref, record in status_records:
+            if ref and not _claim_is_decisive(record):
+                blockers.append(f"{ref} is not supported/corroborated for mode={normalized_mode}")
+        if relation_kind in NAVIGATION_RELATION_KINDS:
+            blockers.append(f"relation kind {relation_kind} is navigation-only and cannot authorize mode={normalized_mode}")
+        if relation_kind and relation_kind not in PROOF_RELATION_KINDS:
+            blockers.append(f"relation kind {relation_kind} is not proof-capable")
+        if relation_shape and (len(relation_shape.subject_refs) != 1 or len(relation_shape.object_refs) != 1):
+            blockers.append("proof/action modes require one-to-one relation CLM edges")
+    elif normalized_mode in UNCERTAIN_DECISION_MODES:
+        if len(hypothesis_refs) > 1:
+            blockers.append("planning/debugging/curiosity claim steps allow at most one tentative hop")
+        if _claim_is_tentative(previous_claim) and _claim_is_tentative(relation_claim):
+            blockers.append("claim step cannot place two tentative hypotheses consecutively")
+        if _claim_is_tentative(relation_claim) and _claim_is_tentative(claim):
+            blockers.append("claim step cannot place two tentative hypotheses consecutively")
+    valid = not blockers
+    return {
+        "valid": valid,
+        "decision_chain_valid": valid,
+        "justification_valid": valid,
+        "valid_for": [normalized_mode] if valid else [],
+        "blockers": blockers,
+        "hypothesis_refs": sorted(set(hypothesis_refs)),
+        "relation_kind": relation_kind,
+    }
+
+
 def _read_reason_entries_file(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
     if not path.exists():
         return [], []
@@ -452,7 +580,7 @@ def _validate_reason_ledger_scope(
         entry_id = str(entry.get("id", "")).strip()
         prefix = entry_id.split("-", 1)[0] if "-" in entry_id else ""
         if prefix not in LEDGER_ID_PREFIXES:
-            errors.append(f"entry {index}: missing REASON-/GRANT-* id")
+            errors.append(f"entry {index}: missing STEP-/REASON-/GRANT-* id")
         elif entry_id in global_ids:
             errors.append(f"{entry_id}: duplicate id")
         global_ids.add(entry_id)
@@ -483,6 +611,19 @@ def _validate_reason_ledger_scope(
                 errors.append(f"{entry_id or index}: reason step missing chain_payload")
             elif str(entry.get("chain_hash", "")).strip() != chain_payload_hash(chain_payload):
                 errors.append(f"{entry_id or index}: chain_hash mismatch")
+        if str(entry.get("entry_type", "")).strip() == "claim_step":
+            if prefix != "STEP":
+                errors.append(f"{entry_id or index}: claim_step entries must use STEP-* ids")
+            if int(entry.get("version", 1) or 1) < CLAIM_STEP_ENTRY_VERSION:
+                errors.append(f"{entry_id or index}: claim_step entries require version {CLAIM_STEP_ENTRY_VERSION}")
+            if not str(entry.get("task_ref", "")).strip().startswith("TASK-"):
+                errors.append(f"{entry_id or index}: claim_step missing task_ref")
+            if not str(entry.get("wctx_ref", "")).strip().startswith("WCTX-"):
+                errors.append(f"{entry_id or index}: claim_step missing wctx_ref")
+            if not str(entry.get("claim_ref", "")).strip().startswith("CLM-"):
+                errors.append(f"{entry_id or index}: claim_step missing claim_ref")
+            if str(entry.get("prev_claim_ref", "")).strip() and not str(entry.get("relation_claim_ref", "")).strip().startswith("CLM-"):
+                errors.append(f"{entry_id or index}: claim_step with prev_claim_ref requires relation_claim_ref")
         previous = str(entry.get("ledger_hash", "")).strip()
     return errors, previous
 
@@ -703,7 +844,7 @@ def reason_by_id(entries: list[dict[str, Any]], reason_ref: str) -> dict[str, An
 
 def latest_reason_step(entries: list[dict[str, Any]], task_ref: str | None = None) -> dict[str, Any] | None:
     for entry in reversed(entries):
-        if str(entry.get("entry_type", "")).strip() != "step":
+        if str(entry.get("entry_type", "")).strip() not in {"step", "claim_step"}:
             continue
         if task_ref and str(entry.get("task_ref", "")).strip() != task_ref:
             continue
@@ -718,7 +859,8 @@ def latest_final_reason_step(
     context_fingerprint: str | None = None,
 ) -> dict[str, Any] | None:
     for entry in reversed(entries):
-        if str(entry.get("entry_type", "")).strip() != "step":
+        entry_type = str(entry.get("entry_type", "")).strip()
+        if entry_type not in {"step", "claim_step"}:
             continue
         if str(entry.get("task_ref", "")).strip() != task_ref:
             continue
@@ -730,9 +872,10 @@ def latest_final_reason_step(
             continue
         if context_fingerprint and str(entry.get("context_fingerprint", "")).strip() != context_fingerprint:
             continue
-        chain_payload = entry.get("chain_payload") if isinstance(entry.get("chain_payload"), dict) else {}
-        if current_task_node_count(chain_payload, task_ref) != 1:
-            continue
+        if entry_type == "step":
+            chain_payload = entry.get("chain_payload") if isinstance(entry.get("chain_payload"), dict) else {}
+            if current_task_node_count(chain_payload, task_ref) != 1:
+                continue
         return entry
     return None
 
@@ -745,7 +888,8 @@ def latest_decision_reason_step(
     context_fingerprint: str | None = None,
 ) -> dict[str, Any] | None:
     for entry in reversed(entries):
-        if str(entry.get("entry_type", "")).strip() != "step":
+        entry_type = str(entry.get("entry_type", "")).strip()
+        if entry_type not in {"step", "claim_step"}:
             continue
         if str(entry.get("task_ref", "")).strip() != task_ref:
             continue
@@ -755,9 +899,10 @@ def latest_decision_reason_step(
             continue
         if context_fingerprint and str(entry.get("context_fingerprint", "")).strip() != context_fingerprint:
             continue
-        chain_payload = entry.get("chain_payload") if isinstance(entry.get("chain_payload"), dict) else {}
-        if current_task_node_count(chain_payload, task_ref) != 1:
-            continue
+        if entry_type == "step":
+            chain_payload = entry.get("chain_payload") if isinstance(entry.get("chain_payload"), dict) else {}
+            if current_task_node_count(chain_payload, task_ref) != 1:
+                continue
         return entry
     return None
 
@@ -787,7 +932,7 @@ def decision_reason_status(root: Path, *, mode: str, context_fingerprint: str | 
             "required": True,
             "reason": None,
             "message": (
-                f"missing reviewed REASON-* valid_for={mode}, current TASK-* node, "
+                f"missing reviewed STEP-* valid_for={mode}, current TASK-* node, "
                 "and current context fingerprint"
             ),
         }
@@ -799,8 +944,17 @@ def decision_reason_status(root: Path, *, mode: str, context_fingerprint: str | 
             "reason": reason,
             "message": "; ".join(f"{error.path}: {error.message}" for error in record_errors),
         }
-    chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
-    decision = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain_payload, mode)
+    if str(reason.get("entry_type", "")).strip() == "claim_step":
+        decision = validate_claim_step_transition(
+            records,
+            claim_ref=str(reason.get("claim_ref", "")).strip(),
+            prev_claim_ref=str(reason.get("prev_claim_ref", "")).strip(),
+            relation_claim_ref=str(reason.get("relation_claim_ref", "")).strip(),
+            mode=mode,
+        )
+    else:
+        chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
+        decision = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain_payload, mode)
     if not _justification_valid(decision):
         blockers = decision.get("blockers", [])
         return {
@@ -836,8 +990,17 @@ def final_reason_status(root: Path, *, context_fingerprint: str | None = None) -
                 "reason": reason,
                 "message": "; ".join(f"{error.path}: {error.message}" for error in record_errors),
             }
-        chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
-        decision = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain_payload, "final")
+        if str(reason.get("entry_type", "")).strip() == "claim_step":
+            decision = validate_claim_step_transition(
+                records,
+                claim_ref=str(reason.get("claim_ref", "")).strip(),
+                prev_claim_ref=str(reason.get("prev_claim_ref", "")).strip(),
+                relation_claim_ref=str(reason.get("relation_claim_ref", "")).strip(),
+                mode="final",
+            )
+        else:
+            chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
+            decision = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain_payload, "final")
         if not _justification_valid(decision):
             blockers = decision.get("blockers", [])
             return {
@@ -852,7 +1015,7 @@ def final_reason_status(root: Path, *, context_fingerprint: str | None = None) -
         "required": True,
         "reason": None,
         "message": (
-            "missing reviewed REASON-* with mode=final, current TASK-* node, "
+            "missing reviewed STEP-* with mode=final, current TASK-* node, "
             "valid_for=final, and current context fingerprint"
         ),
     }
@@ -935,6 +1098,116 @@ def create_reason_step(
     )
 
 
+def create_claim_step(
+    root: Path,
+    records: dict[str, dict],
+    *,
+    claim_ref: str,
+    prev_claim_ref: str | None = None,
+    relation_claim_ref: str | None = None,
+    intent: str,
+    mode: str,
+    action_kind: str | None,
+    reason: str,
+    prev_step_ref: str | None = None,
+    branch: str = "main",
+    wctx_ref: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    task_ref = current_task_ref(root)
+    if not task_ref:
+        return None, "claim steps require an active TASK-*"
+    validation = validate_reason_ledger(root)
+    if not validation["ok"]:
+        return None, "; ".join(validation["errors"])
+    entries = validation["entries"]
+    normalized_claim_ref = claim_ref.strip()
+    normalized_prev_claim_ref = (prev_claim_ref or "").strip()
+    normalized_relation_ref = (relation_claim_ref or "").strip()
+    normalized_prev_step_ref = (prev_step_ref or "").strip()
+    task_steps = [
+        entry
+        for entry in entries
+        if str(entry.get("entry_type", "")).strip() == "claim_step"
+        and str(entry.get("task_ref", "")).strip() == task_ref
+    ]
+    if task_steps and not normalized_prev_step_ref:
+        latest = task_steps[-1]
+        normalized_prev_step_ref = str(latest.get("id", "")).strip()
+        if not normalized_prev_claim_ref:
+            normalized_prev_claim_ref = str(latest.get("claim_ref", "")).strip()
+    if normalized_prev_step_ref:
+        previous_step = reason_by_id(entries, normalized_prev_step_ref)
+        if not previous_step:
+            return None, f"missing previous claim step {normalized_prev_step_ref}"
+        if str(previous_step.get("entry_type", "")).strip() != "claim_step":
+            return None, f"previous step must be STEP-* claim_step: {normalized_prev_step_ref}"
+        if str(previous_step.get("task_ref", "")).strip() != task_ref:
+            return None, f"previous step {normalized_prev_step_ref} belongs to another TASK-*"
+        previous_step_claim = str(previous_step.get("claim_ref", "")).strip()
+        if normalized_prev_claim_ref and previous_step_claim and normalized_prev_claim_ref != previous_step_claim:
+            return None, f"prev_claim_ref must match previous step claim_ref {previous_step_claim}"
+        normalized_prev_claim_ref = normalized_prev_claim_ref or previous_step_claim
+
+    decision = validate_claim_step_transition(
+        records,
+        claim_ref=normalized_claim_ref,
+        prev_claim_ref=normalized_prev_claim_ref,
+        relation_claim_ref=normalized_relation_ref,
+        mode=mode,
+    )
+    if not decision["justification_valid"]:
+        blockers = "; ".join(str(item) for item in decision.get("blockers", []) if str(item).strip())
+        suffix = f": {blockers}" if blockers else ""
+        return None, f"STEP-* claim_step requires a connected CLM transition for mode={mode}{suffix}"
+    resolved_wctx_ref = str(wctx_ref or "").strip() or _active_wctx_ref_for_task(root, records, task_ref)
+    if not resolved_wctx_ref:
+        return None, "claim steps require an active owner-bound WCTX-* for the current TASK-*"
+    if normalized_prev_step_ref and not normalized_relation_ref:
+        return None, "continuing a claim-step chain requires relation_claim_ref"
+    claim_step_hash = chain_payload_hash(
+        {
+            "task_ref": task_ref,
+            "prev_step_ref": normalized_prev_step_ref,
+            "prev_claim_ref": normalized_prev_claim_ref,
+            "claim_ref": normalized_claim_ref,
+            "relation_claim_ref": normalized_relation_ref,
+            "mode": mode,
+            "reason": reason.strip(),
+        }
+    )
+    return append_reason_entry(
+        root,
+        {
+            "version": CLAIM_STEP_ENTRY_VERSION,
+            "entry_type": "claim_step",
+            "status": "reviewed",
+            "workspace_ref": current_workspace_ref(root),
+            "project_ref": current_project_ref(root),
+            "task_ref": task_ref,
+            "wctx_ref": resolved_wctx_ref,
+            "prev_step_ref": normalized_prev_step_ref,
+            "prev_claim_ref": normalized_prev_claim_ref,
+            "claim_ref": normalized_claim_ref,
+            "relation_claim_ref": normalized_relation_ref,
+            "branch": branch.strip() or "main",
+            "intent": intent.strip() or mode,
+            "mode": mode,
+            "action_kind": (action_kind or "").strip(),
+            "reason": reason.strip(),
+            "justification_valid": True,
+            "decision_chain_valid": True,
+            "decision_valid": True,
+            "valid_for": decision.get("valid_for", []),
+            "blockers": [],
+            "hypothesis_refs": decision.get("hypothesis_refs", []),
+            "relation_kind": decision.get("relation_kind", ""),
+            "claim_step_hash": claim_step_hash,
+            "context_fingerprint": compute_context_fingerprint(root),
+        },
+        id_prefix="STEP",
+    )
+
+
 def grant_reason_access(
     root: Path,
     *,
@@ -963,16 +1236,31 @@ def grant_reason_access(
         return None, "agent_identity_required: reason grants require the current per-agent identity"
     if reason_agent_ref and reason_agent_ref != current_agent_ref:
         return None, f"{reason_ref} belongs to another agent identity {reason_agent_ref}"
-    if str(reason.get("entry_type", "")).strip() != "step":
-        return None, f"{reason_ref} is not a reason step"
+    reason_entry_type = str(reason.get("entry_type", "")).strip()
+    if reason_entry_type not in {"step", "claim_step"}:
+        return None, f"{reason_ref} is not a reason/claim step"
     if not _justification_valid(reason):
         return None, f"{reason_ref} has not passed decision validation"
     task_ref = current_task_ref(root)
     if not task_ref or str(reason.get("task_ref", "")).strip() != task_ref:
         return None, f"{reason_ref} does not match current TASK-* {task_ref or 'none'}"
-    chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
-    if current_task_node_count(chain_payload, task_ref) != 1:
-        return None, f"grants require exactly one task node matching current TASK-* {task_ref}"
+    if reason_entry_type == "step":
+        chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
+        if current_task_node_count(chain_payload, task_ref) != 1:
+            return None, f"grants require exactly one task node matching current TASK-* {task_ref}"
+    else:
+        records, record_errors = load_records(root)
+        if record_errors:
+            return None, "; ".join(f"{error.path}: {error.message}" for error in record_errors)
+        decision = validate_claim_step_transition(
+            records,
+            claim_ref=str(reason.get("claim_ref", "")).strip(),
+            prev_claim_ref=str(reason.get("prev_claim_ref", "")).strip(),
+            relation_claim_ref=str(reason.get("relation_claim_ref", "")).strip(),
+            mode=mode,
+        )
+        if not decision.get("justification_valid"):
+            return None, f"{reason_ref} claim-step chain no longer validates: " + "; ".join(decision.get("blockers", []))
     normalized_kind = (action_kind or "").strip()
     if mode == "edit" and not normalized_kind:
         return None, "edit grant requires action kind"
@@ -1000,8 +1288,11 @@ def grant_reason_access(
         "task_ref": task_ref,
         "mode": mode,
         "action_kind": normalized_kind,
-        "chain_hash": str(reason.get("chain_hash", "")).strip(),
+        "chain_hash": str(reason.get("chain_hash") or reason.get("claim_step_hash", "")).strip(),
         "signed_chain": reason.get("signed_chain", {}),
+        "claim_step_ref": reason_ref if reason_entry_type == "claim_step" else "",
+        "claim_ref": str(reason.get("claim_ref", "")).strip(),
+        "relation_claim_ref": str(reason.get("relation_claim_ref", "")).strip(),
         "context_fingerprint": compute_context_fingerprint(root),
         "max_runs": 1,
         "issued_at": issued.isoformat(timespec="seconds"),
