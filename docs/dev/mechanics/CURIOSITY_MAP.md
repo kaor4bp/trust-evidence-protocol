@@ -16,6 +16,11 @@ The canonical generated graph shape is `tep.map_graph.v1`.
 It should expose nodes, edges, clusters, cluster layers, probes, relation
 weights, and topology analysis.
 
+`tep.map_graph.v1` is a sensor/projection layer, not durable map memory. The
+0.4.0 durable memory layer is `MAP-*`: one canonical navigation record for one
+cognitive map cell at one abstraction level. `curiosity-map` may propose or
+rank cells, but `map_refresh` materializes and updates them.
+
 ## Clusters
 
 Cluster layers should stay explicit:
@@ -69,12 +74,42 @@ not become object-level proof without drill-down into underlying support.
 Every curiosity candidate should explain `why_suggested`, expected value, and
 the proof route needed before the agent may rely on it.
 
+## Durable MAP Cells
+
+`MAP-*` cells should be created and refreshed incrementally rather than
+regenerating a whole project map for every view.
+
+Levels:
+
+- `MAP-L1`: evidence patch near CLM/SRC/RUN/FILE/ART/CIX anchors.
+- `MAP-L2`: mechanism, pattern, risk, policy, workflow, or code-area cell over
+  L1 cells, meta CLM, MODEL, and FLOW anchors.
+- `MAP-L3`: task situation or strategy cell over L2 cells, TASK, WCTX, PLAN,
+  REASON, OPEN, and PRP anchors.
+
+`MAP-*` records are shared navigation cells. Agent-specific position, inspected
+candidates, dismissed candidates, deferred candidates, and allowed moves belong
+in an owner-bound `WCTX-*` map session.
+
+`map_refresh` is explicit and mutating in 0.4.0. It should update pressure and
+activity signals in place when a cell meaning is unchanged. It should create a
+new `MAP-*` when anchors, source set, proof routes, level, map kind, or semantic
+summary materially changes, linking the new cell to older ones with
+`refines_map_refs` or `supersedes_refs`.
+
+Refresh is triggered by stale anchors, source-set fingerprint changes, new
+map-relevant CLM records, new or changed MODEL/FLOW records, task/WCTX closure
+or fork, and explicit user/curator/agent request.
+
 ## Map Sessions
 
 Agent map navigation should be session-based:
 
 ```text
 map_open -> map_view -> map_move -> map_drilldown -> map_checkpoint
+
+optional explicit mutation:
+map_refresh
 ```
 
 The session state belongs in `WCTX-*`, not truth records. It may track:
@@ -91,6 +126,10 @@ Dismissed and deferred candidates are navigation memory. They do not create
 `OPEN-*`, `DEBT-*`, `PRP-*`, or truth records automatically. A candidate can
 return later only when new evidence, a new bridge, a new task, or changed tap
 smell makes the route valuable again.
+
+`map_open`, `map_view`, `map_move`, `map_drilldown`, and `map_checkpoint` are
+session/view operations. `map_refresh` is the only normal map operation in this
+loop that mutates durable `MAP-*` records.
 
 ## Views
 

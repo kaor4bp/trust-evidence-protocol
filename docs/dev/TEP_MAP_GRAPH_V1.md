@@ -7,6 +7,11 @@ It is not canonical memory and it is not proof. Canonical truth remains
 `SRC-* -> CLM-*`. Map graph output is a navigation artifact that helps agents
 choose what to inspect next.
 
+For TEP 0.4.0, durable cognitive map memory is represented by `MAP-*` records,
+not by this generated graph payload. A `MAP-*` record is one shared navigation
+cell at exactly one abstraction level. `tep.map_graph.v1` remains the generated
+projection used by `curiosity-map`, `map-brief`, HTML, export, and algorithms.
+
 ## Design Goals
 
 - Keep one typed graph contract for agent, HTML, Mermaid, DOT/GraphML export,
@@ -214,6 +219,21 @@ Map session state is stored in `WCTX-*` operational context. A session may track
 the current zone, allowed moves, suggested candidates, inspected candidates,
 chain-used candidates, dismissed candidates, deferred candidates, and sampled
 `REASON-*` or aggregate `CLM-*` refs used to explain inquiry pressure.
+
+`MAP-*` records are shared; the WCTX session is personal to the owning agent.
+Another agent must fork/adopt WCTX before reusing personal map position or
+checkpoint state.
+
+`map_refresh` is the explicit mutating operation that materializes or updates
+durable `MAP-*` cells from map graph, attention, topic, code, telemetry, and
+curiosity signals. Read-only map views should not silently create or rewrite
+`MAP-*` records.
+
+Refresh should update pressure/activity signals in place when the cell meaning
+is unchanged. It should create a new `MAP-*` when anchors, source set, proof
+routes, level, map kind, or summary changes materially. New map-relevant
+`CLM-*` records and new or changed `MODEL-*`/`FLOW-*` records are refresh
+triggers.
 
 `map_drilldown` returns a proof route such as `lookup`, `record_detail`,
 `linked_records`, `augment_chain`, and `validate_chain`. It does not return

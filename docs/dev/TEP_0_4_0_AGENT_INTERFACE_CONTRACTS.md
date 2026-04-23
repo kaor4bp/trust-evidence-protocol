@@ -166,6 +166,9 @@ map_open(task/query/mode)
 -> map_move(session, zone/probe)
 -> map_drilldown(session, ref)
 -> map_checkpoint(session)
+
+optional explicit mutation:
+map_refresh(session|scope)
 ```
 
 Required map view output:
@@ -207,6 +210,13 @@ Rules:
   unresolved probes, or aggregate/meta claims around them.
 - Candidate, missing, rejected, and unknown links must be labelled separately.
 - Map sessions are persisted in `WCTX-*` as operational state.
+- Durable `MAP-*` records are shared navigation cells; the WCTX map session is
+  personal to the owning agent.
+- Read-only map tools must not silently create or rewrite `MAP-*` records.
+- `map_refresh` is the explicit mutating tool for materializing/updating
+  `MAP-*` cells.
+- New map-relevant `CLM-*` records and new or changed `MODEL-*`/`FLOW-*`
+  records are refresh triggers.
 - Map tools must not automatically create `OPEN-*`, `DEBT-*`, `PRP-*`, or truth
   records.
 - `map_drilldown` returns a proof route, not proof.

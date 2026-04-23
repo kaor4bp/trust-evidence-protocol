@@ -135,6 +135,7 @@ map_view
 map_move
 map_drilldown
 map_checkpoint
+map_refresh
 ```
 
 - Keep direct search, record detail, code search, linked records, telemetry, and
@@ -201,7 +202,11 @@ Exit criteria:
 Goals:
 
 - Treat curiosity map as a navigable cognitive fact map.
-- Persist map session state in `WCTX-*`.
+- Represent durable cognitive memory as shared `MAP-*` records where one record
+  is one cell at one abstraction level.
+- Persist agent-specific map session state in owner-bound `WCTX-*`.
+- Keep `curiosity-map`/attention output as generated sensor views; use explicit
+  `map_refresh` to create or update durable `MAP-*` cells.
 - Surface:
   - anchor facts
   - ignored but relevant facts
@@ -213,6 +218,11 @@ Goals:
   - promotion pressure
 - Use generated/meta `CLM-*` summaries when they exist, while requiring
   object-level drill-down for proof.
+- Refresh map cells when map-relevant `CLM-*` records appear, when
+  `MODEL-*`/`FLOW-*` records are created or changed, or when source-set
+  fingerprints/staleness triggers change.
+- Update pressure/activity signals in place; create a new `MAP-*` with
+  `refines_map_refs`/`supersedes_refs` when cell meaning changes materially.
 
 Exit criteria:
 
@@ -221,6 +231,8 @@ Exit criteria:
   route.
 - Dismissed/deferred/inspected map candidates are remembered in WCTX session
   state.
+- `map_refresh` is the only normal map operation that mutates durable `MAP-*`
+  records.
 
 ## Milestone 7: Feature Recovery And Conformance
 

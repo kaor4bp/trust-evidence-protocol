@@ -86,18 +86,32 @@ All levels share these fields:
   },
   "anchor_refs": [],
   "derived_from_refs": [],
+  "source_set_fingerprint": "sha256:...",
   "up_refs": [],
   "down_refs": [],
   "adjacent_map_refs": [],
   "contradicts_map_refs": [],
   "refines_map_refs": [],
+  "supersedes_refs": [],
   "tension_refs": [],
-  "unknown_link_refs": [],
+  "unknown_links": [],
   "proof_routes": [],
-  "signals": {},
+  "signals": {
+    "tap_smell": {
+      "score": 0.0,
+      "half_life_days": 7.0,
+      "last_updated_at": "..."
+    },
+    "neglect_pressure": {"score": 0.0},
+    "inquiry_pressure": {"score": 0.0},
+    "promotion_pressure": {"score": 0.0},
+    "staleness_pressure": {"score": 0.0},
+    "conflict_pressure": {"score": 0.0}
+  },
   "map_is_proof": false,
-  "generated_by": "lookup|curiosity-map|curator|agent-request",
+  "generated_by": "lookup|curiosity_map|curator|agent_request|map_refresh",
   "generated_at": "...",
+  "updated_at": "...",
   "stale_policy": "anchor_changed|source_set_changed|time_window_expired|manual"
 }
 ```
@@ -108,11 +122,36 @@ Field rules:
 - `map_is_proof` must be `false`.
 - `anchor_refs` are the most important records for understanding this cell.
 - `derived_from_refs` explain how this cell was constructed.
+- `source_set_fingerprint` is computed from the semantic source set used to
+  create the cell. It is the primary refresh/staleness comparison key.
 - `up_refs` point to higher-abstraction map cells.
 - `down_refs` point to lower-abstraction map cells.
 - `adjacent_map_refs` point to same-level neighboring cells.
+- `refines_map_refs` point to older or broader cells that remain useful.
+- `supersedes_refs` point to older cells replaced by a newer semantic cell.
+- `unknown_links` are structured candidate/missing/rejected/unknown link
+  objects. Do not encode free-form `candidate:A->B` strings.
 - `proof_routes` are instructions for drilling down to proof-capable records.
   They are not proof by themselves.
+- `signals` are activity and pressure values. They may be updated in place when
+  the cell meaning has not changed.
+
+`unknown_links` entries should use this shape:
+
+```json
+{
+  "id": "ULINK-*",
+  "from_ref": "CLM-*",
+  "to_ref": "MODEL-*",
+  "link_kind": "candidate|missing|rejected|unknown",
+  "status": "candidate|dismissed|deferred|confirmed",
+  "source_signal": "probe|bridge|topic|curator|agent",
+  "why_suggested": "..."
+}
+```
+
+`scope_refs` must be present. Runtime-created cells should default missing
+workspace/project/task/WCTX lists to empty arrays before validation.
 
 ## L1 Evidence Patch
 
@@ -202,7 +241,17 @@ Example:
   "down_refs": ["MAP-20260423-l1abc123"],
   "up_refs": ["MAP-20260423-l3abc123"],
   "tension_refs": ["CLM-..."],
-  "unknown_link_refs": ["candidate:Facility->Program"],
+  "unknown_links": [
+    {
+      "id": "ULINK-...",
+      "from_ref": "CLM-...",
+      "to_ref": "MODEL-...",
+      "link_kind": "candidate",
+      "status": "candidate",
+      "source_signal": "probe",
+      "why_suggested": "Facility and Program visibility claims share a cold topic and no established direct link."
+    }
+  ],
   "map_is_proof": false
 }
 ```
@@ -305,6 +354,10 @@ L3 down_refs -> L2 or L1
 adjacent_map_refs -> same level preferred; cross-level allowed only with reason
 ```
 
+`up_refs` and `down_refs` should be reciprocal when both cells already exist.
+Validation may warn instead of failing when a partial refresh creates one side
+first.
+
 ## Lookup Behavior
 
 `lookup` may return `MAP-*` cells as navigation context.
@@ -330,6 +383,10 @@ MAP-L1 evidence patches
 object-level CLM drill-down candidates
 navigation-only CIX/backend/topic hits
 ```
+
+`lookup` should prefer existing `MAP-*` cells over regenerating a large map
+view. `curiosity_map` and attention output are signal sources; durable MAP cells
+are the preferred navigation memory.
 
 ## Proof Behavior
 
@@ -367,6 +424,60 @@ contains proof-capable chain nodes or explicitly states that it is exploratory.
 
 Signals are not proof. They rank inspection order and route suggestions.
 
+Signal updates are not semantic updates. `tap_smell`, `neglect_pressure`,
+`inquiry_pressure`, `promotion_pressure`, `staleness_pressure`, and
+`conflict_pressure` may be updated in place when the cell summary, anchors, and
+proof routes still describe the same meaning.
+
+`tap_smell` should decay over time. Recent repeated taps strengthen it; time,
+changed task context, or promotion into a compact `MODEL-*`/`FLOW-*` anchor lets
+it fade. A hot fact is not automatically a smell: smell is high when repeated
+access looks like fixation, missing integration, or reuse without extending the
+reasoning branch.
+
+## Creation And Refresh
+
+`MAP-*` cells are durable navigation records. The runtime should not regenerate
+the whole cognitive map on every view. It should create and refresh small cells.
+
+`map_refresh` is an explicit mutating runtime operation for 0.4.0. It may be
+called from MCP after `lookup`/`map_open` shows stale or missing map coverage,
+but normal read-only map views must not silently mutate records.
+
+Refresh flow:
+
+1. Read attention/curiosity/topic/code/telemetry signals as sensor input.
+2. Propose candidate `MAP-*` cells with level, map kind, anchors, proof routes,
+   and a `source_set_fingerprint`.
+3. Find an existing active cell with compatible level, map kind, scope, and
+   source set.
+4. Update in place only for activity/pressure signals and timestamps.
+5. Create a new cell when anchors, source set, proof routes, level, map kind, or
+   semantic summary materially changes.
+6. Link new semantic cells to older cells through `refines_map_refs` and/or
+   `supersedes_refs`.
+7. Mark old cells `stale` when they should be retained but de-ranked.
+
+Refresh triggers:
+
+- any anchor record is archived/rejected/superseded
+- source set fingerprint changes
+- linked `CLM(meta_aggregated)` becomes stale
+- new `CLM-*` records of map-relevant kinds appear near the cell's anchors,
+  including meta aggregates, record-link claims, contradiction/conflict claims,
+  runtime claims, and high-value supported object claims
+- new or changed `MODEL-*` or `FLOW-*` records appear near the cell's anchors
+- current task/WCTX is closed or forked
+- explicit user, curator, or agent request
+
+Shared vs personal state:
+
+- `MAP-*` records are shared canonical navigation cells.
+- The agent's current position, inspected/dismissed/deferred candidates, and
+  allowed map moves live in an owner-bound `WCTX-*` map session.
+- Reusing another agent's WCTX session requires the normal fork/adopt flow; it
+  must not silently transfer personal map state.
+
 ## Lifecycle
 
 `MAP-*` records may be:
@@ -380,25 +491,31 @@ Staleness triggers:
 - any anchor record is archived/rejected/superseded
 - source set fingerprint changes
 - linked `CLM(meta_aggregated)` becomes stale
+- map-relevant `CLM-*`, `MODEL-*`, or `FLOW-*` records appear or change near the
+  cell's anchors
 - current task/WCTX is closed
 - explicit user or curator decision
 
 Map refresh should normally create a new `MAP-*` and link it through
 `refines_map_refs` or `supersedes_refs` rather than mutating the old cell in
-place.
+place. In-place updates are reserved for pressure/activity signal changes that
+do not alter the cell's meaning.
 
 ## Implementation Notes For 0.4.0
 
 Slice order:
 
 1. Define `MAP-*` schema and validators.
-2. Add lookup support for returning existing `MAP-*` cells.
-3. Add map creation service for `L1` from current attention/curiosity output.
-4. Add `L2` creation from `MAP-L1`, `CLM(meta_aggregated)`, MODEL/FLOW, and
+2. Add record loading/search support for `record_type=map`.
+3. Add lookup support for returning existing `MAP-*` cells.
+4. Add explicit `map_refresh` service for materializing and updating `L1` cells
+   from current attention/curiosity output.
+5. Add map session state in owner-bound `WCTX-*` plus read-only
+   `map_open`/`map_view`/`map_move`/`map_drilldown`/`map_checkpoint` behavior.
+6. Add `L2` creation from `MAP-L1`, `CLM(meta_aggregated)`, MODEL/FLOW, and
    tensions.
-5. Add `L3` creation from `MAP-L2`, TASK, WCTX, PLAN, REASON, OPEN, and PRP.
-6. Add map session state in `WCTX-*`.
-7. Add HTML/visual projection only after MCP/text projections are stable.
+7. Add `L3` creation from `MAP-L2`, TASK, WCTX, PLAN, REASON, OPEN, and PRP.
+8. Add HTML/visual projection only after MCP/text projections are stable.
 
 Do not start with a full visual map. Start with small, typed `MAP-*` cells that
 make lookup cheaper and reasoning more structured.
