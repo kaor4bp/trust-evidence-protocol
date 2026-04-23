@@ -28,6 +28,8 @@ MAP_REFRESH_TRIGGER_STATUSES = {
     "model": {"working", "stable"},
     "flow": {"working", "stable"},
 }
+TERMINAL_ANCHOR_STATUSES = {"archived", "rejected", "superseded", "stale"}
+TERMINAL_CLAIM_LIFECYCLE_STATES = {"archived", "resolved", "historical"}
 
 
 def _canonical_json(payload: Any) -> str:
@@ -76,6 +78,18 @@ def _record_change_timestamp_text(record: dict) -> str:
 
 def _map_updated_timestamp(record: dict) -> datetime | None:
     return _parse_timestamp(str(record.get("updated_at", "")).strip())
+
+
+def _mode_scope_from_map_scope(value: str) -> tuple[str, str] | None:
+    prefix = "map_refresh."
+    scope_value = str(value or "").strip()
+    if not scope_value.startswith(prefix):
+        return None
+    remainder = scope_value.removeprefix(prefix)
+    mode, separator, scope = remainder.partition(".")
+    if not separator or not mode or not scope:
+        return None
+    return mode, scope
 
 
 def _scope_refs(root: Path) -> dict[str, list[str]]:
@@ -161,6 +175,86 @@ def _mapworthy_record(record: dict) -> bool:
     return True
 
 
+def _terminal_anchor_reason(record: dict) -> str:
+    status = str(record.get("status", "")).strip()
+    if status in TERMINAL_ANCHOR_STATUSES:
+        return f"anchor_{status}"
+    if record.get("record_type") == "claim":
+        lifecycle = record.get("lifecycle", {})
+        lifecycle_state = str(lifecycle.get("state", "")).strip() if isinstance(lifecycle, dict) else ""
+        if lifecycle_state in TERMINAL_CLAIM_LIFECYCLE_STATES:
+            return f"anchor_lifecycle_{lifecycle_state}"
+    return ""
+
+
+def _map_source_set_fingerprint(record: dict) -> str:
+    parsed = _mode_scope_from_map_scope(str(record.get("scope", "")))
+    if not parsed:
+        return ""
+    mode, scope = parsed
+    record_refs = _safe_list(record, "derived_from_refs")
+    if not record_refs:
+        record_refs = _safe_list(record, "anchor_refs")
+    if not record_refs:
+        return ""
+    source_material = {
+        "level": str(record.get("level", "")),
+        "map_kind": str(record.get("map_kind", "")),
+        "mode": mode,
+        "scope": scope,
+        "record_refs": record_refs,
+        "route_kind": "curiosity_probe_records",
+    }
+    return _sha256_payload(source_material)
+
+
+def map_cell_refresh_triggers(records: dict[str, dict], active_maps: list[dict], *, limit: int) -> list[dict[str, Any]]:
+    triggers: list[dict[str, Any]] = []
+    for map_record in active_maps:
+        map_ref = str(map_record.get("id", "")).strip()
+        terminal_refs = []
+        for ref in sorted({*_safe_list(map_record, "anchor_refs"), *_safe_list(map_record, "derived_from_refs")}):
+            record = records.get(ref)
+            if not record:
+                continue
+            reason = _terminal_anchor_reason(record)
+            if reason:
+                terminal_refs.append({"record_ref": ref, "reason": reason, "status": str(record.get("status", ""))})
+        if terminal_refs:
+            reasons = sorted({item["reason"] for item in terminal_refs})
+            triggers.append(
+                {
+                    "record_ref": map_ref,
+                    "record_type": "map",
+                    "status": str(map_record.get("status", "")),
+                    "reason": "map_has_terminal_anchor",
+                    "anchor_refs": [item["record_ref"] for item in terminal_refs],
+                    "anchor_reasons": reasons,
+                    "map_refs": [map_ref],
+                    "summary": _record_summary(records, map_ref),
+                    "trigger_is_proof": False,
+                }
+            )
+        expected_fingerprint = _map_source_set_fingerprint(map_record)
+        if expected_fingerprint and expected_fingerprint != str(map_record.get("source_set_fingerprint", "")).strip():
+            triggers.append(
+                {
+                    "record_ref": map_ref,
+                    "record_type": "map",
+                    "status": str(map_record.get("status", "")),
+                    "reason": "source_set_fingerprint_changed",
+                    "expected_source_set_fingerprint": expected_fingerprint,
+                    "actual_source_set_fingerprint": str(map_record.get("source_set_fingerprint", "")),
+                    "map_refs": [map_ref],
+                    "summary": _record_summary(records, map_ref),
+                    "trigger_is_proof": False,
+                }
+            )
+        if len(triggers) >= limit:
+            break
+    return triggers[:limit]
+
+
 def map_refresh_triggers(
     root: Path,
     records: dict[str, dict],
@@ -177,6 +271,7 @@ def map_refresh_triggers(
         if str(record.get("status", "active")).strip() == "active"
         and _map_record_scope_matches(root, record, mode=mode, scope=scope)
     ]
+    triggers = map_cell_refresh_triggers(records, active_maps, limit=limit)
     covered_refs: dict[str, list[dict[str, Any]]] = {}
     for map_record in active_maps:
         map_ref = str(map_record.get("id", "")).strip()
@@ -184,8 +279,9 @@ def map_refresh_triggers(
         for ref in sorted({*_safe_list(map_record, "anchor_refs"), *_safe_list(map_record, "derived_from_refs")}):
             covered_refs.setdefault(ref, []).append({"map_ref": map_ref, "map_updated_at": map_updated})
 
-    triggers: list[dict[str, Any]] = []
     for record_id, record in sorted(records.items()):
+        if len(triggers) >= limit:
+            break
         if not _mapworthy_record(record) or not _source_record_scope_matches(root, record, scope=scope):
             continue
         record_timestamp = _record_change_timestamp(record)
@@ -218,8 +314,6 @@ def map_refresh_triggers(
                 "trigger_is_proof": False,
             }
         )
-        if len(triggers) >= limit:
-            break
     return triggers
 
 

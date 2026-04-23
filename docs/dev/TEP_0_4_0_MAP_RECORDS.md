@@ -496,10 +496,12 @@ Refresh triggers:
   active map cell that covers it.
 - uncovered or newer active `MODEL-*` or `FLOW-*` records appear. Current
   implemented statuses are `working` and `stable`.
-- any anchor record is archived/rejected/superseded. Planned follow-up:
-  integrate this with the trigger detector as a staleness reason rather than
-  only validator/search pressure.
-- source set fingerprint changes.
+- any anchor record is archived/rejected/superseded/stale, or a `CLM-*` anchor
+  moves into lifecycle `archived`, `resolved`, or `historical`. The trigger
+  reason is `map_has_terminal_anchor` with per-anchor reasons.
+- source set fingerprint changes. The trigger reason is
+  `source_set_fingerprint_changed` and reports the expected and actual
+  fingerprints.
 - linked `CLM(meta_aggregated)` becomes stale.
 - current task/WCTX is closed or forked
 - explicit user, curator, or agent request
@@ -526,7 +528,8 @@ Shared vs personal state:
 
 Staleness triggers:
 
-- any anchor record is archived/rejected/superseded
+- any anchor record is archived/rejected/superseded/stale, or a `CLM-*` anchor
+  moves into lifecycle `archived`, `resolved`, or `historical`
 - source set fingerprint changes
 - linked `CLM(meta_aggregated)` becomes stale
 - map-relevant `CLM-*`, `MODEL-*`, or `FLOW-*` records appear or change near the

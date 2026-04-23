@@ -105,7 +105,8 @@ Implemented 0.4 trigger reporting is navigation-only. `lookup.map_navigation`
 and `map_refresh` expose `refresh_required`, `refresh_triggers`, and recommended
 commands. The trigger detector currently covers uncovered or newer map-worthy
 `CLM-*` (`factual`, `implied`, `statistical`, or default kind) plus active
-`MODEL-*`/`FLOW-*` (`working` or `stable`). The agent still chooses an explicit
+`MODEL-*`/`FLOW-*` (`working` or `stable`), terminal map anchors, and
+source-set fingerprint mismatches. The agent still chooses an explicit
 `attention-index build` / `map-refresh --dry-run` / `map-refresh` route; lookup
 and map views do not silently write `MAP-*`.
 

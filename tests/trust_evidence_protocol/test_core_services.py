@@ -2776,6 +2776,8 @@ def test_map_refresh_triggers_track_new_and_changed_claim_model_flow_records(tmp
     flow_id = "FLOW-20260423-dddd4444"
     ignored_claim_id = "CLM-20260423-eeee5555"
     map_id = "MAP-20260423-ffff6666"
+    rejected_claim_id = "CLM-20260423-ffff7777"
+    terminal_map_id = "MAP-20260423-ffff8888"
     records = {
         old_claim_id: {
             "id": old_claim_id,
@@ -2815,6 +2817,14 @@ def test_map_refresh_triggers_track_new_and_changed_claim_model_flow_records(tmp
             "statement": "Prediction claims are not map refresh triggers.",
             "recorded_at": "2026-04-23T11:00:00+03:00",
         },
+        rejected_claim_id: {
+            "id": rejected_claim_id,
+            "record_type": "claim",
+            "status": "rejected",
+            "claim_kind": "factual",
+            "statement": "Rejected anchors stale the MAP cell that uses them.",
+            "recorded_at": "2026-04-23T11:30:00+03:00",
+        },
         map_id: {
             "id": map_id,
             "record_type": "map",
@@ -2822,12 +2832,26 @@ def test_map_refresh_triggers_track_new_and_changed_claim_model_flow_records(tmp
             "status": "active",
             "anchor_refs": [old_claim_id],
             "derived_from_refs": [old_claim_id],
+            "source_set_fingerprint": "sha256:old-source-set",
+            "summary": "Map with a stale source set fingerprint.",
+            "updated_at": "2026-04-23T09:00:00+03:00",
+        },
+        terminal_map_id: {
+            "id": terminal_map_id,
+            "record_type": "map",
+            "scope": "map_refresh.general.all",
+            "status": "active",
+            "anchor_refs": [rejected_claim_id],
+            "derived_from_refs": [rejected_claim_id],
+            "source_set_fingerprint": "sha256:terminal-anchor-map",
+            "summary": "Map with a rejected anchor.",
             "updated_at": "2026-04-23T09:00:00+03:00",
         },
     }
 
     triggers = map_refresh_triggers(root, records, scope="all", mode="general")
     by_ref = {trigger["record_ref"]: trigger for trigger in triggers}
+    map_reasons = {(trigger["record_ref"], trigger["reason"]) for trigger in triggers}
 
     assert by_ref[old_claim_id]["reason"] == "covered_record_newer_than_map"
     assert by_ref[old_claim_id]["map_refs"] == [map_id]
@@ -2835,6 +2859,15 @@ def test_map_refresh_triggers_track_new_and_changed_claim_model_flow_records(tmp
     assert by_ref[model_id]["reason"] == "uncovered_mapworthy_record"
     assert by_ref[flow_id]["reason"] == "uncovered_mapworthy_record"
     assert ignored_claim_id not in by_ref
+    assert (map_id, "source_set_fingerprint_changed") in map_reasons
+    assert (terminal_map_id, "map_has_terminal_anchor") in map_reasons
+    terminal_trigger = next(
+        trigger
+        for trigger in triggers
+        if trigger["record_ref"] == terminal_map_id and trigger["reason"] == "map_has_terminal_anchor"
+    )
+    assert terminal_trigger["anchor_refs"] == [rejected_claim_id]
+    assert terminal_trigger["anchor_reasons"] == ["anchor_rejected"]
     assert all(trigger["trigger_is_proof"] is False for trigger in triggers)
 
 
