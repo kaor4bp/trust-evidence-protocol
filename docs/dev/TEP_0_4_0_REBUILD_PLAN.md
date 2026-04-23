@@ -161,6 +161,10 @@ Progress:
   directly instead of shelling out to the development CLI. The CLI keeps the
   compatibility command name `validate-evidence-chain`; normal-agent MCP uses
   the 0.4-facing `validate_chain` name.
+- `record_evidence` now uses `tep_runtime.evidence_service` from both CLI and
+  MCP. The MCP handler takes the write lock and creates FILE/RUN/SRC plus
+  optional CLM records directly, preserving the normal provenance graph without
+  exposing low-level `record-source` / `record-claim` as the agent-facing path.
 
 ## Milestone 5: Hooks And Protected Actions
 

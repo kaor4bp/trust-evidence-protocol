@@ -21,6 +21,11 @@ from tep_runtime.chain_service import (
     validate_chain_service,
     validate_chain_text,
 )
+from tep_runtime.evidence_service import (
+    build_run_support_record,
+    record_evidence_service,
+    record_evidence_text,
+)
 from tep_runtime.code_index import (
     CODE_INDEX_ALLOWED_RECORD_TYPES,
     CODE_INDEX_ANNOTATION_KINDS,

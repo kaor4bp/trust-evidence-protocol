@@ -35,6 +35,8 @@ from tep_runtime.chain_service import (  # noqa: E402
 )
 from tep_runtime.cli_common import TEP_ICON  # noqa: E402
 from tep_runtime.context_root import resolve_context_root  # noqa: E402
+from tep_runtime.evidence_service import record_evidence_service, record_evidence_text  # noqa: E402
+from tep_runtime.io import context_write_lock  # noqa: E402
 from tep_runtime.lookup_service import build_lookup_service_payload, lookup_text_lines  # noqa: E402
 from tep_runtime.migrations import build_migration_dry_run_report  # noqa: E402
 from tep_runtime.reason_service import (  # noqa: E402
@@ -195,6 +197,43 @@ TOOLS: list[JsonObject] = [
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["chain_payload", "why"],
+        ),
+    },
+    {
+        "name": "record_evidence",
+        "description": (
+            "Mutating front door for capturing agent-supplied support. "
+            "Creates or links provenance records such as FILE/RUN/SRC and optional CLM records mechanically."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "scope": {"type": "string", "description": "Evidence scope. Defaults to mcp.record_evidence."},
+                "kind": {
+                    "type": "string",
+                    "enum": ["file-line", "url", "command-output", "user-input", "artifact"],
+                },
+                "quote": {"type": "string", "description": "Verbatim support quote or output excerpt."},
+                "claim_text": {"type": "string", "description": "Optional claim statement to create as CLM-*."},
+                "path": {"type": "string", "description": "File path for file-line evidence."},
+                "line_start": {"type": "integer", "minimum": 1},
+                "line_end": {"type": "integer", "minimum": 1},
+                "url": {"type": "string", "description": "URL for url evidence."},
+                "command": {"type": "string", "description": "Command for command-output evidence."},
+                "command_cwd": {"type": "string", "description": "Working directory captured for command-output evidence."},
+                "exit_code": {"type": "integer"},
+                "stdout_quote": {"type": "string"},
+                "stderr_quote": {"type": "string"},
+                "action_kind": {"type": "string"},
+                "input_ref": {"type": "string", "description": "INP-* provenance ref for user-input evidence."},
+                "artifact_ref": {"type": "string", "description": "ART-* artifact ref for artifact evidence."},
+                "claim_plane": {"type": "string", "enum": ["theory", "code", "runtime"]},
+                "claim_status": {"type": "string", "enum": ["supported", "corroborated", "tentative"], "default": "supported"},
+                "note": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["kind", "quote"],
         ),
     },
     {
@@ -1048,6 +1087,57 @@ def tool_lookup(args: JsonObject) -> tuple[bool, str]:
     return True, "\n".join(lookup_text_lines(payload))
 
 
+def tool_record_evidence(args: JsonObject) -> tuple[bool, str]:
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return False, f"cwd is not a directory: {cwd}"
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return False, unsafe_fallback
+    try:
+        with context_write_lock(root):
+            records, load_error = load_mcp_records(root)
+            if load_error:
+                return False, load_error
+            assert records is not None
+            payload, error = record_evidence_service(
+                root,
+                records,
+                scope=str(args.get("scope") or "mcp.record_evidence"),
+                kind=str(args.get("kind") or ""),
+                quote=str(args.get("quote") or ""),
+                path_value=str(args.get("path") or "").strip() or None,
+                line=as_int(args.get("line_start"), 0, 1, 1_000_000) if args.get("line_start") is not None else None,
+                end_line=as_int(args.get("line_end"), 0, 1, 1_000_000) if args.get("line_end") is not None else None,
+                url=str(args.get("url") or "").strip() or None,
+                command=str(args.get("command") or "").strip() or None,
+                cwd=str(args.get("command_cwd") or "").strip() or str(cwd),
+                exit_code=int(args["exit_code"]) if args.get("exit_code") is not None else None,
+                stdout_quote=str(args.get("stdout_quote") or "") or None,
+                stderr_quote=str(args.get("stderr_quote") or "") or None,
+                action_kind=str(args.get("action_kind") or "").strip() or None,
+                input_refs=[str(args.get("input_ref") or "").strip()] if args.get("input_ref") else [],
+                artifact_refs=[str(args.get("artifact_ref") or "").strip()] if args.get("artifact_ref") else [],
+                claim_statement=str(args.get("claim_text") or "").strip() or None,
+                claim_plane=str(args.get("claim_plane") or "").strip() or None,
+                claim_status=str(args.get("claim_status") or "supported"),
+                tags=as_list(args.get("tags")),
+                note=str(args.get("note") or ""),
+                base_cwd=cwd,
+            )
+    except TimeoutError as exc:
+        return False, str(exc)
+    if error:
+        return False, error
+    assert payload is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, record_evidence_text(payload, root)
+
+
 def tool_reason_step(args: JsonObject) -> tuple[bool, str]:
     cwd = call_cwd(args)
     if not cwd.is_dir():
@@ -1788,6 +1878,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "brief_context": tool_brief_context,
     "next_step": tool_next_step,
     "lookup": tool_lookup,
+    "record_evidence": tool_record_evidence,
     "reason_step": tool_reason_step,
     "reason_review": tool_reason_review,
     "search_records": tool_search_records,

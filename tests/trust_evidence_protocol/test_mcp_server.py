@@ -261,6 +261,29 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
     assert payload["focus"]["workspace_ref"] == workspace_id
     assert payload["focus"]["working_context_ref"].startswith("WCTX-")
 
+    ok, evidence_text = tep_server.tool_record_evidence(
+        {
+            "context": str(context),
+            "cwd": str(tmp_path),
+            "scope": "mcp.services",
+            "kind": "command-output",
+            "command": "printf direct-mcp-record-evidence",
+            "exit_code": 0,
+            "quote": "direct-mcp-record-evidence",
+            "claim_text": "MCP record_evidence writes support through the service layer.",
+            "claim_status": "supported",
+            "note": "direct mcp record_evidence service test",
+            "format": "json",
+        }
+    )
+    assert ok is True
+    evidence = json.loads(evidence_text)
+    assert evidence["source_ref"].startswith("SRC-")
+    assert evidence["claim_ref"].startswith("CLM-")
+    assert evidence["run_ref"].startswith("RUN-")
+    assert evidence["records"][evidence["source_ref"]]["run_refs"] == [evidence["run_ref"]]
+    assert evidence["records"][evidence["claim_ref"]]["source_refs"] == [evidence["source_ref"]]
+
     ok, augmented_text = tep_server.tool_augment_chain(
         {"context": str(context), "cwd": str(tmp_path), "file": str(chain_file), "format": "json"}
     )
@@ -774,6 +797,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "search_records",
         "next_step",
         "lookup",
+        "record_evidence",
         "reason_step",
         "reason_review",
         "record_detail",
