@@ -511,6 +511,10 @@ def _grant_is_current_v2(grant: dict[str, Any]) -> bool:
     return str(grant.get("entry_type", "")).strip() == "grant" and int(grant.get("version", 1) or 1) >= 2
 
 
+def _justification_valid(payload: dict[str, Any]) -> bool:
+    return bool(payload.get("justification_valid")) and bool(payload.get("decision_chain_valid"))
+
+
 def _record_grant_ref(record: dict) -> str:
     return str(record.get("grant_ref") or record.get("reason_use_ref") or "").strip()
 
@@ -712,7 +716,7 @@ def latest_final_reason_step(
             continue
         if str(entry.get("mode", "")).strip() != "final":
             continue
-        if not entry.get("decision_valid"):
+        if not _justification_valid(entry):
             continue
         if "final" not in entry.get("valid_for", []):
             continue
@@ -737,7 +741,7 @@ def latest_decision_reason_step(
             continue
         if str(entry.get("task_ref", "")).strip() != task_ref:
             continue
-        if not entry.get("decision_valid"):
+        if not _justification_valid(entry):
             continue
         if mode not in entry.get("valid_for", []):
             continue
@@ -789,7 +793,7 @@ def decision_reason_status(root: Path, *, mode: str, context_fingerprint: str | 
         }
     chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
     decision = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain_payload, mode)
-    if not decision.get("decision_valid"):
+    if not _justification_valid(decision):
         blockers = decision.get("blockers", [])
         return {
             "ok": False,
@@ -826,7 +830,7 @@ def final_reason_status(root: Path, *, context_fingerprint: str | None = None) -
             }
         chain_payload = reason.get("chain_payload") if isinstance(reason.get("chain_payload"), dict) else {}
         decision = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain_payload, "final")
-        if not decision.get("decision_valid"):
+        if not _justification_valid(decision):
             blockers = decision.get("blockers", [])
             return {
                 "ok": False,
@@ -889,10 +893,11 @@ def create_reason_step(
                 f"reason step would duplicate parent {parent} for mode={mode}; "
                 "extend the chain with a new fact/observation/hypothesis/open question or fork a named branch"
             )
-    if not decision_payload.get("decision_valid"):
+    if not _justification_valid(decision_payload):
         blockers = "; ".join(str(item) for item in decision_payload.get("blockers", []) if str(item).strip())
         suffix = f": {blockers}" if blockers else ""
-        return None, f"REASON-* requires a decision-valid evidence chain for mode={mode}{suffix}"
+        return None, f"REASON-* requires a justification-valid decision chain for mode={mode}{suffix}"
+    justification_valid = _justification_valid(decision_payload)
     return append_reason_entry(
         root,
         {
@@ -907,7 +912,9 @@ def create_reason_step(
             "mode": mode,
             "action_kind": (action_kind or "").strip(),
             "why": why.strip(),
-            "decision_valid": bool(decision_payload.get("decision_valid")),
+            "justification_valid": justification_valid,
+            "decision_chain_valid": justification_valid,
+            "decision_valid": justification_valid,
             "valid_for": decision_payload.get("valid_for", []),
             "blockers": decision_payload.get("blockers", []),
             "hypothesis_refs": decision_payload.get("hypothesis_refs", []),
@@ -940,7 +947,7 @@ def grant_reason_access(
         return None, f"missing reason {reason_ref}"
     if str(reason.get("entry_type", "")).strip() != "step":
         return None, f"{reason_ref} is not a reason step"
-    if not reason.get("decision_valid"):
+    if not _justification_valid(reason):
         return None, f"{reason_ref} has not passed decision validation"
     task_ref = current_task_ref(root)
     if not task_ref or str(reason.get("task_ref", "")).strip() != task_ref:

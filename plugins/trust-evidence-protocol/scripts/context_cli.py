@@ -2393,6 +2393,8 @@ def cmd_validate_decision(
         if reason_error:
             decision = dict(decision)
             decision.setdefault("blockers", []).append(reason_error)
+            decision["justification_valid"] = False
+            decision["decision_chain_valid"] = False
             decision["decision_valid"] = False
         else:
             grant, grant_error = grant_reason_access(
@@ -2405,6 +2407,8 @@ def cmd_validate_decision(
             if grant_error:
                 decision = dict(decision)
                 decision.setdefault("blockers", []).append(grant_error)
+                decision["justification_valid"] = False
+                decision["decision_chain_valid"] = False
                 decision["decision_valid"] = False
             else:
                 decision = dict(decision)
@@ -2417,7 +2421,7 @@ def cmd_validate_decision(
         if decision.get("grant"):
             lines.extend(["", *reason_access_text_lines(decision["grant"])])
         print("\n".join(lines))
-    return 0 if decision["decision_valid"] else 1
+    return 0 if decision.get("decision_chain_valid", decision.get("decision_valid")) else 1
 
 
 def cmd_reason_step(
@@ -3410,7 +3414,9 @@ def build_lookup_chain_starter(
     validation = decision_validation_payload(records, active_hypothesis_entry_by_claim(root, records), chain, decision_mode)
     validation_details = validation.get("validation", {}) if isinstance(validation.get("validation"), dict) else {}
     chain["validation_preview"] = {
-        "ok": bool(validation.get("decision_valid")),
+        "ok": bool(validation.get("decision_chain_valid", validation.get("decision_valid"))),
+        "justification_valid": bool(validation.get("justification_valid", validation.get("decision_valid"))),
+        "decision_chain_valid": bool(validation.get("decision_chain_valid", validation.get("decision_valid"))),
         "chain_ok": bool(validation_details.get("ok")),
         "blockers": validation.get("blockers", []),
         "errors": validation_details.get("errors", []),

@@ -105,6 +105,12 @@ REASON_LEDGER_ENTRY_SCHEMA = compact_object_schema(
             "additionalProperties": True,
         },
         "chain_hash": {"type": "string"},
+        "justification_valid": {"type": "boolean"},
+        "decision_chain_valid": {"type": "boolean"},
+        "decision_valid": {
+            "type": "boolean",
+            "description": "Compatibility alias for decision_chain_valid; new clients should read justification_valid/decision_chain_valid.",
+        },
         "signed_chain": loose_object("Public compact chain summary sealed into the ledger entry."),
         "chain_payload": loose_object("Full public chain payload used to compute chain_hash."),
     },

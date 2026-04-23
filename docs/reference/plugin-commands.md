@@ -173,6 +173,7 @@ Use `build-reasoning-case` before non-trivial actions or recommendations that sp
 Use `augment-chain` when you already have record refs but need the plugin to fill quotes, source refs, and validation output mechanically.
 Use `validate-evidence-chain` before asking permission, recording a mutating `ACT-*`, or presenting a user-facing proof chain.
 Use `validate-decision` after evidence-chain validation when deciding whether that chain is sufficient for planning, permission, edit, model, flow, proposal, final, curiosity, or debugging mode.
+Read `justification_valid` / `decision_chain_valid` from `validate-decision` JSON output for the mode-specific public-chain result; `decision_valid` remains a compatible alias only.
 Use `reason-step` to append a task-scoped `REASON-*` reasoning step when the agent changes direction or needs protected access.
 Use `reason-review --reason REASON-* --mode edit --kind <action-kind> --grant --command "..." --cwd ...` before protected mutating Bash in `evidence-authorized` or `implementation-choice`; the PreToolUse hook requires a command-bound `GRANT-*`.
 Use `validate-decision --emit-permit --mode edit --kind <action-kind>` as a shortcut for write-API gates; for Bash hooks, follow it with a command-bound `reason-review`.

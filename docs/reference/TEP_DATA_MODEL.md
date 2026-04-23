@@ -648,6 +648,9 @@ carry the same `agent_identity_ref` as their enclosing ledger path. A valid
 ledger proves protocol-valid justification structure, sequence integrity, and
 agent ownership. It does not prove that the agent chose the globally correct
 interpretation or that its private reasoning was adequate.
+Current `REASON-*` entries expose `justification_valid` and
+`decision_chain_valid` for the mode-specific public-chain result; `decision_valid`
+remains a compatible alias and must not be read as semantic proof.
 `REASON-*` chain snapshots may cite only supported evidence chain roles:
 `fact`, `observation`, `hypothesis`, `exploration_context`, `permission`,
 `requested_permission`, `restriction`, `guideline`, `proposal`, `task`,

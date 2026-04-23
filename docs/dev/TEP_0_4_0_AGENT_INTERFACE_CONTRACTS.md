@@ -405,6 +405,9 @@ protected action, or finalize:
   "parent_reason_ref": "REASON-*|null",
   "branch": "main|alternative-name",
   "chain": {"nodes": [], "edges": [], "conclusion": "..."},
+  "justification_valid": true,
+  "decision_chain_valid": true,
+  "decision_valid": true,
   "intent": "why this step is needed"
 }
 ```
@@ -412,6 +415,9 @@ protected action, or finalize:
 Rules:
 
 - A REASON step belongs to exactly one workspace/task focus.
+- `justification_valid` and `decision_chain_valid` confirm only that the
+  public evidence chain passed mode-specific validation.
+- `decision_valid` remains a compatible alias for clients that already read it.
 - Direct same-mode continuation cannot duplicate the parent chain hash on the
   same branch.
 - Forks are allowed when the agent explores an alternative.

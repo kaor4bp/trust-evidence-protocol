@@ -2063,6 +2063,8 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
         ).stdout
     )
     assert permit["decision_valid"] is True
+    assert permit["decision_chain_valid"] is True
+    assert permit["justification_valid"] is True
     assert permit["grant"]["mode"] == "edit"
     assert permit["grant"]["action_kind"] == "write"
     assert permit["reason"]["signed_chain"]["node_count"] == 2

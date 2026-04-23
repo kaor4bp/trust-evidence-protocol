@@ -188,7 +188,7 @@ TOOLS: list[JsonObject] = [
         "name": "reason_step",
         "description": (
             "Append a validated REASON-* ledger step from a public evidence chain. "
-            "Use only after lookup/augment-chain/validate-decision shows the chain is valid for the requested mode."
+            "Use only after lookup/augment-chain/validate-decision returns justification_valid/decision_chain_valid for the requested mode."
         ),
         "inputSchema": schema(
             {

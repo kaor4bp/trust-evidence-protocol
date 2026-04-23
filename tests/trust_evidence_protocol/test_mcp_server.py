@@ -438,6 +438,9 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
     reason = json.loads(reason_step_text)
     assert reason["id"].startswith("REASON-")
     assert reason["task_ref"] == task_id
+    assert reason["justification_valid"] is True
+    assert reason["decision_chain_valid"] is True
+    assert reason["decision_valid"] is True
     assert reason["chain_payload"] == chain_payload
 
     ok, reason_review_text = tep_server.tool_reason_review(

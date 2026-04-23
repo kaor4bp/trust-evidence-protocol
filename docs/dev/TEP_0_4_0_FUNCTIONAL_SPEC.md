@@ -588,6 +588,9 @@ Required fields:
   "intent": "...",
   "chain": {},
   "chain_hash": "...",
+  "justification_valid": true,
+  "decision_chain_valid": true,
+  "decision_valid": true,
   "previous_seal": "...",
   "seal": "...",
   "pow": {"difficulty": 0, "nonce": "..."},
@@ -599,6 +602,10 @@ Rules:
 
 - append-only JSONL ledger at `runtime/reasoning/agents/AGENT-*/reasons.jsonl`
 - direct file writes blocked by hooks
+- `justification_valid` and `decision_chain_valid` mean the public chain
+  validated for the requested mode; they do not prove globally correct private
+  reasoning
+- `decision_valid` is a compatible alias for existing public API consumers
 - validator verifies hash chain and parent existence
 - validator rejects WCTX/agent identity mismatch
 - same-mode direct continuation on same branch must change chain hash

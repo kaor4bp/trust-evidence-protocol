@@ -5788,6 +5788,9 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
     )
     assert first["parent_refs"] == []
     assert first["branch"] == "main"
+    assert first["justification_valid"] is True
+    assert first["decision_chain_valid"] is True
+    assert first["decision_valid"] is True
     assert first["signed_chain"]["nodes"][0]["ref"] == claim_id
 
     invalid_decision = run_cli(
@@ -5802,7 +5805,8 @@ def test_reason_ledger_records_reasoning_steps_parents_and_forks(tmp_path: Path)
         check=False,
     )
     assert invalid_decision.returncode == 1
-    assert "decision_valid=`False`" in invalid_decision.stdout
+    assert "justification_valid=`False`" in invalid_decision.stdout
+    assert "decision_chain_valid=`False`" in invalid_decision.stdout
     assert "requires a requested_permission node" in invalid_decision.stdout
 
     duplicate = run_cli(
@@ -7240,6 +7244,8 @@ def test_validate_decision_requires_indexed_hypotheses_and_blocks_proof_modes(tm
     planning = json.loads(
         run_cli(context, "validate-decision", "--mode", "planning", "--chain", str(chain), "--format", "json").stdout
     )
+    assert planning["justification_valid"] is True
+    assert planning["decision_chain_valid"] is True
     assert planning["decision_valid"] is True
     assert planning["hypothesis_refs"] == [hypothesis_id]
     assert "planning" in planning["valid_for"]

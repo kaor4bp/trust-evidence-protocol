@@ -872,6 +872,7 @@ Commands:
 
 - `validate-decision --mode planning|permission|edit|model|flow|proposal|final|curiosity|debugging --chain evidence-chain.json`
   - validates whether a mechanically valid evidence chain is acceptable for the requested decision type
+  - returns `justification_valid` and `decision_chain_valid` for the mode-specific public-chain result; `decision_valid` remains a compatible alias
   - allows indexed tentative hypotheses for uncertainty-bearing modes such as planning, proposal, curiosity, and debugging
   - blocks `hypothesis` and `exploration_context` nodes as decisive proof for permission, edit, model, flow, and final decisions
   - requires `requested_permission` nodes for permission-mode chains

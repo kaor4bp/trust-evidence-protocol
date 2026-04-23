@@ -358,10 +358,14 @@ def decision_validation_payload(
                 f"hypothesis add --claim {ref} --mode durable "
                 f"--note 'used by validate-decision mode={mode}'"
             )
+    decision_chain_valid = not blockers and mode in valid_for
     return {
         "decision_validation_is_proof": False,
+        "justification_validation_is_proof": False,
         "mode": mode,
-        "decision_valid": not blockers and mode in valid_for,
+        "justification_valid": decision_chain_valid,
+        "decision_chain_valid": decision_chain_valid,
+        "decision_valid": decision_chain_valid,
         "valid_for": valid_for,
         "invalid_for": invalid_for,
         "hypothesis_refs": hypothesis_refs,
@@ -381,10 +385,11 @@ def decision_validation_payload(
 
 
 def decision_validation_text_lines(payload: dict, icon: str) -> list[str]:
+    decision_chain_valid = payload.get("decision_chain_valid", payload.get("decision_valid"))
     lines = [
         f"# {icon} Decision Chain Check",
         "",
-        f"mode: `{payload.get('mode')}` decision_valid=`{payload.get('decision_valid')}` proof=`{payload.get('decision_validation_is_proof')}`",
+        f"mode: `{payload.get('mode')}` justification_valid=`{payload.get('justification_valid', decision_chain_valid)}` decision_chain_valid=`{decision_chain_valid}` proof=`{payload.get('decision_validation_is_proof')}`",
         f"valid_for: `{', '.join(payload.get('valid_for', [])) or 'none'}`",
         f"invalid_for: `{', '.join(payload.get('invalid_for', [])) or 'none'}`",
         "",
@@ -415,7 +420,7 @@ def decision_validation_text_lines(payload: dict, icon: str) -> list[str]:
         for command in payload.get("recommended_commands", []):
             lines.append(f"- `{command}`")
         lines.append("")
-    if payload.get("decision_valid"):
+    if decision_chain_valid:
         lines.append("## Result")
         lines.append("- OK: decision chain is valid for the requested mode")
     return lines

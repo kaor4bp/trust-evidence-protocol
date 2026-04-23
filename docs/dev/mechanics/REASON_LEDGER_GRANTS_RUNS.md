@@ -31,6 +31,9 @@ The ledger is not canonical truth. It is runtime control evidence. A valid
 ledger proves that the agent produced an untampered, owner-bound, mode-valid
 public justification chain. It does not prove semantic correctness, optimality,
 or that no better interpretation was available.
+Current reason steps carry `justification_valid` and `decision_chain_valid` for
+that mode-valid public-chain result; `decision_valid` is only a compatible API
+alias.
 
 The ledger also functions as task-local working-memory pressure. Each step
 forces the agent to attach its next move to cited facts, observations, marked
@@ -70,7 +73,8 @@ transitively reach RUN.
 
 - Hooks must block direct runtime ledger writes.
 - `reason-step` appends only reviewed steps from chains that validate for the
-  requested mode; decision-invalid chains must be fixed before ledger write.
+  requested mode; justification-invalid chains must be fixed before ledger
+  write.
 - `reason-review --grant` creates `GRANT-*`.
 - PreToolUse must enforce grant policy for protected actions.
 - PostToolUse should record or connect `RUN-*` for mutating shell commands when
