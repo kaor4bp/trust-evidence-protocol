@@ -3813,7 +3813,7 @@ def cmd_review_context(root: Path) -> int:
 
 
 def cmd_reindex_context(root: Path) -> int:
-    records, errors = collect_validation_errors(root)
+    records, errors = collect_validation_errors(root, mode="operational")
     write_validation_report(root, errors)
     conflict_lines = refresh_generated_outputs(root, records)
     if errors:

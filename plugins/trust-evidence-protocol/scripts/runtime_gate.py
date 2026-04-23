@@ -358,7 +358,7 @@ def cmd_stop_guard(root: Path, last_assistant_message: str, stop_hook_active: bo
 
 
 def cmd_hydrate_context(root: Path, *, allow_unanchored: bool = False) -> int:
-    records, errors = collect_validation_errors(root)
+    records, errors = collect_validation_errors(root, mode="operational")
     settings = load_effective_settings(root)
     previous_state = load_hydration_state(root)
     active_workspaces = active_workspace_summaries_for_guard(records)

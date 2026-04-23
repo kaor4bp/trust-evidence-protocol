@@ -68,6 +68,11 @@ def bootstrap_context(tmp_path: Path) -> Path:
     return context
 
 
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def test_bootstrap_default_creates_tep_context(tmp_path: Path) -> None:
     result = subprocess.run(
         [sys.executable, str(BOOTSTRAP)],
@@ -7259,6 +7264,30 @@ def test_brief_and_reasoning_case_expose_fact_chain(tmp_path: Path) -> None:
     assert source_id in reasoning
     assert "User confirms that Bridge check-r1 recovers after retry." in reasoning
     assert "every listed claim has source refs" in reasoning
+
+
+def test_reindex_context_ignores_foreign_invalid_agent_identity(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    write_json(
+        context / "records" / "agent_identity" / "AGENT-20260423-7cd7f40b.json",
+        {
+            "id": "AGENT-20260423-7cd7f40b",
+            "record_type": "agent_identity",
+            "scope": "agent.local",
+            "agent_name": "broken-agent",
+            "key_algorithm": "broken",
+            "key_fingerprint": "not-a-sha",
+            "key_scope": "shared",
+            "status": "active",
+            "created_at": "2026-04-23T00:00:00+03:00",
+            "note": "broken fixture",
+        },
+    )
+
+    result = run_cli(context, "reindex-context")
+
+    assert result.returncode == 0
+    assert "Reindexed context" in result.stdout
 
 
 def test_validate_planning_chain_checks_roles_and_quotes(tmp_path: Path) -> None:

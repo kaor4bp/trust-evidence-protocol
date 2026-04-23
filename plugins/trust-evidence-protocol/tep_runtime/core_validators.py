@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .agent_identity import verify_working_context_signature
+from .agent_identity import current_bound_agent_ref, local_agent_owns_working_context, verify_working_context_signature
 from .claim_relations import relation_claim_overlaps
 from .claims import claim_is_fallback
 from .errors import ValidationError
@@ -27,6 +27,18 @@ def _has_tag(record: dict, tag: str) -> bool:
     return tag in {str(item).strip() for item in record.get("tags", [])}
 
 
+def _is_operationally_relevant(root: Path, record: dict, mode: str) -> bool:
+    if mode != "operational":
+        return True
+    record_type = str(record.get("record_type", "")).strip()
+    if record_type == "agent_identity":
+        current_agent = current_bound_agent_ref(root)
+        return bool(current_agent and str(record.get("id", "")).strip() == current_agent)
+    if record_type == "working_context" and (record.get("agent_identity_ref") or record.get("owner_signature")):
+        return local_agent_owns_working_context(root, record)
+    return True
+
+
 def _requires_v04_graph(record: dict) -> bool:
     return _is_v04(record) or _has_tag(record, "graph-v2")
 
@@ -45,12 +57,14 @@ def _source_has_run(records: dict[str, dict], source_ref: str) -> bool:
     return bool(source and source.get("record_type") == "source" and safe_list(source, "run_refs"))
 
 
-def validate_workspace_focus(root: Path, records: dict[str, dict]) -> list[ValidationError]:
+def validate_workspace_focus(root: Path, records: dict[str, dict], *, mode: str = "full") -> list[ValidationError]:
     """Durable non-workspace records require workspace scope in 0.4 records."""
 
     errors: list[ValidationError] = []
     current_workspace = current_workspace_ref(root)
     for record in records.values():
+        if not _is_operationally_relevant(root, record, mode):
+            continue
         if not _is_v04(record):
             continue
         record_type = str(record.get("record_type", "")).strip()
@@ -110,11 +124,13 @@ def validate_active_focus(root: Path, records: dict[str, dict]) -> list[Validati
     return errors
 
 
-def validate_wctx_ownership(root: Path, records: dict[str, dict]) -> list[ValidationError]:
+def validate_wctx_ownership(root: Path, records: dict[str, dict], *, mode: str = "full") -> list[ValidationError]:
     """Owner-bound WCTX records must match a valid local AGENT-* identity."""
 
     errors: list[ValidationError] = []
     for record in records.values():
+        if not _is_operationally_relevant(root, record, mode):
+            continue
         if record.get("record_type") != "working_context":
             continue
         if not (_is_v04(record) or record.get("agent_identity_ref") or record.get("owner_signature")):
@@ -221,10 +237,10 @@ def validate_relation_claim_dedup(records: dict[str, dict]) -> list[ValidationEr
     return errors
 
 
-def validate_core_graph(root: Path, records: dict[str, dict]) -> list[ValidationError]:
+def validate_core_graph(root: Path, records: dict[str, dict], *, mode: str = "full") -> list[ValidationError]:
     errors: list[ValidationError] = []
-    errors.extend(validate_workspace_focus(root, records))
-    errors.extend(validate_wctx_ownership(root, records))
+    errors.extend(validate_workspace_focus(root, records, mode=mode))
+    errors.extend(validate_wctx_ownership(root, records, mode=mode))
     errors.extend(validate_provenance_graph(records))
     errors.extend(validate_model_flow_authority(records))
     errors.extend(validate_relation_claim_dedup(records))

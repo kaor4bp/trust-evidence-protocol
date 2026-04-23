@@ -111,6 +111,11 @@ def bootstrap_context(tmp_path: Path) -> Path:
     return context
 
 
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def bootstrap_named_context(path: Path) -> Path:
     result = subprocess.run(
         [sys.executable, str(BOOTSTRAP), str(path)],
@@ -377,6 +382,30 @@ def test_runtime_gate_refuses_single_workspace_without_anchor(tmp_path: Path) ->
     blocked = run_runtime(context, "hydrate-context", check=False)
     assert blocked.returncode == 1
     assert "Explicit TEP workspace anchor required" in blocked.stdout
+
+
+def test_hydrate_context_ignores_foreign_invalid_agent_identity(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    write_json(
+        context / "records" / "agent_identity" / "AGENT-20260423-7cd7f40b.json",
+        {
+            "id": "AGENT-20260423-7cd7f40b",
+            "record_type": "agent_identity",
+            "scope": "agent.local",
+            "agent_name": "broken-agent",
+            "key_algorithm": "broken",
+            "key_fingerprint": "not-a-sha",
+            "key_scope": "shared",
+            "status": "active",
+            "created_at": "2026-04-23T00:00:00+03:00",
+            "note": "broken fixture",
+        },
+    )
+
+    hydrate = run_runtime(context, "hydrate-context")
+
+    assert hydrate.returncode == 0
+    assert "Hydrated context" in hydrate.stdout
 
 
 def test_runtime_gate_points_full_cli_commands_to_context_cli(tmp_path: Path) -> None:
