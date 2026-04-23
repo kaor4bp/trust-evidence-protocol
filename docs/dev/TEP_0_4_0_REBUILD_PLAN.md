@@ -285,8 +285,12 @@ Progress:
 - `map_refresh` now turns those stale-cell triggers into explicit
   `mark_map_stale` planned actions and mutations, so dry-run and apply share
   the same lifecycle decision.
+- Added the first L2 materialization path: `map_refresh` can create
+  `L2/mechanism_cell` records from existing active `L1/evidence_patch` cells
+  that share a non-terminal `CLM-*`, `MODEL-*`, or `FLOW-*` source, then link
+  those L1 cells upward through `up_refs`.
 - Remaining work: richer move ranking, dismissed/deferred candidate memory,
-  explicit multi-session support, and L2/L3 map-cell creation.
+  explicit multi-session support, richer L2 ranking, and L3 map-cell creation.
 
 ## Milestone 7: Feature Recovery And Conformance
 

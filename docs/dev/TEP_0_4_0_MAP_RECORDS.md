@@ -473,6 +473,10 @@ Current implementation status:
 - Stale-cell triggers create explicit `mark_map_stale` planned actions for
   terminal anchors and source-set fingerprint mismatches. Dry-run shows the
   same stale mutations that apply would perform.
+- Existing active `L1/evidence_patch` cells with a shared non-terminal
+  `CLM-*`, `MODEL-*`, or `FLOW-*` source can materialize a bounded
+  `L2/mechanism_cell`. The L2 cell uses the shared source as `anchor_refs`,
+  the source L1 cells as `down_refs`, and updates those L1 cells with `up_refs`.
 - The generated `curiosity-map`, `attention-map`, HTML map, and `map-brief`
   remain read-only navigation views.
 

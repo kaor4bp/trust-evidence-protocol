@@ -395,6 +395,121 @@ def map_candidate_from_prompt(
     return payload
 
 
+def _active_l1_maps_for_l2(records: dict[str, dict], *, mode: str, scope: str) -> list[dict]:
+    expected_scope = _map_scope(mode, scope)
+    return [
+        record
+        for record in _existing_maps(records)
+        if str(record.get("status", "")).strip() == "active"
+        and str(record.get("scope", "")).strip() == expected_scope
+        and str(record.get("level", "")).strip() == "L1"
+        and str(record.get("map_kind", "")).strip() == "evidence_patch"
+    ]
+
+
+def _l2_anchor_refs(records: dict[str, dict], map_record: dict) -> list[str]:
+    refs = [*_safe_list(map_record, "anchor_refs"), *_safe_list(map_record, "derived_from_refs")]
+    allowed_types = {"claim", "model", "flow"}
+    return [
+        ref
+        for ref in refs
+        if ref in records and records[ref].get("record_type") in allowed_types and not _terminal_anchor_reason(records[ref])
+    ]
+
+
+def l2_candidate_from_l1_group(
+    root: Path,
+    records: dict[str, dict],
+    shared_ref: str,
+    l1_maps: list[dict],
+    *,
+    mode: str,
+    scope: str,
+    timestamp: str,
+) -> dict | None:
+    if len(l1_maps) < 2:
+        return None
+    down_refs = sorted(str(record.get("id", "")).strip() for record in l1_maps if str(record.get("id", "")).strip())[:4]
+    if len(down_refs) < 2:
+        return None
+    source_material = {
+        "level": "L2",
+        "map_kind": "mechanism_cell",
+        "mode": mode,
+        "scope": scope,
+        "shared_ref": shared_ref,
+        "down_refs": down_refs,
+        "route_kind": "map_l2_mechanism",
+    }
+    shared_summary = _record_summary(records, shared_ref)
+    l1_summaries = [_record_summary(records, ref) for ref in down_refs[:2]]
+    summary = concise(
+        "Mechanism candidate around "
+        + shared_summary
+        + ": "
+        + " | ".join(summary for summary in l1_summaries if summary),
+        260,
+    )
+    scope_refs = _scope_refs(root)
+    payload = MapRecord(
+        id="",
+        scope=_map_scope(mode, scope),
+        level="L2",
+        map_kind="mechanism_cell",
+        status="active",
+        summary=summary,
+        scope_refs=scope_refs,
+        anchor_refs=(shared_ref,),
+        derived_from_refs=(*down_refs, shared_ref),
+        source_set_fingerprint=_sha256_payload(source_material),
+        down_refs=down_refs,
+        proof_routes=(
+            {
+                "route_kind": "map_l2_mechanism",
+                "route_refs": [*down_refs, shared_ref],
+                "required_drilldown": True,
+            },
+        ),
+        signals={
+            "inquiry_pressure": {"score": float(len(down_refs)), "source_signal": "shared_l1_anchor"},
+            "promotion_pressure": {"score": 0.2, "target": "MODEL/FLOW only after proof drill-down and user-confirmed theory"},
+        },
+        generated_by=MAP_REFRESH_GENERATOR,
+        generated_at=timestamp,
+        updated_at=timestamp,
+        stale_policy="source_set_changed",
+        note="Navigation-only L2 mechanism cell derived from L1 evidence patches.",
+    ).to_payload()
+    for key in ("workspace_refs", "project_refs", "task_refs"):
+        values = [str(ref) for ref in scope_refs.get(key, []) if str(ref)]
+        if values:
+            payload[key] = values
+    return payload
+
+
+def l2_candidates_from_existing_l1(
+    root: Path,
+    records: dict[str, dict],
+    *,
+    mode: str,
+    scope: str,
+    timestamp: str,
+    limit: int,
+) -> list[dict]:
+    refs_to_maps: dict[str, list[dict]] = {}
+    for map_record in _active_l1_maps_for_l2(records, mode=mode, scope=scope):
+        for ref in sorted(set(_l2_anchor_refs(records, map_record))):
+            refs_to_maps.setdefault(ref, []).append(map_record)
+    candidates = []
+    for shared_ref, l1_maps in sorted(refs_to_maps.items(), key=lambda item: (-len(item[1]), item[0])):
+        if len(candidates) >= limit:
+            break
+        candidate = l2_candidate_from_l1_group(root, records, shared_ref, l1_maps, mode=mode, scope=scope, timestamp=timestamp)
+        if candidate:
+            candidates.append(candidate)
+    return candidates
+
+
 def _same_anchor_key(record: dict) -> tuple[str, str, str, tuple[str, ...]]:
     return (
         str(record.get("level", "")),
@@ -439,6 +554,32 @@ def _triggered_stale_map_refs(refresh_triggers: list[dict[str, Any]]) -> dict[st
     return {record_ref: sorted(set(reasons)) for record_ref, reasons in reasons_by_ref.items()}
 
 
+def _link_l1_maps_to_l2(
+    working_records: dict[str, dict],
+    mutations: dict[str, dict],
+    l2_record_id: str,
+    down_refs: list[str],
+    timestamp: str,
+) -> list[str]:
+    linked_refs = []
+    for down_ref in down_refs:
+        l1_record = working_records.get(down_ref)
+        if not l1_record or l1_record.get("record_type") != "map":
+            continue
+        if str(l1_record.get("level", "")).strip() != "L1":
+            continue
+        existing_up_refs = _safe_list(l1_record, "up_refs")
+        if l2_record_id in existing_up_refs:
+            continue
+        updated = public_record_payload(l1_record)
+        updated["up_refs"] = sorted({*existing_up_refs, l2_record_id})
+        updated["updated_at"] = timestamp
+        mutations[down_ref] = updated
+        working_records[down_ref] = updated
+        linked_refs.append(down_ref)
+    return linked_refs
+
+
 def build_map_refresh_plan(
     root: Path,
     records: dict[str, dict],
@@ -479,6 +620,16 @@ def build_map_refresh_plan(
         candidate = map_candidate_from_prompt(root, records, prompt, mode=mode, scope=scope, timestamp=timestamp)
         if candidate:
             candidates.append(candidate)
+    candidates.extend(
+        l2_candidates_from_existing_l1(
+            root,
+            records,
+            mode=mode,
+            scope=scope,
+            timestamp=timestamp,
+            limit=max(1, limit),
+        )
+    )
 
     created_refs: list[str] = []
     updated_refs: list[str] = []
@@ -498,6 +649,11 @@ def build_map_refresh_plan(
             working_records[record_id] = updated
             updated_refs.append(record_id)
             planned_actions.append({"action": "update_map_signals", "record_id": record_id})
+            if str(updated.get("level", "")).strip() == "L2":
+                linked_refs = _link_l1_maps_to_l2(working_records, mutations, record_id, _safe_list(updated, "down_refs"), timestamp)
+                if linked_refs:
+                    updated_refs.extend(ref for ref in linked_refs if ref not in updated_refs)
+                    planned_actions.append({"action": "link_l1_to_l2", "record_id": record_id, "down_refs": linked_refs})
             continue
 
         replaced = _active_same_anchor(working_records, candidate)
@@ -521,6 +677,10 @@ def build_map_refresh_plan(
         mutations[record_id] = created
         working_records[record_id] = created
         created_refs.append(record_id)
+        linked_down_refs = []
+        if str(created.get("level", "")).strip() == "L2":
+            linked_down_refs = _link_l1_maps_to_l2(working_records, mutations, record_id, _safe_list(created, "down_refs"), timestamp)
+            updated_refs.extend(ref for ref in linked_down_refs if ref not in updated_refs)
         planned_actions.append(
             {
                 "action": "create_map_cell",
@@ -528,6 +688,7 @@ def build_map_refresh_plan(
                 "level": created["level"],
                 "map_kind": created["map_kind"],
                 "anchor_refs": created["anchor_refs"],
+                **({"down_refs": linked_down_refs} if linked_down_refs else {}),
             }
         )
 

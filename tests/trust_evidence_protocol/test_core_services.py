@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -2919,6 +2920,118 @@ def test_map_refresh_plan_marks_stale_cells_from_terminal_anchor_triggers(tmp_pa
         "action": "mark_map_stale",
         "record_id": map_id,
         "trigger_reasons": ["map_has_terminal_anchor", "source_set_fingerprint_changed"],
+    } in payload["planned_actions"]
+
+
+def test_map_refresh_plan_creates_l2_mechanism_cell_from_shared_l1_sources(tmp_path: Path) -> None:
+    root = tmp_path / ".tep_context"
+    for name, payload in {
+        "records.json": {},
+        "clusters.json": {},
+        "bridges.json": {"bridges": [], "link_edges": [], "established_pairs": []},
+        "cold_zones.json": {"cold_zones": []},
+        "probes.json": {"probes": []},
+    }.items():
+        write_json_file(root / "attention_index" / name, payload)
+
+    def fingerprint(payload: dict) -> str:
+        canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    shared_claim_id = "CLM-20260423-aaaa1111"
+    first_claim_id = "CLM-20260423-bbbb2222"
+    second_claim_id = "CLM-20260423-cccc3333"
+    first_map_id = "MAP-20260423-dddd4444"
+    second_map_id = "MAP-20260423-eeee5555"
+
+    def l1_fingerprint(record_refs: list[str]) -> str:
+        return fingerprint(
+            {
+                "level": "L1",
+                "map_kind": "evidence_patch",
+                "mode": "general",
+                "scope": "all",
+                "record_refs": record_refs,
+                "route_kind": "curiosity_probe_records",
+            }
+        )
+
+    records = {
+        shared_claim_id: {
+            "id": shared_claim_id,
+            "record_type": "claim",
+            "status": "supported",
+            "claim_kind": "factual",
+            "statement": "Shared claim connects two evidence patches.",
+            "recorded_at": "2026-04-23T09:00:00+03:00",
+        },
+        first_claim_id: {
+            "id": first_claim_id,
+            "record_type": "claim",
+            "status": "supported",
+            "claim_kind": "factual",
+            "statement": "First evidence patch claim.",
+            "recorded_at": "2026-04-23T09:05:00+03:00",
+        },
+        second_claim_id: {
+            "id": second_claim_id,
+            "record_type": "claim",
+            "status": "supported",
+            "claim_kind": "factual",
+            "statement": "Second evidence patch claim.",
+            "recorded_at": "2026-04-23T09:10:00+03:00",
+        },
+        first_map_id: {
+            "id": first_map_id,
+            "record_type": "map",
+            "scope": "map_refresh.general.all",
+            "level": "L1",
+            "map_kind": "evidence_patch",
+            "status": "active",
+            "summary": "First L1 patch.",
+            "anchor_refs": [shared_claim_id, first_claim_id],
+            "derived_from_refs": [shared_claim_id, first_claim_id],
+            "up_refs": [],
+            "source_set_fingerprint": l1_fingerprint([shared_claim_id, first_claim_id]),
+            "updated_at": "2026-04-23T10:00:00+03:00",
+        },
+        second_map_id: {
+            "id": second_map_id,
+            "record_type": "map",
+            "scope": "map_refresh.general.all",
+            "level": "L1",
+            "map_kind": "evidence_patch",
+            "status": "active",
+            "summary": "Second L1 patch.",
+            "anchor_refs": [shared_claim_id, second_claim_id],
+            "derived_from_refs": [shared_claim_id, second_claim_id],
+            "up_refs": [],
+            "source_set_fingerprint": l1_fingerprint([shared_claim_id, second_claim_id]),
+            "updated_at": "2026-04-23T10:05:00+03:00",
+        },
+    }
+
+    payload, issues = build_map_refresh_plan(root, records, scope="all", mode="general")
+
+    assert issues == []
+    assert len(payload["created_refs"]) == 1
+    l2_ref = payload["created_refs"][0]
+    l2 = payload["mutations"][l2_ref]
+    assert l2["level"] == "L2"
+    assert l2["map_kind"] == "mechanism_cell"
+    assert l2["map_is_proof"] is False
+    assert l2["anchor_refs"] == [shared_claim_id]
+    assert l2["down_refs"] == [first_map_id, second_map_id]
+    assert set(payload["updated_refs"]) == {first_map_id, second_map_id}
+    assert payload["mutations"][first_map_id]["up_refs"] == [l2_ref]
+    assert payload["mutations"][second_map_id]["up_refs"] == [l2_ref]
+    assert {
+        "action": "create_map_cell",
+        "record_id": l2_ref,
+        "level": "L2",
+        "map_kind": "mechanism_cell",
+        "anchor_refs": [shared_claim_id],
+        "down_refs": [first_map_id, second_map_id],
     } in payload["planned_actions"]
 
 
