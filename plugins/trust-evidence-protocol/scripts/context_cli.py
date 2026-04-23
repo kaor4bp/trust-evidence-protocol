@@ -336,7 +336,9 @@ from context_lib import (
     task_drift_text_lines,
     task_decomposition_text_lines,
     task_identity_text,
+    task_outcome_check_service,
     task_outcome_check_payload,
+    task_outcome_check_text,
     task_outcome_check_text_lines,
     task_related_counts,
     task_summary_line,
@@ -1796,15 +1798,15 @@ def cmd_task_outcome_check(root: Path, task_ref: str | None, outcome: str, outpu
     records, exit_code = load_valid_context_readonly(root)
     if exit_code:
         return exit_code
-    target_ref = (task_ref or current_task_ref(root)).strip()
-    if not target_ref:
-        print("No current task. Pass --task TASK-* to check a specific task.")
+    payload, error = task_outcome_check_service(root, records, task_ref=task_ref, outcome=outcome)
+    if error:
+        print(error.replace("task_ref", "--task TASK-*"))
         return 1
-    payload = task_outcome_check_payload(records, target_ref, outcome)
+    assert payload is not None
     if output_format == "json":
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        print("\n".join(task_outcome_check_text_lines(payload)))
+        print(task_outcome_check_text(payload))
     return 0 if payload.get("accepted") else 1
 
 

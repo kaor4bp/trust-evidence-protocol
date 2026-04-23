@@ -338,6 +338,22 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
     assert review["grant"]["id"].startswith("GRANT-")
     assert review["grant"]["reason_ref"] == reason["id"]
 
+    ok, outcome_text = tep_server.tool_task_outcome_check(
+        {
+            "context": str(context),
+            "cwd": str(tmp_path),
+            "task_ref": task_id,
+            "outcome": "done",
+            "format": "json",
+        }
+    )
+    assert ok is True
+    outcome = json.loads(outcome_text)
+    assert outcome["task_ref"] == task_id
+    assert outcome["outcome"] == "done"
+    assert outcome["accepted"] is True
+    assert outcome["obligations"] == []
+
 
 def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
@@ -699,6 +715,20 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
             },
             {
                 "jsonrpc": "2.0",
+                "id": 33,
+                "method": "tools/call",
+                "params": {
+                    "name": "task_outcome_check",
+                    "arguments": {
+                        "context": str(context),
+                        "task_ref": "TASK-missing",
+                        "outcome": "done",
+                        "format": "json",
+                    },
+                },
+            },
+            {
+                "jsonrpc": "2.0",
                 "id": 21,
                 "method": "tools/call",
                 "params": {
@@ -800,6 +830,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
         "record_evidence",
         "reason_step",
         "reason_review",
+        "task_outcome_check",
         "record_detail",
         "claim_graph",
         "linked_records",
@@ -1007,6 +1038,13 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     next_step_payload = json.loads(next_step_json["content"][0]["text"])
     assert next_step_payload["intent"] == "edit"
     assert next_step_payload["route_graph"]["graph_version"] == 1
+
+    outcome_check = by_id[33]["result"]
+    assert outcome_check["isError"] is False
+    outcome_payload = json.loads(outcome_check["content"][0]["text"])
+    assert outcome_payload["accepted"] is False
+    assert outcome_payload["task_ref"] == "TASK-missing"
+    assert "missing task record TASK-missing" in outcome_payload["errors"]
 
     telemetry = by_id[24]["result"]
     assert telemetry["isError"] is False

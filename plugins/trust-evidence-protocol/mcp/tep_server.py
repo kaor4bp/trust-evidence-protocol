@@ -46,6 +46,10 @@ from tep_runtime.reason_service import (  # noqa: E402
     reason_step_text,
 )
 from tep_runtime.state_validation import collect_validation_errors  # noqa: E402
+from tep_runtime.task_outcome_service import (  # noqa: E402
+    task_outcome_check_service,
+    task_outcome_check_text,
+)
 
 
 JsonObject = dict[str, Any]
@@ -259,6 +263,26 @@ TOOLS: list[JsonObject] = [
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["reason_ref"],
+        ),
+    },
+    {
+        "name": "task_outcome_check",
+        "description": (
+            "Read-only mechanical gate for autonomous task finalization. "
+            "Checks whether done, blocked, or user-question is currently allowed; this is navigation/control, not proof."
+        ),
+        "inputSchema": schema(
+            {
+                "context": context_property(),
+                "task_ref": {"type": "string", "description": "Optional TASK-*; defaults to current task focus."},
+                "outcome": {
+                    "type": "string",
+                    "enum": ["done", "blocked", "user-question"],
+                    "description": "Terminal outcome marker from the agent final message.",
+                },
+                "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
+            },
+            ["outcome"],
         ),
     },
     {
@@ -1218,6 +1242,34 @@ def tool_reason_review(args: JsonObject) -> tuple[bool, str]:
     )
 
 
+def tool_task_outcome_check(args: JsonObject) -> tuple[bool, str]:
+    cwd = call_cwd(args)
+    if not cwd.is_dir():
+        return False, f"cwd is not a directory: {cwd}"
+    root = mcp_context_root(args)
+    if root is None:
+        return False, "Could not resolve TEP context root"
+    unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
+    if unsafe_fallback:
+        return False, unsafe_fallback
+    records, load_error = load_mcp_records(root)
+    if load_error:
+        return False, load_error
+    assert records is not None
+    payload, error = task_outcome_check_service(
+        root,
+        records,
+        task_ref=str(args.get("task_ref") or "").strip() or None,
+        outcome=str(args.get("outcome") or ""),
+    )
+    if error:
+        return False, error
+    assert payload is not None
+    if as_format(args.get("format")) == "json":
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    return True, task_outcome_check_text(payload)
+
+
 def tool_search_records(args: JsonObject) -> tuple[bool, str]:
     cli_args = [
         "search-records",
@@ -1881,6 +1933,7 @@ TOOL_HANDLERS: dict[str, Callable[[JsonObject], tuple[bool, str]]] = {
     "record_evidence": tool_record_evidence,
     "reason_step": tool_reason_step,
     "reason_review": tool_reason_review,
+    "task_outcome_check": tool_task_outcome_check,
     "search_records": tool_search_records,
     "record_detail": tool_record_detail,
     "claim_graph": tool_claim_graph,

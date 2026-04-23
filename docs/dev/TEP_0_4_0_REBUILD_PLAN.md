@@ -165,6 +165,10 @@ Progress:
   MCP. The MCP handler takes the write lock and creates FILE/RUN/SRC plus
   optional CLM records directly, preserving the normal provenance graph without
   exposing low-level `record-source` / `record-claim` as the agent-facing path.
+- `task_outcome_check` now uses `tep_runtime.task_outcome_service` from both
+  CLI and MCP. The MCP handler performs the read-only mechanical finalization
+  gate directly, while the CLI keeps the compatibility `task-outcome-check`
+  command for development, hooks, and CI.
 
 ## Milestone 5: Hooks And Protected Actions
 

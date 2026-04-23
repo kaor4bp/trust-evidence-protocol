@@ -26,6 +26,10 @@ from tep_runtime.evidence_service import (
     record_evidence_service,
     record_evidence_text,
 )
+from tep_runtime.task_outcome_service import (
+    task_outcome_check_service,
+    task_outcome_check_text,
+)
 from tep_runtime.code_index import (
     CODE_INDEX_ALLOWED_RECORD_TYPES,
     CODE_INDEX_ANNOTATION_KINDS,
