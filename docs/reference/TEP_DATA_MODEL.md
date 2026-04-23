@@ -71,10 +71,7 @@ Runtime/control ids:
 
 - `STEP-*`: append-only task-local claim-step ledger entry over connected CLM
   records
-- `REASON-*`: legacy/public-chain reasoning ledger entry retained for
-  compatibility paths; normal 0.4 agent reasoning should use `STEP-*`
 - `GRANT-*`: append-only authorization entry derived from a reviewed `STEP-*`
-  or compatible reason step
 - `RUN-*`: command execution trace
 
 Generated/navigation ids:
@@ -748,48 +745,39 @@ are one consumer of that ledger, not the ledger's only purpose.
 Ledger entries are not canonical truth records. They are runtime control
 evidence:
 
-- `REASON-*`: task-scoped reasoning step with the validated chain snapshot,
-  parent links, branch label, intent, mode, action kind, and the agent's `why`.
+- `STEP-*`: task-scoped claim-step with the connected CLM transition,
+  previous step link, branch label, intent, mode, action kind, and the agent's
+  `reason`.
 - `GRANT-*`: reviewed one-shot authorization bound to mode, action kind, task
   scope, context fingerprint, expiry, and optionally exact command hash plus cwd.
 
 The ledger is not a free-form record store. The append-only ledger validator
-accepts only current `REASON-*` and `GRANT-*` entries. Current entries must
+accepts only current `STEP-*` and `GRANT-*` entries. Current entries must
 carry the same `agent_identity_ref` as their enclosing ledger path. A valid
 ledger proves protocol-valid justification structure, sequence integrity, and
 agent ownership. It does not prove that the agent chose the globally correct
 interpretation or that its private reasoning was adequate.
-Current `REASON-*` entries expose `justification_valid` and
-`decision_chain_valid` for the mode-specific public-chain result; `decision_valid`
-remains a compatible alias and must not be read as semantic proof.
-`REASON-*` chain snapshots may cite only supported evidence chain roles:
-`fact`, `observation`, `hypothesis`, `exploration_context`, `permission`,
-`requested_permission`, `restriction`, `guideline`, `proposal`, `task`,
-`working_context`, `project`, `model`, `flow`, and `open_question`.
 Generated/backend/navigation ids such as `CIX-*`, `BCK-*`, `backend:*`, or
 `topic_index:*` cannot be proof nodes.
 
-`REASON-*` entries form a task-local DAG for the compatibility public-chain
-path. A new step without explicit parents continues from the latest step for
-the current task; explicit `parent_refs` and `branch` create forks for
-alternative interpretations or rollback paths. A reason step cannot parent
-across another `TASK-*`.
-Same-mode continuation cannot duplicate the direct parent chain hash on the
-same branch; the agent must extend the evidence chain or fork a named
+`STEP-*` entries form a task-local branch graph. A new step without an explicit
+previous step continues from the latest step for the current task; explicit
+`prev_step_ref` and `branch` create forks for alternative interpretations or
+rollback paths. A step cannot parent across another `TASK-*`. Same-mode
+continuation must advance through a connected CLM relation or fork a named
 alternative branch. This keeps the ledger as reasoning progression, not a
 reusable permit token.
 
 Final answers for an active task must be backed by a reviewed `STEP-*`
-claim-step for the current task, mode, WCTX, and context fingerprint. Compatible
-public-chain flows may still use `REASON-* mode=final`.
-Autonomous `done` completion is stricter: it also needs a fresh
-`GRANT-* mode=final`. Interrupted work or ordinary continuation can resume from
-the latest non-final `REASON-*` without fabricating a final step.
+claim-step for the current task, mode, WCTX, and context fingerprint.
+Autonomous `done` completion is stricter: it also needs a fresh `GRANT-*`
+mode=final. Interrupted work or ordinary continuation can resume from the
+latest non-final `STEP-*` without fabricating a final step.
 
 For protected Bash, the intended path is:
 
 ```text
-REASON-* -> GRANT-* -> RUN-* -> SRC-* -> CLM-*
+STEP-* -> GRANT-* -> RUN-* -> SRC-* -> CLM-*
 ```
 
 New ledger entries include a hash-chain seal and weak proof-of-work metadata.

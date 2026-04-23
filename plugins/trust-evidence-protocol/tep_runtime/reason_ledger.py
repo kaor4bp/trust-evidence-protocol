@@ -1848,17 +1848,17 @@ def reason_current_text_lines(root: Path) -> tuple[list[str], int]:
         if str(entry.get("entry_type", "")).strip() in GRANT_ENTRY_TYPES
         and (not task_ref or str(entry.get("task_ref", "")).strip() == task_ref)
     ]
-    lines = ["# Reason Ledger", f"- entries: `{len(entries)}`", f"- current_task: `{task_ref or 'none'}`"]
+    lines = ["# Claim-Step Ledger", f"- entries: `{len(entries)}`", f"- current_task: `{task_ref or 'none'}`"]
     if step:
         lines.extend(
             [
-                f"- current_reason: `{step.get('id')}`",
+                f"- current_step: `{step.get('id')}`",
                 f"- intent: `{step.get('intent')}` mode=`{step.get('mode')}` kind=`{step.get('action_kind') or 'none'}`",
                 f"- why: {step.get('why')}",
             ]
         )
     else:
-        lines.append("- current_reason: `none`")
+        lines.append("- current_step: `none`")
     final_status = final_reason_status(root)
     final_reason = final_status.get("reason")
     if isinstance(final_reason, dict):

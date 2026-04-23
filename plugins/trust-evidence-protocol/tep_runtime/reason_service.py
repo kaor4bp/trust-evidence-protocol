@@ -91,7 +91,7 @@ def reason_review_service(
     cwd: str | Path | None,
     tool: str = "bash",
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """Review a STEP-* or legacy REASON-* and optionally create a GRANT-* entry."""
+    """Review a STEP-* and optionally create a GRANT-* entry."""
 
     validation = validate_reason_ledger(root)
     if not validation["ok"]:

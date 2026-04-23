@@ -83,9 +83,7 @@ Rules:
 - `WCTX-*` is a versioned owner-bound agent working context, not truth.
 - Agent-facing runtime paths that create or mutate WCTX, including `lookup` and
   manual create/fork/close, must create signed owner-bound 0.4 WCTX records.
-- `STEP-*` belongs to one task focus and cannot parent across tasks. Legacy
-  `REASON-*` public-chain entries remain a compatibility/debug path, not the
-  normal 0.4 agent reasoning cursor.
+- `STEP-*` belongs to one task focus and cannot parent across tasks.
 
 ### 2.3 Provenance Surfaces
 
@@ -336,7 +334,7 @@ Direct raw record reads are allowed only for:
   "workspace_ref": "optional WSP-*",
   "project_ref": "optional PRJ-*",
   "task_ref": "optional TASK-*",
-  "current_reason_ref": "optional REASON-*"
+  "current_step_ref": "optional STEP-*"
 }
 ```
 
@@ -362,7 +360,7 @@ Direct raw record reads are allowed only for:
   },
   "start_briefing": {
     "briefing_is_proof": false,
-    "current_reason_ref": "optional REASON-*",
+    "current_step_ref": "optional STEP-*",
     "recent_steps": [],
     "recent_actions": [],
     "checks": []
@@ -403,8 +401,7 @@ Adjustments:
 - same project: `+15`
 - current task/WCTX link: `+15`
 - exact query/topic match: `+10`
-- linked from current `STEP-*`/compatible reason branch as unused extension:
-  `+10`
+- linked from current `STEP-*` branch as unused extension: `+10`
 - unresolved contradiction: `-30` and mark `contested`
 - stale lifecycle: cap final score at `25`
 - archived lifecycle: cap final score at `5`, explicit drill-down only
@@ -420,9 +417,9 @@ Constraints:
 
 ### 5.5 Chain Extension Mode
 
-If a current `STEP-*` or compatible `current_reason_ref` exists, lookup must:
+If a current `STEP-*` exists, lookup must:
 
-- load current claim-step/reason chain refs
+- load current claim-step refs
 - avoid returning the same refs as primary chain candidates
 - prefer unused support, contrasting facts, open questions, or compatible
   hypotheses
@@ -587,7 +584,7 @@ The output must distinguish:
 - `contradicted_hypothesis`
 - `untested_exploration_hypothesis`
 
-## 8. STEP, REASON, GRANT, RUN
+## 8. STEP, GRANT, RUN
 
 ### 8.0 Normal Claim-Step Ledger
 
@@ -615,54 +612,19 @@ Rules:
 - refutation must be explicit CLM work: `contested`, `rejected`,
   `contradiction_refs`, `comparison`, or `meta_conflict`
 
-### 8.1 REASON Record
-
-`REASON-*` is the older public-chain ledger entry shape. It remains available
-for compatibility, chain validation, debugging, and migration, but normal agent
-progression should use `STEP-*` over connected CLM records.
-
-Required fields:
-
-```json
-{
-  "id": "REASON-*",
-  "workspace_ref": "WSP-*",
-  "project_ref": "PRJ-*|null",
-  "task_ref": "TASK-*",
-  "wctx_ref": "WCTX-*",
-  "agent_identity_ref": "AGENT-*",
-  "parent_reason_ref": "REASON-*|null",
-  "branch": "main",
-  "mode": "planning|edit|test|debug|permission|final",
-  "intent": "...",
-  "chain": {},
-  "chain_hash": "...",
-  "justification_valid": true,
-  "decision_chain_valid": true,
-  "decision_valid": true,
-  "previous_seal": "...",
-  "seal": "...",
-  "pow": {"difficulty": 0, "nonce": "..."},
-  "created_at": "..."
-}
-```
-
-Rules:
+### 8.1 Ledger Rules
 
 - append-only JSONL ledger at `runtime/reasoning/agents/AGENT-*/reasons.jsonl`
 - direct file writes blocked by hooks
 - agents should treat the latest valid `STEP-*` as the normal current task
   cursor; `next-step` and `lookup` must make create/extend/fork STEP the
   shortest route when the ledger is empty, stale for the intent, or a chain
-  starter is ready. `REASON-*` remains a compatible public-chain path.
-- `justification_valid` and `decision_chain_valid` mean the public chain
-  validated for the requested mode; they do not prove globally correct private
-  reasoning
-- `decision_valid` is a compatible alias for existing public API consumers
+  starter is ready
 - validator verifies hash chain and parent existence
 - validator rejects WCTX/agent identity mismatch
-- same-mode direct continuation on same branch must change chain hash
-- forks may parent any earlier REASON in the same task
+- same-mode direct continuation on same branch must advance to a connected CLM
+  or fork a named branch
+- forks may parent any earlier STEP in the same task
 
 ### 8.2 GRANT Record
 
@@ -671,7 +633,7 @@ Required fields:
 ```json
 {
   "id": "GRANT-*",
-  "reason_ref": "REASON-*",
+  "reason_ref": "STEP-*",
   "workspace_ref": "WSP-*",
   "project_ref": "PRJ-*|null",
   "task_ref": "TASK-*",
@@ -921,7 +883,7 @@ Acceptance targets for 0.4 smoke tests:
 - normal fact work uses lookup before record-detail
 - raw CLM reads are zero unless test explicitly exercises escape hatch
 - protected action without GRANT is blocked
-- final autonomous answer without final REASON is blocked
+- final autonomous answer without final STEP is blocked
 - repeated hot-record reads produce MODEL/FLOW suggestion or telemetry warning
 
 ## 14. Error And Repair Contract
@@ -977,7 +939,7 @@ Live-agent tests:
 - agent asks/records open question when chain has a gap
 - agent uses retrospective route for same-type task
 - agent does not read raw CLM in normal fact lookup
-- agent finalizes autonomous task only after final REASON
+- agent finalizes autonomous task only after final STEP
 
 ## 16. Closed Logical Gaps
 

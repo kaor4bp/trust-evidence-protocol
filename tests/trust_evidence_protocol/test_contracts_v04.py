@@ -108,8 +108,8 @@ def test_reason_ledger_contract_preserves_hash_seal_and_pow_fields() -> None:
     assert schema["properties"]["pow"]["properties"]["algorithm"]["const"] == "sha256-leading-zero-bits"
 
     entry = ReasonLedgerEntry(
-        id="REASON-20260423-demo",
-        entry_type="step",
+        id="STEP-20260423-demo",
+        entry_type="claim_step",
         created_at="2026-04-23T00:00:00+03:00",
         prev_ledger_hash="sha256:0",
         entry_hash="sha256:entry",
@@ -300,7 +300,7 @@ def test_mutating_contract_payloads_keep_runtime_authorization_boundaries() -> N
     reason = ReasonStepRequest(
         task_ref="TASK-20260423-demo",
         mode="edit",
-        chain={"nodes": [], "edges": [], "conclusion": "Implement contract schema slice."},
+        claim_ref="CLM-20260423-demo",
         intent="Prepare Milestone 1 contracts",
         action_kind="file-write",
     ).to_payload()
@@ -308,7 +308,7 @@ def test_mutating_contract_payloads_keep_runtime_authorization_boundaries() -> N
 
     grant = GrantRecord(
         id="GRANT-20260423-demo",
-        reason_ref="REASON-20260423-demo",
+        reason_ref="STEP-20260423-demo",
         workspace_ref="WSP-20260423-demo",
         task_ref="TASK-20260423-demo",
         mode="edit",

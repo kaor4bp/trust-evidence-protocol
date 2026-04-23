@@ -244,10 +244,10 @@ def next_step_text_lines(payload: dict, icon: str, detail: str = "compact") -> l
     lines.append("- current: " + " | ".join(current))
     lines.append(f"- intent: {payload.get('intent')} ({payload.get('route_label')})")
     briefing = payload.get("start_briefing") or {}
-    current_reason = briefing.get("current_reason_ref") or "none"
+    current_step = briefing.get("current_step_ref") or "none"
     current_branch = briefing.get("current_branch") or "none"
     lines.append(
-        f"- briefing: reason=`{current_reason}` mode=`{briefing.get('current_mode') or 'none'}` "
+        f"- briefing: step=`{current_step}` mode=`{briefing.get('current_mode') or 'none'}` "
         f"branch=`{current_branch}` recent_steps=`{len(briefing.get('recent_steps') or [])}` "
         f"recent_actions=`{len(briefing.get('recent_actions') or [])}`"
     )

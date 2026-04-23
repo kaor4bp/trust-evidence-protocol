@@ -2381,7 +2381,7 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert any(node["ref"] == facility_claim_id and node["role"] == "fact" for node in chain_starter["nodes"])
     assert any(node["ref"] == program_claim_id and node["role"] == "fact" for node in chain_starter["nodes"])
     assert any(command.startswith("reason-step --mode curiosity --claim") for command in chain_starter["next_commands"])
-    assert any(command.startswith("legacy fallback: augment-chain") for command in chain_starter["next_commands"])
+    assert not any("legacy fallback" in command for command in chain_starter["next_commands"])
     lookup_text = run_cli(context, "lookup", "--query", "Facility Program relationship", "--reason", "curiosity", "--kind", "facts").stdout
     assert "## MAP Navigation" in lookup_text
     assert "## Start Briefing" in lookup_text
@@ -6410,19 +6410,19 @@ def test_lookup_defaults_to_new_reason_chain_nodes(tmp_path: Path) -> None:
         ),
         "task",
     )
-    chain1 = tmp_path / "lookup-chain-1.json"
-    chain1.write_text(
-        json.dumps(
-            {
-                "task": "continue lookup chain",
-                "nodes": [
-                    {"role": "fact", "ref": claim1_id, "quote": "Alpha-only-token supports the lookup chain."},
-                    {"role": "task", "ref": task_id, "quote": "Continue lookup chain"},
-                ],
-                "edges": [{"from": claim1_id, "to": task_id, "relation": "supports initial lookup reasoning"}],
-            }
-        ),
-        encoding="utf-8",
+    seed_lookup = json.loads(
+        run_cli(
+            context,
+            "lookup",
+            "--query",
+            "alpha-only-token",
+            "--reason",
+            "planning",
+            "--kind",
+            "facts",
+            "--format",
+            "json",
+        ).stdout
     )
     reason = json.loads(
         run_cli(
@@ -6430,14 +6430,17 @@ def test_lookup_defaults_to_new_reason_chain_nodes(tmp_path: Path) -> None:
             "reason-step",
             "--mode",
             "planning",
-            "--chain",
-            str(chain1),
+            "--claim",
+            claim1_id,
+            "--wctx",
+            seed_lookup["focus"]["working_context_ref"],
             "--why",
-            "seed lookup chain with the first fact",
+            "seed lookup STEP chain with the first fact",
             "--format",
             "json",
         ).stdout
     )
+    assert reason["id"].startswith("STEP-")
 
     lookup = json.loads(
         run_cli(
@@ -6454,7 +6457,7 @@ def test_lookup_defaults_to_new_reason_chain_nodes(tmp_path: Path) -> None:
         ).stdout
     )
     starter = lookup["chain_starter"]
-    assert starter["chain_extension"]["current_reason_ref"] == reason["id"]
+    assert starter["chain_extension"]["current_step_ref"] == reason["id"]
     refs = {node["ref"] for node in starter["nodes"]}
     assert claim2_id in refs
     assert claim1_id not in refs
@@ -6475,7 +6478,7 @@ def test_lookup_defaults_to_new_reason_chain_nodes(tmp_path: Path) -> None:
         ).stdout
     )
     fallback_starter = fallback["chain_starter"]
-    assert fallback_starter["chain_extension"]["current_reason_ref"] == reason["id"]
+    assert fallback_starter["chain_extension"]["current_step_ref"] == reason["id"]
     assert not any(node["ref"] == claim1_id for node in fallback_starter["nodes"])
     assert any("No new fact node" in note for note in fallback_starter["notes"])
 

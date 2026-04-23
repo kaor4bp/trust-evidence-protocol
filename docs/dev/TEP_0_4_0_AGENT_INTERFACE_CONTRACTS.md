@@ -82,7 +82,7 @@ Required output:
   },
   "start_briefing": {
     "briefing_is_proof": false,
-    "current_reason_ref": "REASON-*|",
+    "current_step_ref": "STEP-*|",
     "current_branch": "main|",
     "recent_steps": [],
     "recent_actions": [],
@@ -110,7 +110,7 @@ Rules:
   fork/adopt repair route instead of using it as current focus.
 - `start_briefing` and `reason_pressure` are navigation/control metadata that
   help the agent check recent actions, branches, and whether to create, extend,
-  or fork `REASON-*` before substantial work.
+  or fork `STEP-*` before substantial work.
 
 ### `lookup`
 
@@ -181,7 +181,7 @@ Rules:
   but these summaries are not object-level proof without drill-down.
 - Runtime-only observations rank below supported/user-confirmed theory.
 - Resolved/stale claims are fallback unless regression suspicion is detected.
-- If a current `REASON-*` exists, lookup defaults to chain-extension mode and
+- If a current `STEP-*` exists, lookup defaults to chain-extension mode and
   proposes nodes not already used in the current branch.
 - Lookup returns `start_briefing` and `reason_pressure` so the agent can decide
   whether to use the returned `chain_starter` immediately for `reason_step`.
@@ -346,7 +346,7 @@ Rules:
   must not use it as current focus.
 - To continue from another agent's WCTX, the runtime must create a new signed
   fork/adopted WCTX with `parent_context_ref` and `supersedes_refs` links.
-- REASON/GRANT created under a WCTX must bind the same `agent_identity_ref` or
+- STEP/GRANT created under a WCTX must bind the same `agent_identity_ref` or
   be rejected by validation. Runtime writes use
   `runtime/reasoning/agents/AGENT-*/reasons.jsonl`; another agent's ledger can
   be inspected but must not authorize current-agent actions.
@@ -433,7 +433,7 @@ Rules:
 - If the chain is incomplete, the API should suggest open questions, competing
   hypotheses, or lookup extension candidates.
 
-## 6. STEP, REASON, And GRANT Contract
+## 6. STEP And GRANT Contract
 
 `STEP-* entry_type=claim_step` is the normal task-local ledger of justified
 CLM progression. It is the pressure mechanism that keeps the agent from using
@@ -460,38 +460,6 @@ Rules:
   status, `contradiction_refs`, `comparison`, or `meta_conflict` before the
   ledger can use it.
 
-`REASON-*` is the older public-chain ledger entry shape. It remains available
-for compatibility, chain validation, debugging, and migration paths. Normal
-agent progression should prefer `STEP-*` over connected CLM records.
-
-Compatible public-chain clients append a REASON step when they need the older
-chain-payload route for planning, permission, protected action, or finalization:
-
-```json
-{
-  "task_ref": "TASK-*",
-  "mode": "planning|edit|test|final|permission",
-  "parent_reason_ref": "REASON-*|null",
-  "branch": "main|alternative-name",
-  "chain": {"nodes": [], "edges": [], "conclusion": "..."},
-  "justification_valid": true,
-  "decision_chain_valid": true,
-  "decision_valid": true,
-  "intent": "why this step is needed"
-}
-```
-
-Compatibility rules:
-
-- A REASON step belongs to exactly one workspace/task focus.
-- `justification_valid` and `decision_chain_valid` confirm only that the
-  public evidence chain passed mode-specific validation.
-- `decision_valid` remains a compatible alias for clients that already read it.
-- Direct same-mode continuation cannot duplicate the parent chain hash on the
-  same branch.
-- Forks are allowed when the agent explores an alternative.
-- A REASON step created under a WCTX must bind the same agent identity as the
-  WCTX owner.
 - The runtime should reject direct ledger file writes.
 - Hash-chain sealing and weak proof-of-work are tamper friction, not a security
   boundary.
@@ -502,7 +470,7 @@ Compatibility rules:
 `GRANT-*` is the only authorization record for protected work:
 
 ```text
-REASON -> GRANT -> RUN / protected write
+STEP -> GRANT -> RUN / protected write
 ```
 
 Rules:
@@ -531,7 +499,7 @@ Rules:
 - A task is not valid for active work until it is `atomic` or `decomposed`.
 - Subtasks should be one-iteration units.
 - Plans and debts must be linked to task/workspace/project focus.
-- Autonomous `done` requires final REASON and final outcome validation.
+- Autonomous `done` requires final STEP and final outcome validation.
 - If the agent changes task type, it should run retrospective lookup for prior
   same-type tasks when available.
 
@@ -596,9 +564,9 @@ A compatible 0.4 implementation should pass deterministic tests for:
 - evidence capture creates provenance graph
 - runtime CLM without RUN is rejected
 - MODEL/FLOW from runtime-only or tentative support is rejected
-- duplicate same-branch reason continuation is rejected
+- duplicate same-branch STEP continuation is rejected
 - protected action without valid GRANT is rejected
-- autonomous finalization without final REASON is rejected
+- autonomous finalization without final STEP is rejected
 - stale/resolved claims rank below active theory unless regression route applies
 
 Live-agent smoke tests should verify behavior, not model intelligence:
@@ -606,7 +574,7 @@ Live-agent smoke tests should verify behavior, not model intelligence:
 - agent follows route graph instead of raw records
 - agent uses MCP front doors instead of the legacy CLI command zoo
 - agent records competing hypotheses when facts underdetermine the answer
-- agent extends REASON before protected action/final answer
+- agent extends STEP before protected action/final answer
 - agent uses MODEL/FLOW when available instead of rereading many CLM records
 - telemetry records lookup, raw-read attempts, reason failures, and grant checks
 - map navigation surfaces neglected relevant facts and tap smell without using

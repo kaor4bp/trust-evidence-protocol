@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.4.5"
+SERVER_VERSION = "0.4.6"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 plugin_root = str(PLUGIN_ROOT)
@@ -199,17 +199,12 @@ TOOLS: list[JsonObject] = [
     {
         "name": "reason_step",
         "description": (
-            "Append a validated STEP-* claim-step from CLM transitions, or a legacy REASON-* step from a public evidence chain. "
-            "Prefer claim_ref + relation_claim_ref so the ledger follows the CLM graph."
+            "Append a validated STEP-* claim-step from CLM transitions. Use claim_ref plus relation_claim_ref "
+            "when continuing so the ledger follows the CLM graph."
         ),
         "inputSchema": schema(
             {
                 "context": context_property(),
-                "chain_payload": {
-                    "type": "object",
-                    "description": "Evidence-chain JSON object to validate and sign into the reason ledger.",
-                    "additionalProperties": True,
-                },
                 "claim_ref": {"type": "string", "description": "CLM-* to append as the next semantic step."},
                 "prev_claim_ref": {"type": "string", "description": "Previous CLM-* in the semantic chain."},
                 "relation_claim_ref": {"type": "string", "description": "Relation CLM-* connecting prev_claim_ref -> claim_ref."},
@@ -223,16 +218,11 @@ TOOLS: list[JsonObject] = [
                 },
                 "action_kind": {"type": "string", "description": "Optional protected action kind such as write, bash, git, or final."},
                 "why": {"type": "string", "description": "Short public justification for appending this reasoning step."},
-                "parent_refs": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional parent REASON-* refs for continuation or forked reasoning.",
-                },
                 "branch": {"type": "string", "default": "main"},
                 "agent_token": agent_token_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
-            ["why"],
+            ["claim_ref", "why"],
         ),
     },
     {
@@ -276,12 +266,12 @@ TOOLS: list[JsonObject] = [
     {
         "name": "reason_review",
         "description": (
-            "Review a REASON-* ledger step and optionally create a one-shot GRANT-* for the current task/action."
+            "Review a STEP-* ledger step and optionally create a one-shot GRANT-* for the current task/action."
         ),
         "inputSchema": schema(
             {
                 "context": context_property(),
-                "reason_ref": {"type": "string", "description": "REASON-* step to review."},
+                "reason_ref": {"type": "string", "description": "STEP-* step to review."},
                 "mode": {
                     "type": "string",
                     "enum": ["answering", "curiosity", "debugging", "edit", "final", "permission", "planning", "test"],
@@ -1353,17 +1343,14 @@ def tool_reason_step(args: JsonObject) -> tuple[bool, str]:
     token_error = require_agent_token_arg(args)
     if token_error:
         return False, token_error
-    chain_payload = args.get("chain_payload")
     claim_ref = str(args.get("claim_ref") or "").strip()
-    if chain_payload is not None and not isinstance(chain_payload, dict):
-        return False, "chain_payload must be an object"
-    if not claim_ref and chain_payload is None:
-        return False, "reason_step requires claim_ref for STEP-* or chain_payload for legacy REASON-*"
+    if not claim_ref:
+        return False, "reason_step requires claim_ref for STEP-*"
     with agent_identity_scope(agent_token_arg(args)):
         reason, error = reason_step_service(
             root,
             records,
-            chain_payload=chain_payload,
+            chain_payload=None,
             claim_ref=claim_ref or None,
             prev_claim_ref=str(args.get("prev_claim_ref") or "").strip() or None,
             relation_claim_ref=str(args.get("relation_claim_ref") or "").strip() or None,
@@ -1373,7 +1360,7 @@ def tool_reason_step(args: JsonObject) -> tuple[bool, str]:
             mode=str(args.get("mode") or "planning"),
             action_kind=str(args.get("action_kind") or "").strip() or None,
             why=str(args.get("why") or ""),
-            parent_refs=as_list(args.get("parent_refs")),
+            parent_refs=[],
             branch=str(args.get("branch") or "main"),
             icon=TEP_ICON,
         )

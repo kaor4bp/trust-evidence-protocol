@@ -76,9 +76,9 @@ def build_start_briefing(root: Path, records: dict[str, dict], *, intent: str = 
     branches: dict[str, dict[str, Any]] = {}
     for step in task_steps:
         branch = str(step.get("branch") or "main").strip() or "main"
-        slot = branches.setdefault(branch, {"branch": branch, "step_count": 0, "latest_reason_ref": "", "latest_mode": "", "latest_why": ""})
+        slot = branches.setdefault(branch, {"branch": branch, "step_count": 0, "latest_step_ref": "", "latest_mode": "", "latest_why": ""})
         slot["step_count"] += 1
-        slot["latest_reason_ref"] = str(step.get("id", "")).strip()
+        slot["latest_step_ref"] = str(step.get("id", "")).strip()
         slot["latest_mode"] = str(step.get("mode", "")).strip()
         slot["latest_why"] = str(step.get("why") or step.get("reason") or "").strip()
 
@@ -104,8 +104,8 @@ def build_start_briefing(root: Path, records: dict[str, dict], *, intent: str = 
         "ledger_ok": bool(validation.get("ok")),
         "ledger_errors": validation.get("errors", []),
         "task_ref": task_ref or "",
-        "expected_reason_mode": expected_mode,
-        "current_reason_ref": str(current.get("id", "")).strip() if isinstance(current, dict) else "",
+        "expected_step_mode": expected_mode,
+        "current_step_ref": str(current.get("id", "")).strip() if isinstance(current, dict) else "",
         "current_branch": str(current.get("branch", "main")).strip() if isinstance(current, dict) else "",
         "current_mode": str(current.get("mode", "")).strip() if isinstance(current, dict) else "",
         "current_why": str(current.get("why", "")).strip() if isinstance(current, dict) else "",
@@ -139,8 +139,8 @@ def build_reason_pressure(
     """Return route pressure that makes STEP-* the easiest next step."""
 
     briefing = build_start_briefing(root, records, intent=intent)
-    expected_mode = str(briefing.get("expected_reason_mode") or reason_mode_for_intent(intent))
-    current_reason_ref = str(briefing.get("current_reason_ref") or "")
+    expected_mode = str(briefing.get("expected_step_mode") or reason_mode_for_intent(intent))
+    current_step_ref = str(briefing.get("current_step_ref") or "")
     current_mode = str(briefing.get("current_mode") or "")
     validation_preview = (
         chain_starter.get("validation_preview", {})
@@ -157,7 +157,7 @@ def build_reason_pressure(
         level = "blocked"
         reasons.append("claim-step ledger is invalid or tampered")
         recommended_tool = "reason-current"
-    elif not current_reason_ref:
+    elif not current_step_ref:
         level = "high" if intent in {"plan", "edit", "test", "final", "answer", "permission"} else "medium"
         reasons.append("current task has no STEP-* claim step")
         recommended_tool = "reason_step" if chain_ready else "lookup"

@@ -89,7 +89,7 @@ def load_mcp_server_module():
 def test_mcp_manifest_declares_readonly_server() -> None:
     plugin_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_manifest["mcpServers"] == "./.mcp.json"
-    assert plugin_manifest["version"] == "0.4.5"
+    assert plugin_manifest["version"] == "0.4.6"
 
     claude_manifest = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert claude_manifest["version"] == plugin_manifest["version"]
@@ -431,7 +431,8 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
         {
             "context": str(context),
             "cwd": str(tmp_path),
-            "chain_payload": chain_payload,
+            "claim_ref": claim_id,
+            "wctx_ref": payload["focus"]["working_context_ref"],
             "intent": "editing",
             "mode": "edit",
             "action_kind": "write",
@@ -442,12 +443,13 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
     )
     assert ok is True
     reason = json.loads(reason_step_text)
-    assert reason["id"].startswith("REASON-")
+    assert reason["id"].startswith("STEP-")
+    assert reason["entry_type"] == "claim_step"
     assert reason["task_ref"] == task_id
+    assert reason["claim_ref"] == claim_id
     assert reason["justification_valid"] is True
     assert reason["decision_chain_valid"] is True
     assert reason["decision_valid"] is True
-    assert reason["chain_payload"] == chain_payload
 
     ok, reason_review_text = tep_server.tool_reason_review(
         {

@@ -436,14 +436,14 @@ def build_lookup_map_navigation(
     }
 
 
-def current_lookup_reason_context(root: Path) -> dict:
+def current_lookup_step_context(root: Path) -> dict:
     validation = validate_reason_ledger(root)
     if not validation.get("ok"):
-        return {"ok": False, "reason_ref": "", "used_refs": set(), "message": "; ".join(validation.get("errors", []))}
+        return {"ok": False, "step_ref": "", "used_refs": set(), "message": "; ".join(validation.get("errors", []))}
     task_ref = current_task_ref(root)
     reason = latest_reason_step(validation.get("entries", []), task_ref)
     if not reason:
-        return {"ok": True, "reason_ref": "", "used_refs": set(), "message": "no current STEP-*"}
+        return {"ok": True, "step_ref": "", "used_refs": set(), "message": "no current STEP-*"}
     if str(reason.get("entry_type", "")).strip() == "claim_step":
         used_refs = {
             str(reason.get(key, "")).strip()
@@ -460,8 +460,8 @@ def current_lookup_reason_context(root: Path) -> dict:
         }
     return {
         "ok": True,
-        "reason_ref": str(reason.get("id", "")).strip(),
-        "reason_mode": str(reason.get("mode", "")).strip(),
+        "step_ref": str(reason.get("id", "")).strip(),
+        "step_mode": str(reason.get("mode", "")).strip(),
         "used_refs": used_refs,
         "message": "",
     }
@@ -499,8 +499,8 @@ def build_lookup_chain_starter(
         }
 
     record_types = LOOKUP_CHAIN_RECORD_TYPES_BY_KIND.get(selected_kind, LOOKUP_CHAIN_RECORD_TYPES_BY_KIND["facts"])
-    reason_context = current_lookup_reason_context(root)
-    used_refs = reason_context.get("used_refs", set()) if reason_context.get("ok") else set()
+    step_context = current_lookup_step_context(root)
+    used_refs = step_context.get("used_refs", set()) if step_context.get("ok") else set()
     ranked = ranked_record_search(
         records,
         terms,
@@ -545,9 +545,9 @@ def build_lookup_chain_starter(
         "decision_mode": decision_mode,
         "working_context_ref": wctx_ref,
         "chain_extension": {
-            "default": bool(reason_context.get("reason_ref")),
-            "current_reason_ref": reason_context.get("reason_ref", ""),
-            "current_reason_mode": reason_context.get("reason_mode", ""),
+            "default": bool(step_context.get("step_ref")),
+            "current_step_ref": step_context.get("step_ref", ""),
+            "current_step_mode": step_context.get("step_mode", ""),
             "excluded_existing_ref_count": len(used_refs),
             "new_candidate_count": len([node for node in nodes if str(node.get("ref", "")).strip() not in used_refs]),
             "fallback_when_empty": (
@@ -572,16 +572,15 @@ def build_lookup_chain_starter(
     chain["next_commands"] = [
         "record/reuse a relation CLM connecting the previous claim to the next claim",
         f"reason-step --mode {decision_mode} --claim CLM-* --relation-claim CLM-* --why \"connected CLM transition for {decision_mode}\"",
-        "legacy fallback: augment-chain --file evidence-chain.json --format json",
     ]
     chain["notes"] = [
         "Lookup chain starters are mechanical drafts, not proof.",
         "CIX/backend/map candidates are intentionally omitted because they are navigation, not proof.",
-        "Prefer STEP-* claim steps over connected CLM records; legacy chain validation remains a fallback.",
+        "Use STEP-* claim steps over connected CLM records for normal agent reasoning.",
     ]
     if not fact_refs:
         chain["notes"].append("No supported/corroborated CLM fact matched; open record-detail/claim-graph before relying on this draft.")
-    if reason_context.get("reason_ref") and not any(str(node.get("ref", "")).strip() not in used_refs and node.get("role") == "fact" for node in nodes):
+    if step_context.get("step_ref") and not any(str(node.get("ref", "")).strip() not in used_refs and node.get("role") == "fact" for node in nodes):
         chain["notes"].append(
             "No new fact node was found for the current STEP-*; fallback is to review existing nodes and create a supported hypothesis/open question."
         )
@@ -692,9 +691,9 @@ def lookup_payload(
         "agent_role": "choose and justify a route; API validates proof boundaries and allowed writes",
         "if_answering": "open record-detail or linked-records before citing a record as proof",
         "if_new_support_found": "use record-support/record-evidence so FILE/RUN/SRC/CLM links are created mechanically",
-        "if_chain_needed": "record/reuse relation CLM edges, then append a STEP-* claim step; legacy evidence-chain validation is a fallback",
+        "if_chain_needed": "record/reuse relation CLM edges, then append a STEP-* claim step",
         "if_map_context_returned": "open map_view/map_drilldown first, then record-detail and chain validation before citing support",
-        "if_continuing_reason": "prefer CLM refs not already present in current STEP-*; only fall back to revisiting old nodes when lookup finds no new candidates",
+        "if_continuing_step": "prefer CLM refs not already present in current STEP-*; only fall back to revisiting old nodes when lookup finds no new candidates",
         "if_theory_should_rank_high": "promote supported/user-confirmed theory into MODEL/FLOW through validated write paths",
         "if_uncertain": "record a tentative CLM, OPEN-*, or PRP-* instead of silently relying on a guess",
     }
@@ -768,7 +767,7 @@ def lookup_text_lines(payload: dict) -> list[str]:
     ]
     briefing = payload.get("start_briefing") or {}
     lines.append(
-        f"- step=`{briefing.get('current_reason_ref') or 'none'}` mode=`{briefing.get('current_mode') or 'none'}` "
+        f"- step=`{briefing.get('current_step_ref') or 'none'}` mode=`{briefing.get('current_mode') or 'none'}` "
         f"branch=`{briefing.get('current_branch') or 'none'}` recent_steps=`{len(briefing.get('recent_steps') or [])}` "
         f"recent_actions=`{len(briefing.get('recent_actions') or [])}` proof=`false`"
     )
@@ -808,9 +807,9 @@ def lookup_text_lines(payload: dict) -> list[str]:
             f"decision_mode: `{chain_starter.get('decision_mode')}` validation_ok: `{validation.get('ok')}`"
         )
         extension = chain_starter.get("chain_extension") or {}
-        if extension.get("current_reason_ref"):
+        if extension.get("current_step_ref"):
             lines.append(
-                f"- extends: `{extension.get('current_reason_ref')}` new_candidates=`{extension.get('new_candidate_count', 0)}` "
+                f"- extends: `{extension.get('current_step_ref')}` new_candidates=`{extension.get('new_candidate_count', 0)}` "
                 f"excluded_existing_refs=`{extension.get('excluded_existing_ref_count', 0)}`"
             )
         if chain_starter.get("write_hint"):

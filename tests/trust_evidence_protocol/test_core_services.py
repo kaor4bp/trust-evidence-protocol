@@ -1279,7 +1279,7 @@ def test_next_step_core_exposes_compact_action_graph(tmp_path: Path) -> None:
     assert payload["route_graph"]["graph_version"] == 1
     assert payload["api_contract"]["normal_entrypoint"] == "lookup"
     assert payload["start_briefing"]["briefing_is_proof"] is False
-    assert payload["start_briefing"]["current_reason_ref"] == ""
+    assert payload["start_briefing"]["current_step_ref"] == ""
     assert payload["reason_pressure"]["pressure_is_proof"] is False
     assert payload["reason_pressure"]["level"] == "high"
     assert payload["reason_pressure"]["recommended_tool"] == "lookup"

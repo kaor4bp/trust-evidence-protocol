@@ -46,7 +46,7 @@ GRANT_RECORD_SCHEMA = compact_object_schema(
     ),
     properties={
         "id": {"type": "string", "pattern": "^GRANT-"},
-        "reason_ref": {"type": "string", "pattern": "^REASON-"},
+        "reason_ref": {"type": "string", "pattern": "^STEP-"},
         "workspace_ref": {"type": "string", "pattern": "^WSP-"},
         "project_ref": {"type": ["string", "null"], "pattern": "^PRJ-"},
         "task_ref": {"type": "string", "pattern": "^TASK-"},

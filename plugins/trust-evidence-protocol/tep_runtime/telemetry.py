@@ -204,7 +204,7 @@ def access_report_payload(events: Iterable[dict], *, limit: int = 10) -> dict:
                 "rejected_count": len(reason_grant_rejected_events),
                 "message": "GRANT-* gates are forcing agents to validate reasoning before protected actions.",
                 "recommended_tools": ["next_step", "reason-current", "reason-step", "reason-review"],
-                "next_action": "If missing grants dominate, route agents through a REASON-* step/review before protected actions.",
+                "next_action": "If missing grants dominate, route agents through a STEP-* step/review before protected actions.",
             }
         )
     if recent_policy["event_count"] and recent_policy["unspecified_reason_ratio"] > 0.25:

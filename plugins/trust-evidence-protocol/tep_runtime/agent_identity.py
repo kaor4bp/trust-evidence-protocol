@@ -88,7 +88,7 @@ class AgentIdentityRequiredError(RuntimeError):
     def __init__(self) -> None:
         super().__init__(
             "agent_identity_required: provide a per-agent secret token with "
-            "agent_token or TEP_AGENT_SECRET_TOKEN before WCTX/REASON/GRANT mutations"
+            "agent_token or TEP_AGENT_SECRET_TOKEN before WCTX/STEP/GRANT mutations"
         )
 
 

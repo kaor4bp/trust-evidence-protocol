@@ -15,13 +15,11 @@ class ReasonStepRequest:
     task_ref: str
     mode: str
     intent: str
-    chain: Mapping[str, Any] | None = None
     claim_ref: str | None = None
     prev_claim_ref: str | None = None
     relation_claim_ref: str | None = None
     prev_step_ref: str | None = None
     wctx_ref: str | None = None
-    parent_reason_ref: str | None = None
     branch: str = "main"
     action_kind: str | None = None
 
@@ -53,14 +51,12 @@ class ReasonLedgerEntry:
 REASON_STEP_REQUEST_SCHEMA = compact_object_schema(
     schema_id="https://trust-evidence-protocol.local/schemas/0.4/reason_step.request.schema.json",
     title="TEP 0.4 reason_step request",
-    description="Task-local STEP claim-step or legacy REASON ledger append request.",
-    required=("task_ref", "mode", "intent"),
+    description="Task-local STEP claim-step append request.",
+    required=("task_ref", "mode", "intent", "claim_ref"),
     properties={
         "task_ref": {"type": "string", "pattern": "^TASK-"},
         "mode": {"type": "string", "enum": list(REASON_MODES)},
-        "parent_reason_ref": {"type": ["string", "null"], "pattern": "^REASON-"},
         "branch": {"type": "string", "minLength": 1},
-        "chain": loose_object("Public evidence/explanatory chain payload."),
         "claim_ref": {"type": ["string", "null"], "pattern": "^CLM-"},
         "prev_claim_ref": {"type": ["string", "null"], "pattern": "^CLM-"},
         "relation_claim_ref": {"type": ["string", "null"], "pattern": "^CLM-"},
@@ -76,7 +72,7 @@ REASON_LEDGER_ENTRY_SCHEMA = compact_object_schema(
     schema_id="https://trust-evidence-protocol.local/schemas/0.4/reason_ledger.entry.schema.json",
     title="TEP 0.4 reason ledger entry",
     description=(
-        "Append-only REASON/GRANT ledger entry with hash-chain, HMAC seal, and weak proof-of-work. "
+        "Append-only STEP/GRANT ledger entry with hash-chain, HMAC seal, and weak proof-of-work. "
         "PoW is tamper friction, not a security boundary."
     ),
     required=(
@@ -94,10 +90,10 @@ REASON_LEDGER_ENTRY_SCHEMA = compact_object_schema(
     ),
     properties={
         "contract_version": {"type": "string", "const": CONTRACT_VERSION},
-        "id": {"type": "string", "pattern": "^(STEP|REASON|GRANT)-"},
+        "id": {"type": "string", "pattern": "^(STEP|GRANT)-"},
         "record_type": {"type": "string", "const": "reason"},
         "version": {"type": "integer", "minimum": 2},
-        "entry_type": {"type": "string", "enum": ["step", "claim_step", "grant"]},
+        "entry_type": {"type": "string", "enum": ["claim_step", "grant"]},
         "created_at": {"type": "string"},
         "prev_ledger_hash": {"type": "string", "pattern": "^sha256:"},
         "entry_hash": {"type": "string", "pattern": "^sha256:"},
