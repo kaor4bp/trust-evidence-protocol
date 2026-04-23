@@ -6048,7 +6048,7 @@ def test_claim_step_ledger_follows_relation_clm_and_blocks_overlaps(tmp_path: Pa
         ),
         "claim",
     )
-    inverse_relation_claim = recorded_id(
+    second_to_third_relation_claim = recorded_id(
         run_cli(
             context,
             "record-claim",
@@ -6065,13 +6065,40 @@ def test_claim_step_ledger_follows_relation_clm_and_blocks_overlaps(tmp_path: Pa
             "--relation-subject",
             second_claim,
             "--relation-object",
-            first_claim,
+            third_claim,
             "--statement",
-            "The second CLM depends on the first CLM.",
+            "The second CLM supports the third CLM.",
             "--source",
             relation_source,
             "--note",
-            "inverse relation claim for STEP transition",
+            "middle relation claim for STEP transition",
+        ),
+        "claim",
+    )
+    cycle_relation_claim = recorded_id(
+        run_cli(
+            context,
+            "record-claim",
+            "--scope",
+            "demo.claim-step",
+            "--plane",
+            "theory",
+            "--status",
+            "supported",
+            "--claim-kind",
+            "relation",
+            "--relation-kind",
+            "depends_on",
+            "--relation-subject",
+            third_claim,
+            "--relation-object",
+            first_claim,
+            "--statement",
+            "The third CLM depends on the first CLM.",
+            "--source",
+            relation_source,
+            "--note",
+            "cycle-closing relation claim for STEP transition",
         ),
         "claim",
     )
@@ -6156,7 +6183,35 @@ def test_claim_step_ledger_follows_relation_clm_and_blocks_overlaps(tmp_path: Pa
     assert second_step["relation_claim_ref"] == relation_claim
     assert second_step["claim_ref"] == second_claim
 
-    inverse_relation = run_cli(
+    third_step = json.loads(
+        run_cli(
+            context,
+            "reason-step",
+            "--mode",
+            "planning",
+            "--claim",
+            third_claim,
+            "--prev-step",
+            second_step["id"],
+            "--prev-claim",
+            second_claim,
+            "--relation-claim",
+            second_to_third_relation_claim,
+            "--wctx",
+            wctx_ref,
+            "--why",
+            "advance through a second explicit relation CLM",
+            "--format",
+            "json",
+        ).stdout
+    )
+    assert third_step["id"].startswith("STEP-")
+    assert third_step["prev_step_ref"] == second_step["id"]
+    assert third_step["prev_claim_ref"] == second_claim
+    assert third_step["relation_claim_ref"] == second_to_third_relation_claim
+    assert third_step["claim_ref"] == third_claim
+
+    cycle_relation = run_cli(
         context,
         "reason-step",
         "--mode",
@@ -6164,22 +6219,34 @@ def test_claim_step_ledger_follows_relation_clm_and_blocks_overlaps(tmp_path: Pa
         "--claim",
         first_claim,
         "--prev-step",
-        second_step["id"],
+        third_step["id"],
         "--prev-claim",
-        second_claim,
+        third_claim,
         "--relation-claim",
-        inverse_relation_claim,
+        cycle_relation_claim,
         "--wctx",
         wctx_ref,
         "--why",
-        "try to reverse the depends_on edge inside one chain",
+        "try to close a depends_on cycle inside one chain",
+        "--format",
+        "json",
         check=False,
     )
-    assert inverse_relation.returncode == 1
-    assert "inverse relation already exists in this STEP chain" in inverse_relation.stdout
-    assert relation_claim in inverse_relation.stdout
-    assert inverse_relation_claim in inverse_relation.stdout
-    assert f"reason-step --claim {second_claim}" in inverse_relation.stdout
+    assert cycle_relation.returncode == 1
+    cycle_payload = json.loads(cycle_relation.stdout)
+    assert cycle_payload["ok"] is False
+    assert cycle_payload["error_code"] == "claim_step_relation_cycle"
+    assert "claim-step relation cycle would be created" in cycle_payload["error"]
+    assert relation_claim in cycle_payload["error"]
+    assert second_to_third_relation_claim in cycle_payload["error"]
+    assert cycle_relation_claim in cycle_payload["error"]
+    repair_hint = cycle_payload["repair_hints"][0]
+    assert repair_hint["candidate_relation_ref"] == cycle_relation_claim
+    assert repair_hint["candidate_edge"] == {"subject_ref": third_claim, "object_ref": first_claim}
+    assert repair_hint["existing_path_refs"] == [first_claim, second_claim, third_claim]
+    assert repair_hint["existing_relation_refs"] == [relation_claim, second_to_third_relation_claim]
+    assert repair_hint["repair"]["start_claim_ref"] == third_claim
+    assert repair_hint["repair"]["target_claim_ref"] == first_claim
 
     missing_relation = run_cli(
         context,

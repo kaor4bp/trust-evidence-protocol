@@ -310,13 +310,15 @@ active claims with the same trust/status when the intended fact is one merged
 relation. Archive or resolve the old relation first, or create a single relation
 claim with the full `object_refs` set.
 
-One `STEP-*` chain must also stay directionally coherent. If a branch already
-contains `CLM-A depends_on CLM-B`, the same branch cannot later append
-`CLM-B depends_on CLM-A`. The runtime should reject the append, return the
-existing inverse relation CLM, and push the agent to start a separate chain from
-the appropriate fact. For aggregate or genuinely reciprocal ideas, create an
-explicit higher-level CLM relation instead of hiding the reversal inside one
-ledger branch.
+One `STEP-*` chain must also stay directionally coherent. Before append, the
+runtime validates the current branch plus the candidate relation as a directed
+CLM graph for the relation kind being used. If a branch already contains a path
+`CLM-B -> ... -> CLM-A`, the same branch cannot append `CLM-A -> CLM-B` for the
+same proof-capable relation kind, including both direct inverse edges and longer
+cycles. The runtime rejects the append, returns the existing path/relation refs,
+and pushes the agent to start a separate chain from the appropriate fact. For
+aggregate or genuinely reciprocal ideas, create an explicit higher-level CLM
+relation instead of hiding the cycle inside one ledger branch.
 
 ## Claim-Step Ledger
 

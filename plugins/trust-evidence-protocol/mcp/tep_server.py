@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.4.3"
+SERVER_VERSION = "0.4.4"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 plugin_root = str(PLUGIN_ROOT)
@@ -1378,6 +1378,8 @@ def tool_reason_step(args: JsonObject) -> tuple[bool, str]:
             icon=TEP_ICON,
         )
     if error:
+        if as_format(args.get("format")) == "json" and isinstance(reason, dict):
+            return False, json.dumps(reason, ensure_ascii=False, indent=2)
         return False, error
     assert reason is not None
     if as_format(args.get("format")) == "json":

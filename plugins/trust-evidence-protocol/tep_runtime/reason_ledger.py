@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from collections import Counter
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -492,39 +492,154 @@ def _relation_pairs(shape) -> set[tuple[str, str]]:
     return {(subject, obj) for subject in shape.subject_refs for obj in shape.object_refs}
 
 
-def _inverse_relation_errors(
+def _claim_step_repair_hint(
+    *,
+    relation_kind: str,
+    candidate_relation_ref: str,
+    subject_ref: str,
+    object_ref: str,
+    existing_path_refs: list[str],
+    existing_relation_refs: list[str],
+    existing_step_refs: list[str],
+) -> dict[str, Any]:
+    return {
+        "error_code": "claim_step_relation_cycle",
+        "relation_kind": relation_kind,
+        "candidate_relation_ref": candidate_relation_ref,
+        "candidate_edge": {"subject_ref": subject_ref, "object_ref": object_ref},
+        "existing_path_refs": existing_path_refs,
+        "existing_relation_refs": existing_relation_refs,
+        "existing_step_refs": existing_step_refs,
+        "repair": {
+            "type": "fork_step_chain",
+            "start_claim_ref": subject_ref,
+            "target_claim_ref": object_ref,
+            "relation_claim_ref": candidate_relation_ref,
+            "suggested_commands": [
+                f"reason-step --claim {subject_ref} ...",
+                (
+                    f"reason-step --prev-claim {subject_ref} "
+                    f"--relation-claim {candidate_relation_ref} --claim {object_ref} ..."
+                ),
+            ],
+            "alternative": (
+                "If the cycle is a real higher-level fact, create or reuse an aggregate relation CLM "
+                "and start a separate STEP branch from that claim."
+            ),
+        },
+    }
+
+
+def _relation_graph_edges(
+    records: dict[str, dict],
+    lineage: list[dict[str, Any]],
+    *,
+    relation_kind: str,
+) -> dict[str, list[tuple[str, str, str]]]:
+    graph: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
+    for step in lineage:
+        relation_ref = str(step.get("relation_claim_ref", "")).strip()
+        if not relation_ref:
+            continue
+        shape = relation_shape_for_claim(records.get(relation_ref, {}))
+        if shape is None or shape.kind != relation_kind or shape.kind not in PROOF_RELATION_KINDS:
+            continue
+        step_ref = str(step.get("id", "")).strip()
+        for subject_ref, object_ref in sorted(_relation_pairs(shape)):
+            graph[subject_ref].append((object_ref, relation_ref, step_ref))
+    return graph
+
+
+def _find_relation_path(
+    graph: dict[str, list[tuple[str, str, str]]],
+    *,
+    start_ref: str,
+    target_ref: str,
+) -> tuple[list[str], list[str], list[str]] | None:
+    queue: deque[tuple[str, list[str], list[str], list[str]]] = deque([(start_ref, [start_ref], [], [])])
+    seen = {start_ref}
+    while queue:
+        current_ref, path_refs, relation_refs, step_refs = queue.popleft()
+        for next_ref, relation_ref, step_ref in graph.get(current_ref, []):
+            next_path = [*path_refs, next_ref]
+            next_relations = [*relation_refs, relation_ref]
+            next_steps = [*step_refs, step_ref]
+            if next_ref == target_ref:
+                return next_path, next_relations, next_steps
+            if next_ref in seen:
+                continue
+            seen.add(next_ref)
+            queue.append((next_ref, next_path, next_relations, next_steps))
+    return None
+
+
+def _claim_step_relation_cycle_violations(
+    records: dict[str, dict],
+    lineage: list[dict[str, Any]],
+    *,
+    relation_claim_ref: str,
+) -> list[dict[str, Any]]:
+    relation_claim = records.get(relation_claim_ref)
+    candidate_shape = relation_shape_for_claim(relation_claim or {})
+    if candidate_shape is None or candidate_shape.kind not in PROOF_RELATION_KINDS:
+        return []
+    graph = _relation_graph_edges(records, lineage, relation_kind=candidate_shape.kind)
+    violations: list[dict[str, Any]] = []
+    for subject_ref, object_ref in sorted(_relation_pairs(candidate_shape)):
+        existing_path = _find_relation_path(graph, start_ref=object_ref, target_ref=subject_ref)
+        if existing_path is None:
+            continue
+        path_refs, relation_refs, step_refs = existing_path
+        path_text = " -> ".join(path_refs)
+        violations.append(
+            {
+                "error_code": "claim_step_relation_cycle",
+                "message": (
+                    "claim-step relation cycle would be created: "
+                    f"existing {candidate_shape.kind} path {path_text} via {', '.join(relation_refs)}; "
+                    f"candidate {relation_claim_ref} would add {subject_ref} {candidate_shape.kind} {object_ref}."
+                ),
+                "repair_hint": _claim_step_repair_hint(
+                    relation_kind=candidate_shape.kind,
+                    candidate_relation_ref=relation_claim_ref,
+                    subject_ref=subject_ref,
+                    object_ref=object_ref,
+                    existing_path_refs=path_refs,
+                    existing_relation_refs=relation_refs,
+                    existing_step_refs=step_refs,
+                ),
+            }
+        )
+    return violations
+
+
+def _claim_step_relation_cycle_messages(
     records: dict[str, dict],
     lineage: list[dict[str, Any]],
     *,
     relation_claim_ref: str,
 ) -> list[str]:
-    relation_claim = records.get(relation_claim_ref)
-    candidate_shape = relation_shape_for_claim(relation_claim or {})
-    if candidate_shape is None or candidate_shape.kind not in PROOF_RELATION_KINDS:
-        return []
-    candidate_pairs = _relation_pairs(candidate_shape)
-    errors: list[str] = []
-    for step in lineage:
-        existing_ref = str(step.get("relation_claim_ref", "")).strip()
-        if not existing_ref:
-            continue
-        existing_shape = relation_shape_for_claim(records.get(existing_ref, {}))
-        if existing_shape is None or existing_shape.kind != candidate_shape.kind:
-            continue
-        for existing_subject, existing_object in _relation_pairs(existing_shape):
-            if (existing_object, existing_subject) not in candidate_pairs:
-                continue
-            start_ref = existing_object
-            target_ref = existing_subject
-            errors.append(
-                "inverse relation already exists in this STEP chain: "
-                f"{existing_ref} on {step.get('id')} connects {existing_subject} {candidate_shape.kind} {existing_object}; "
-                f"{relation_claim_ref} would connect {existing_object} {candidate_shape.kind} {existing_subject}. "
-                "Start a new STEP chain instead, e.g. "
-                f"`reason-step --claim {start_ref} ...` then continue with "
-                f"`reason-step --prev-claim {start_ref} --relation-claim {relation_claim_ref} --claim {target_ref} ...`."
-            )
-    return errors
+    return [
+        str(violation.get("message", "")).strip()
+        for violation in _claim_step_relation_cycle_violations(records, lineage, relation_claim_ref=relation_claim_ref)
+        if str(violation.get("message", "")).strip()
+    ]
+
+
+def _claim_step_error_payload(error: str, decision: dict[str, Any]) -> dict[str, Any]:
+    repair_hints = [hint for hint in decision.get("repair_hints", []) if isinstance(hint, dict)]
+    return {
+        "ok": False,
+        "error": error,
+        "error_code": (
+            str(repair_hints[0].get("error_code", "")).strip()
+            if repair_hints
+            else "claim_step_invalid_transition"
+        ),
+        "blockers": decision.get("blockers", []),
+        "repair_hints": repair_hints,
+        "decision": decision,
+    }
 
 
 def validate_claim_step_lineage_relations(
@@ -545,7 +660,7 @@ def validate_claim_step_lineage_relations(
         errors.extend(f"{entry_id}: {message}" for message in lineage_errors)
         errors.extend(
             f"{entry_id}: {message}"
-            for message in _inverse_relation_errors(records, lineage, relation_claim_ref=relation_claim_ref)
+            for message in _claim_step_relation_cycle_messages(records, lineage, relation_claim_ref=relation_claim_ref)
         )
     return errors
 
@@ -1255,16 +1370,33 @@ def create_claim_step(
     )
     if normalized_prev_step_ref and normalized_relation_ref:
         lineage, lineage_errors = _claim_step_lineage(entries, prev_step_ref=normalized_prev_step_ref, task_ref=task_ref)
-        inverse_errors = _inverse_relation_errors(records, lineage, relation_claim_ref=normalized_relation_ref)
-        if lineage_errors or inverse_errors:
-            decision["blockers"] = [*decision.get("blockers", []), *lineage_errors, *inverse_errors]
+        cycle_violations = _claim_step_relation_cycle_violations(
+            records,
+            lineage,
+            relation_claim_ref=normalized_relation_ref,
+        )
+        cycle_errors = [
+            str(violation.get("message", "")).strip()
+            for violation in cycle_violations
+            if str(violation.get("message", "")).strip()
+        ]
+        repair_hints = [
+            violation["repair_hint"]
+            for violation in cycle_violations
+            if isinstance(violation.get("repair_hint"), dict)
+        ]
+        if lineage_errors or cycle_errors:
+            decision["blockers"] = [*decision.get("blockers", []), *lineage_errors, *cycle_errors]
+            if repair_hints:
+                decision["repair_hints"] = [*decision.get("repair_hints", []), *repair_hints]
             decision["justification_valid"] = False
             decision["decision_chain_valid"] = False
             decision["decision_valid"] = False
     if not decision["justification_valid"]:
         blockers = "; ".join(str(item) for item in decision.get("blockers", []) if str(item).strip())
         suffix = f": {blockers}" if blockers else ""
-        return None, f"STEP-* claim_step requires a connected CLM transition for mode={mode}{suffix}"
+        error = f"STEP-* claim_step requires a connected CLM transition for mode={mode}{suffix}"
+        return _claim_step_error_payload(error, decision), error
     resolved_wctx_ref = str(wctx_ref or "").strip() or _active_wctx_ref_for_task(root, records, task_ref)
     if not resolved_wctx_ref:
         return None, "claim steps require an active owner-bound WCTX-* for the current TASK-*"

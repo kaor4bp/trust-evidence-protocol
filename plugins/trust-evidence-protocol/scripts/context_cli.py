@@ -2470,7 +2470,10 @@ def cmd_reason_step(
         icon=TEP_ICON,
     )
     if error:
-        print(error)
+        if output_format == "json" and isinstance(reason, dict):
+            print(json.dumps(reason, indent=2, ensure_ascii=False))
+        else:
+            print(error)
         return 1
     if output_format == "json":
         print(json.dumps(reason, indent=2, ensure_ascii=False))
