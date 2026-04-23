@@ -7,8 +7,8 @@
   "agent_name": "local-agent-name",
   "key_algorithm": "hmac-sha256",
   "key_fingerprint": "sha256:...",
-  "key_scope": "local-agent",
+  "key_scope": "agent-owned",
   "status": "active",
   "created_at": "ISO-8601",
-  "note": "Public local-agent identity metadata only. Private key material is runtime-private."
+  "note": "Public agent identity metadata only. Private key material remains agent-held."
 }

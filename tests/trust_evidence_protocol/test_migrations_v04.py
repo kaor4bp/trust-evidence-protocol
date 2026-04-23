@@ -119,7 +119,7 @@ def agent_payload(**overrides: object) -> dict:
         "agent_name": "pytest-agent",
         "key_algorithm": "hmac-sha256",
         "key_fingerprint": "sha256:agent-key",
-        "key_scope": "local-agent",
+        "key_scope": "agent-owned",
         "status": "active",
         "created_at": "2026-04-23T00:00:00+03:00",
     }

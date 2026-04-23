@@ -311,7 +311,7 @@ The runtime creates or reuses a local agent identity:
   "scope": "agent.local",
   "key_algorithm": "hmac-sha256",
   "key_fingerprint": "sha256:*",
-  "key_scope": "local-agent",
+  "key_scope": "agent-owned",
   "status": "active"
 }
 ```

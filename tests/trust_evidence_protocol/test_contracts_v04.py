@@ -136,7 +136,7 @@ def test_working_context_contract_is_agent_owned_and_signed() -> None:
 
     assert agent_schema["properties"]["key_algorithm"]["const"] == "hmac-sha256"
     assert agent_schema["properties"]["record_version"]["const"] == 1
-    assert agent_schema["properties"]["key_scope"]["const"] == "local-agent"
+    assert agent_schema["properties"]["key_scope"]["const"] == "agent-owned"
 
     required = set(wctx_schema["required"])
     assert {"record_version", "agent_identity_ref", "agent_key_fingerprint", "ownership_mode", "owner_signature"} <= required

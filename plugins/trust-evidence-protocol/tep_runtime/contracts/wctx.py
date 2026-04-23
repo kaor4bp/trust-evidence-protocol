@@ -25,7 +25,7 @@ class AgentIdentityRecord:
     key_algorithm: str = "hmac-sha256"
     key_scope: str = "agent-owned"
     status: str = "active"
-    note: str = "Public local-agent identity metadata only."
+    note: str = "Public agent identity metadata only."
     contract_version: str = CONTRACT_VERSION
     record_version: int = RECORD_VERSION
 

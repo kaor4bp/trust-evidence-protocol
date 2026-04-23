@@ -98,7 +98,7 @@ def agent(fingerprint: str = "sha256:agent") -> dict:
         agent_name="pytest-agent",
         key_algorithm="hmac-sha256",
         key_fingerprint=fingerprint,
-        key_scope="local-agent",
+        key_scope="agent-owned",
         status="active",
         created_at=TS,
     )

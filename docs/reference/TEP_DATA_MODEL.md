@@ -106,7 +106,7 @@ schema migration are separate operations.
 ## Local Agent Identity
 
 `AGENT-*` is public local-agent metadata. It stores the agent name,
-`hmac-sha256` key algorithm, `local-agent` scope, and `sha256:` key
+`hmac-sha256` key algorithm, `agent-owned` scope, and `sha256:` key
 fingerprint. It must not store private key material.
 
 Each agent must invent and reuse a private agent key. The corresponding HMAC
