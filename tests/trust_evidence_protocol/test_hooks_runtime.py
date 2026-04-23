@@ -2191,6 +2191,123 @@ def test_pre_tool_hook_allows_evidence_authorized_mutation_with_active_task(tmp_
     assert allow_result.stdout.strip() == ""
 
 
+def test_preflight_blocks_mutation_when_focus_refs_are_incompatible(tmp_path: Path) -> None:
+    context = bootstrap_context(tmp_path)
+    workspace_id = recorded_id(
+        run_cli(
+            context,
+            "record-workspace",
+            "--workspace-key",
+            "focus-gate-workspace",
+            "--title",
+            "Focus Gate Workspace",
+            "--root-ref",
+            str(tmp_path),
+            "--note",
+            "workspace for active focus gate",
+        ),
+        "workspace",
+    )
+    run_cli(context, "set-current-workspace", "--workspace", workspace_id)
+    project_a = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "focus-project-a",
+            "--title",
+            "Focus Project A",
+            "--root-ref",
+            str(tmp_path / "a"),
+            "--note",
+            "task project",
+        ),
+        "project",
+    )
+    run_cli(context, "set-current-project", "--project", project_a)
+    task_id = recorded_id(
+        run_cli(
+            context,
+            "start-task",
+            "--scope",
+            "focus.gate",
+            "--title",
+            "Focus gate task",
+            "--type",
+            "implementation",
+            "--note",
+            "task stays linked to project a",
+        ),
+        "task",
+    )
+    run_cli(
+        context,
+        "confirm-atomic-task",
+        "--task",
+        task_id,
+        "--deliverable",
+        "Focus gate blocks incompatible project/task refs.",
+        "--done",
+        "preflight rejects the stale focus.",
+        "--verify",
+        "runtime preflight returns focus error.",
+        "--boundary",
+        "Only active focus gate behavior.",
+        "--blocker-policy",
+        "Record OPEN-* for blockers.",
+        "--note",
+        "confirm task as atomic",
+    )
+    project_b = recorded_id(
+        run_cli(
+            context,
+            "record-project",
+            "--project-key",
+            "focus-project-b",
+            "--title",
+            "Focus Project B",
+            "--root-ref",
+            str(tmp_path / "b"),
+            "--note",
+            "incompatible current project",
+        ),
+        "project",
+    )
+    run_cli(context, "set-current-project", "--project", project_b)
+    (tmp_path / ".tep").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "context_root": str(context),
+                "workspace_ref": workspace_id,
+                "project_ref": project_b,
+                "task_ref": task_id,
+                "note": "intentionally incompatible active focus",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    request_id, approval_source_id = strictness_approval(context, "evidence-authorized")
+    run_cli(
+        context,
+        "change-strictness",
+        "evidence-authorized",
+        "--request",
+        request_id,
+        "--approval-source",
+        approval_source_id,
+    )
+    run_runtime(context, "hydrate-context", cwd=tmp_path)
+    run_runtime(context, "confirm-task", "--task", task_id, "--note", "confirm deliberately stale focus", cwd=tmp_path)
+
+    blocked = run_runtime(context, "preflight-task", "--mode", "edit", check=False, cwd=tmp_path)
+
+    assert blocked.returncode == 1
+    assert "current workspace/project/task focus" in blocked.stdout
+    assert "current_task_ref must belong to current_project_ref" in blocked.stdout
+
+
 def test_pre_tool_hook_blocks_direct_reason_ledger_writes(tmp_path: Path) -> None:
     context = bootstrap_context(tmp_path)
     run_runtime(context, "hydrate-context")

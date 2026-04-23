@@ -28,6 +28,7 @@ from context_lib import (
     task_decomposition_text_lines,
     validate_task_decomposition_payload,
     validate_reason_access,
+    validate_active_focus,
     unclassified_input_items,
     write_backlog,
     write_conflicts_report,
@@ -632,6 +633,11 @@ def cmd_preflight_task(root: Path, mode: str, kind: str | None) -> int:
         records, errors = collect_validation_errors(root)
         if errors:
             print_errors(errors)
+            return 1
+        active_focus_errors = validate_active_focus(root, records)
+        if active_focus_errors:
+            print("Mutating action requires current workspace/project/task focus to be active and compatible.")
+            print_errors(active_focus_errors)
             return 1
         decomposition = validate_task_decomposition_payload(records, str(current_task.get("id", "")).strip())
         if not decomposition.get("accepted") or decomposition.get("status") != "atomic":

@@ -100,6 +100,9 @@ Progress:
   workspace/project/task status and compatibility. It is intentionally not a
   whole-state invariant because lifecycle commands can briefly keep stale focus
   while switching or completing tasks.
+- Connected active focus validation to mutating runtime preflight so `edit` and
+  mutating `action` gates reject stale or incompatible workspace/project/task
+  focus before decomposition or grant checks.
 - Connected reason ledger integrity to state validation through a read-only
   preflight path. `validate_reason_ledger()` keeps the existing write-path
   behavior by default, while shared validation checks `prev_ledger_hash`,

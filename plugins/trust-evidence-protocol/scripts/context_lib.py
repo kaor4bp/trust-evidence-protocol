@@ -13,6 +13,7 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from tep_runtime.errors import ValidationError
+from tep_runtime.core_validators import validate_active_focus
 from tep_runtime.code_index import (
     CODE_INDEX_ALLOWED_RECORD_TYPES,
     CODE_INDEX_ANNOTATION_KINDS,
