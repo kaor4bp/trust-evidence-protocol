@@ -212,9 +212,12 @@ def test_front_door_contract_payloads_expose_routes_without_proof() -> None:
         ranked_context=[{"ref": "MODEL-20260423-demo", "role": "integrated_picture"}],
         chain_candidates=[{"ref": "CLM-20260423-demo", "role": "fact", "quote": "supported fact"}],
         curiosity={"probe_suggestions": []},
+        map_navigation={"map_navigation_is_proof": False, "cells": [{"ref": "MAP-20260423-demo", "map_is_proof": False}]},
         next_allowed_tools=("record_detail", "linked_records", "augment_chain"),
     ).to_payload()
     assert lookup["lookup_is_proof"] is False
+    assert lookup["map_navigation"]["map_navigation_is_proof"] is False
+    assert lookup["map_navigation"]["cells"][0]["map_is_proof"] is False
     assert lookup["route_token"] == "ROUTE-demo"
     assert lookup["next_allowed_tools"] == ["record_detail", "linked_records", "augment_chain"]
 

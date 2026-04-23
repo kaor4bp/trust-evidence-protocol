@@ -42,7 +42,8 @@ new investigation should update context when the result matters later
 
 - Start from the resolved TEP context root, preferring `~/.tep_context` when available; only fall back to fresh investigation for gaps, contradictions, staleness, or missing support.
 - Use `lookup --reason ...` as the front door when choosing a route. The reason is mandatory and should describe why the agent is looking: `orientation`, `planning`, `answering`, `permission`, `editing`, `debugging`, `retrospective`, `curiosity`, or `migration`.
-- Follow `lookup.next_allowed_commands` and `lookup.output_contract` before opening broader record searches. `search-records`, `claim-graph`, `record-detail`, and `linked-records` are drill-down tools after lookup in normal work.
+- Follow `lookup.next_allowed_commands` and `lookup.output_contract` before opening broader record searches. `map-open`, `map-view`, `map-drilldown`, `search-records`, `claim-graph`, `record-detail`, and `linked-records` are drill-down tools after lookup in normal work.
+- Treat `lookup.map_navigation` as durable navigation memory only. `MAP-*` cells can orient the agent, but proof still requires drill-down to canonical records and chain validation.
 - Let lookup create a lightweight `WCTX-*` when no active working context exists and the workspace is known. Treat that WCTX as operational focus only, not proof or authorization.
 - Use `topic-search` to narrow broad lookup, but follow up with `record-detail`, `linked-records`, or direct code/source inspection before citing.
 - Use `logic-search` / `logic-check` for typed predicate claims, but follow up with canonical `CLM-*` and `SRC-*` before citing.

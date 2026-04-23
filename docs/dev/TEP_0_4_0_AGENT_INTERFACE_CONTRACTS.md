@@ -132,6 +132,11 @@ Required output:
     "cold_zones": [],
     "probe_suggestions": []
   },
+  "map_navigation": {
+    "map_navigation_is_proof": false,
+    "map_session_ref": "WCTX-*#map-session",
+    "cells": []
+  },
   "next_allowed_tools": ["record_detail", "linked_records", "augment_chain"],
   "route_token": "ROUTE-*",
   "repair": []
@@ -142,6 +147,8 @@ Rules:
 
 - Lookup is navigation, not proof.
 - Lookup should prefer `MODEL-*`/`FLOW-*` for compact integrated context.
+- Lookup may return durable `MAP-*` cells in `map_navigation` as bounded
+  navigation memory. They are not proof and must not become chain nodes.
 - Lookup may return `CLM-* plane=meta` as compact summaries over many records,
   but these summaries are not object-level proof without drill-down.
 - Runtime-only observations rank below supported/user-confirmed theory.

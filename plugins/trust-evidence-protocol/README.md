@@ -557,7 +557,8 @@ Commands:
   - one front door for normal lookup routing
   - `--reason` is mandatory and is written into telemetry
   - ensures a `WCTX-*` operational context exists when a workspace is known; auto-created WCTX is not proof and not authorization
-  - returns the primary tool, ordered route commands, `next_allowed_commands`, `route_graph`, `evidence_profile`, `output_contract`, and a compact `chain_starter`
+  - returns the primary tool, ordered route commands, `next_allowed_commands`, `route_graph`, `evidence_profile`, `output_contract`, navigation-only `map_navigation`, and a compact `chain_starter`
+  - `map_navigation` returns relevant durable `MAP-*` cells when available; these cells are navigation memory only and require `map-drilldown`, `record-detail`, and chain validation before proof use
   - `chain_starter` is a mechanical draft with candidate ids, quotes, edges, validation preview, and next `augment-chain` / `validate-decision` commands; it is not proof until validated
   - `facts` routes to `claim-graph`, `search-records`, `record-detail`, and `linked-records`
   - `code` routes to `code-search`, `code-feedback`, `code-info`, and a `curiosity-map --mode code`

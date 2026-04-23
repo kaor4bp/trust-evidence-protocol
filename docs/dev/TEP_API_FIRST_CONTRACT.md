@@ -68,6 +68,10 @@ Required contract shape:
   "next_allowed_commands": ["..."],
   "route_graph": {"graph_version": 1, "branches": []},
   "evidence_profile": {"lookup_is_proof": false},
+  "map_navigation": {
+    "map_navigation_is_proof": false,
+    "cells": []
+  },
   "output_contract": {
     "if_answering": "...",
     "if_new_support_found": "...",

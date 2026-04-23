@@ -271,6 +271,9 @@ Progress:
   `tep_runtime.map_session` from CLI and MCP.
 - The default session is stored as signed WCTX operational state at
   `WCTX.map_sessions.default` and returned as `WCTX-*#map-session`.
+- `lookup` now returns relevant durable cells under navigation-only
+  `map_navigation` and adds `map-open`/`map-drilldown` route hints without
+  adding `MAP-*` refs to proof-capable chain nodes.
 - Remaining work: richer move ranking, dismissed/deferred candidate memory,
   explicit multi-session support, and L2/L3 map-cell creation.
 

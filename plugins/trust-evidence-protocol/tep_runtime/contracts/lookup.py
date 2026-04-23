@@ -14,6 +14,7 @@ class LookupResponse:
     ranked_context: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
     chain_candidates: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
     curiosity: Mapping[str, Any] = field(default_factory=dict)
+    map_navigation: Mapping[str, Any] = field(default_factory=dict)
     next_allowed_tools: Sequence[str] = field(default_factory=tuple)
     repair: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
     lookup_is_proof: bool = False
@@ -34,6 +35,7 @@ LOOKUP_RESPONSE_SCHEMA = compact_object_schema(
         "ranked_context",
         "chain_candidates",
         "curiosity",
+        "map_navigation",
         "next_allowed_tools",
         "route_token",
         "repair",
@@ -45,6 +47,7 @@ LOOKUP_RESPONSE_SCHEMA = compact_object_schema(
         "ranked_context": loose_array("Navigation candidates ranked by authority and relevance."),
         "chain_candidates": loose_array("Proof-capable candidate nodes for chain construction."),
         "curiosity": loose_object("Compact curiosity/map signals."),
+        "map_navigation": loose_object("Navigation-only durable MAP-* cells and map-session hints."),
         "next_allowed_tools": {"type": "array", "items": {"type": "string"}},
         "route_token": ROUTE_TOKEN_PROPERTY,
         "repair": loose_array("Repair routes when lookup is blocked or weak."),

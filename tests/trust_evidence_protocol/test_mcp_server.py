@@ -1259,6 +1259,9 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     assert lookup_payload["mode"] == "code"
     assert lookup_payload["primary_tool"] == "code-search"
     assert lookup_payload["api_contract_version"] == 1
+    assert lookup_payload["map_navigation"]["map_navigation_is_proof"] is False
+    assert lookup_payload["map_navigation"]["cells"]
+    assert all(not node["ref"].startswith("MAP-") for node in lookup_payload["chain_starter"]["nodes"])
     assert lookup_payload["output_contract"]["if_chain_needed"].startswith("draft ids/quotes")
     assert lookup_payload["chain_starter"]["chain_starter_is_proof"] is False
     assert lookup_payload["chain_starter"]["decision_mode"] == "planning"

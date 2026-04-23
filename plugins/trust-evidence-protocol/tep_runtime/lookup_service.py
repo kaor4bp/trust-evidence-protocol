@@ -282,6 +282,115 @@ def append_lookup_chain_support_nodes(nodes: list[dict], records: dict[str, dict
         append_lookup_chain_node(nodes, records, support_ref)
 
 
+def safe_ref_list(record: dict, key: str) -> list[str]:
+    values = record.get(key, [])
+    if not isinstance(values, list):
+        return []
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
+def map_record_matches_focus(root: Path, records: dict[str, dict], record: dict, scope: str) -> bool:
+    if scope == "all":
+        return True
+    workspace_ref = current_workspace_ref(root)
+    if workspace_ref:
+        workspace_refs = safe_ref_list(record, "workspace_refs")
+        scope_refs = record.get("scope_refs", {}) if isinstance(record.get("scope_refs"), dict) else {}
+        workspace_refs.extend(str(ref) for ref in scope_refs.get("workspace_refs", []) if str(ref))
+        if workspace_refs and workspace_ref not in workspace_refs:
+            return False
+    project_ref = current_project_ref(root) or None
+    task_ref = current_active_task_ref(root, records) or None
+    return record_belongs_to_project(record, project_ref) and record_belongs_to_task(record, task_ref)
+
+
+def map_lookup_score(records: dict[str, dict], map_record: dict, terms: set[str], selected_kind: str) -> int:
+    anchor_summaries = " ".join(record_summary(records.get(ref, {})) for ref in safe_ref_list(map_record, "anchor_refs"))
+    derived_summaries = " ".join(record_summary(records.get(ref, {})) for ref in safe_ref_list(map_record, "derived_from_refs")[:8])
+    text = " ".join(
+        [
+            str(map_record.get("summary", "")),
+            str(map_record.get("scope", "")),
+            str(map_record.get("map_kind", "")),
+            anchor_summaries,
+            derived_summaries,
+        ]
+    ).lower()
+    score = sum(1 for term in terms if term in text)
+    level = str(map_record.get("level") or "")
+    kind_bonus = 0
+    if selected_kind in {"theory", "research"} and level in {"L2", "L3"}:
+        kind_bonus += 2
+    if selected_kind == "facts" and level == "L1":
+        kind_bonus += 1
+    if selected_kind == "code" and str(map_record.get("map_kind")) == "code_area_cell":
+        kind_bonus += 3
+    return score * 10 + kind_bonus + {"L3": 3, "L2": 2, "L1": 1}.get(level, 0)
+
+
+def build_lookup_map_navigation(
+    root: Path,
+    records: dict[str, dict],
+    query: str,
+    selected_kind: str,
+    scope: str,
+    selected_mode: str,
+    wctx_ref: str,
+    limit: int = 5,
+) -> dict:
+    terms = task_terms(query)
+    active_maps = [
+        record
+        for record in records.values()
+        if record.get("record_type") == "map"
+        and str(record.get("status", "active")).strip() == "active"
+        and map_record_matches_focus(root, records, record, scope)
+    ]
+    scored = [
+        (map_lookup_score(records, record, terms, selected_kind), record)
+        for record in active_maps
+    ]
+    matching = [(score, record) for score, record in scored if score > 0]
+    if not matching and active_maps:
+        matching = [(0, record) for record in sorted(active_maps, key=lambda item: str(item.get("updated_at", "")), reverse=True)[:limit]]
+    ranked = sorted(matching, key=lambda item: (item[0], str(item[1].get("updated_at", ""))), reverse=True)[:limit]
+    cells = []
+    for score, record in ranked:
+        record_ref = str(record.get("id") or "")
+        proof_routes = record.get("proof_routes", []) if isinstance(record.get("proof_routes"), list) else []
+        cells.append(
+            {
+                "ref": record_ref,
+                "level": str(record.get("level") or ""),
+                "map_kind": str(record.get("map_kind") or ""),
+                "status": str(record.get("status") or ""),
+                "summary": concise(str(record.get("summary") or ""), 220),
+                "anchor_refs": safe_ref_list(record, "anchor_refs")[:8],
+                "proof_routes": proof_routes[:3],
+                "relevance_score": score,
+                "map_is_proof": False,
+                "route_hint": {
+                    "tool": "map_drilldown",
+                    "map_session_ref": f"{wctx_ref}#map-session" if wctx_ref else "WCTX-*#map-session",
+                    "record": record_ref,
+                },
+            }
+        )
+    return {
+        "map_navigation_is_proof": False,
+        "map_cells_are_proof": False,
+        "preferred_when_available": True,
+        "mode": selected_mode,
+        "scope": scope,
+        "working_context_ref": wctx_ref,
+        "map_session_ref": f"{wctx_ref}#map-session" if wctx_ref else "",
+        "cells": cells,
+        "cell_count": len(cells),
+        "next_tools": ["map_open", "map_view", "map_drilldown", "record_detail", "augment_chain"],
+        "note": "MAP-* cells are durable navigation memory. Drill down through proof_routes before using support.",
+    }
+
+
 def current_lookup_reason_context(root: Path) -> dict:
     validation = validate_reason_ledger(root)
     if not validation.get("ok"):
@@ -489,13 +598,30 @@ def lookup_payload(
         scope=scope,
         wctx_ref=wctx_ref,
     )
+    map_navigation = build_lookup_map_navigation(
+        root=root,
+        records=records,
+        query=query,
+        selected_kind=selected_kind,
+        scope=scope,
+        selected_mode=selected_mode,
+        wctx_ref=wctx_ref,
+    )
+    map_route = []
+    if map_navigation.get("cells"):
+        first_map_ref = str(map_navigation["cells"][0].get("ref") or "MAP-*")
+        map_route = [
+            f"map-open --query {query_arg} --mode {selected_mode} --scope {scope} --format json",
+            f"map-drilldown --session {wctx_ref or 'WCTX-*'}#map-session --record {first_map_ref} --format json",
+        ]
     evidence_profile = {
         "lookup_is_proof": False,
         "raw_claim_reads": "blocked-in-normal-mode",
         "normal_entrypoint": "lookup",
-        "drill_down_tools": ["search-records", "claim-graph", "record-detail", "linked-records"],
+        "drill_down_tools": ["map-open", "map-view", "map-drilldown", "search-records", "claim-graph", "record-detail", "linked-records"],
         "preferred_read_order": [
             "MODEL/FLOW summaries for integrated picture",
+            "durable MAP-* cells for bounded navigation context",
             "active corroborated/supported CLM through claim-graph",
             "record-detail/linked-records for proof quotes",
             "tentative hypotheses for exploration only",
@@ -510,6 +636,7 @@ def lookup_payload(
         "if_answering": "open record-detail or linked-records before citing a record as proof",
         "if_new_support_found": "use record-support/record-evidence so FILE/RUN/SRC/CLM links are created mechanically",
         "if_chain_needed": "draft ids/quotes, run augment-chain, then validate-evidence-chain or validate-decision",
+        "if_map_context_returned": "open map_view/map_drilldown first, then record-detail and chain validation before citing support",
         "if_continuing_reason": "prefer new chain nodes not already present in current REASON-*; only fall back to revisiting old nodes when lookup finds no new candidates",
         "if_theory_should_rank_high": "promote supported/user-confirmed theory into MODEL/FLOW through validated write paths",
         "if_uncertain": "record a tentative CLM, OPEN-*, or PRP-* instead of silently relying on a guess",
@@ -532,11 +659,12 @@ def lookup_payload(
             "auto_created_working_context": bool(auto_wctx),
         },
         "primary_tool": primary_tool,
-        "route": route_commands[selected_kind],
-        "next_allowed_commands": route_commands[selected_kind],
+        "route": [*map_route, *route_commands[selected_kind]],
+        "next_allowed_commands": [*map_route, *route_commands[selected_kind]],
         "fallback_route": [
             f"search-records --query {query_arg} --format json",
             f"curiosity-map --mode {selected_mode} --scope {scope} --volume compact",
+            f"map-refresh --mode {selected_mode} --scope {scope} --dry-run --format json",
             "telemetry-report --format json",
         ],
         "route_graph": {
@@ -544,6 +672,7 @@ def lookup_payload(
             "entrypoint": "lookup",
             "branches": [
                 {"if": "candidate record found", "then": "record-detail|linked-records"},
+                {"if": "map cell found", "then": "map-open|map-drilldown"},
                 {"if": "new source support found", "then": "record-support|record-evidence"},
                 {"if": "chain needed", "then": "augment-chain|validate-evidence-chain"},
                 {"if": "integrated theory needed", "then": "record-model|record-flow after user-confirmed theory support"},
@@ -552,10 +681,12 @@ def lookup_payload(
         },
         "evidence_profile": evidence_profile,
         "output_contract": output_contract,
+        "map_navigation": map_navigation,
         "chain_starter": chain_starter,
         "rules": [
             "Use lookup first when unsure where to search.",
             "Treat lookup and generated maps as navigation only, not proof.",
+            "Treat MAP-* cells as navigation memory; use map-drilldown, record-detail, and chain validation before proof use.",
             "Open record-detail or linked-records before citing a canonical record.",
             "When new support is found, prefer record-support or record-evidence over separate manual record-source/record-claim calls.",
             "When a current REASON-* exists, lookup defaults to proposing new chain nodes before revisiting old chain nodes.",
@@ -576,6 +707,16 @@ def lookup_text_lines(payload: dict) -> list[str]:
     ]
     for command in payload.get("route", []):
         lines.append(f"- `{command}`")
+    map_navigation = payload.get("map_navigation") or {}
+    if map_navigation:
+        lines.extend(["", "## MAP Navigation"])
+        lines.append(
+            f"- cells: `{map_navigation.get('cell_count', 0)}` session: `{map_navigation.get('map_session_ref', '')}` proof=`false`"
+        )
+        for cell in map_navigation.get("cells", [])[:4]:
+            lines.append(
+                f"- `{cell.get('ref')}` level=`{cell.get('level')}` kind=`{cell.get('map_kind')}` score=`{cell.get('relevance_score')}` summary=\"{concise(str(cell.get('summary', '')), 140)}\""
+            )
     lines.extend(["", "## Fallback"])
     for command in payload.get("fallback_route", []):
         lines.append(f"- `{command}`")
@@ -685,12 +826,17 @@ def build_lookup_service_payload(
             "context_kind": auto_wctx.get("context_kind", ""),
             "not_proof": True,
         }
+    map_record_refs = [
+        str(cell.get("ref") or "")
+        for cell in (payload.get("map_navigation") or {}).get("cells", [])
+        if str(cell.get("ref") or "")
+    ]
     append_lookup_access_event(
         root,
         channel=channel,
         tool="lookup",
         access_kind="record_search",
-        record_refs=[],
+        record_refs=map_record_refs,
         query=query,
         reason=reason,
         working_context_ref=wctx_ref,

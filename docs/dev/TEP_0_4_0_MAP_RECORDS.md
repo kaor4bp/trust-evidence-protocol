@@ -537,7 +537,8 @@ Slice order:
 
 1. Define `MAP-*` schema and validators. Done for `record_version=1`.
 2. Add record loading/search support for `record_type=map`. Done.
-3. Add lookup support for returning existing `MAP-*` cells.
+3. Add lookup support for returning existing `MAP-*` cells. Done through the
+   navigation-only `lookup.map_navigation` block and map route hints.
 4. Add explicit `map_refresh` service for materializing and updating `L1` cells
    from current attention/curiosity output. Done for bounded `evidence_patch`
    cells.

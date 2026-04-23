@@ -11,6 +11,7 @@
     "ranked_context",
     "chain_candidates",
     "curiosity",
+    "map_navigation",
     "next_allowed_tools",
     "route_token",
     "repair"
@@ -22,6 +23,11 @@
     "ranked_context": {"type": "array", "items": {}},
     "chain_candidates": {"type": "array", "items": {}},
     "curiosity": {"type": "object", "additionalProperties": true},
+    "map_navigation": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Navigation-only durable MAP-* cells and map-session hints."
+    },
     "next_allowed_tools": {"type": "array", "items": {"type": "string"}},
     "route_token": {"type": "string", "pattern": "^ROUTE-[A-Za-z0-9_.:-]+$"},
     "repair": {"type": "array", "items": {}}

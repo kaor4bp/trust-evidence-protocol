@@ -353,6 +353,10 @@ Direct raw record reads are allowed only for:
   "chain_candidates": [],
   "route_graph": {},
   "curiosity": {},
+  "map_navigation": {
+    "map_navigation_is_proof": false,
+    "cells": []
+  },
   "telemetry": {
     "event_ref": "TEL-*|null",
     "raw_records_returned": 0

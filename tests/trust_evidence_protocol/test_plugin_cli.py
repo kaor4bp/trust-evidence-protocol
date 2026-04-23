@@ -2330,6 +2330,10 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert lookup_facts["output_contract"]["if_new_support_found"].startswith("use record-support/record-evidence")
     assert lookup_facts["route_graph"]["entrypoint"] == "lookup"
     assert lookup_facts["next_allowed_commands"] == lookup_facts["route"]
+    assert lookup_facts["map_navigation"]["map_navigation_is_proof"] is False
+    assert lookup_facts["map_navigation"]["cells"][0]["ref"] == map_record_id
+    assert lookup_facts["map_navigation"]["cells"][0]["map_is_proof"] is False
+    assert any(command.startswith("map-open") for command in lookup_facts["route"])
     assert any(command.startswith("claim-graph") for command in lookup_facts["route"])
     chain_starter = lookup_facts["chain_starter"]
     assert chain_starter["chain_starter_is_proof"] is False
@@ -2340,6 +2344,7 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert any(command.startswith("augment-chain") for command in chain_starter["next_commands"])
     assert any(command.startswith("validate-decision --mode curiosity") for command in chain_starter["next_commands"])
     lookup_text = run_cli(context, "lookup", "--query", "Facility Program relationship", "--reason", "curiosity", "--kind", "facts").stdout
+    assert "## MAP Navigation" in lookup_text
     assert "## Chain Starter" in lookup_text
     assert "validate-decision --mode curiosity" in lookup_text
     lookup_code = json.loads(

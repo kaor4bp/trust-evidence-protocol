@@ -17,8 +17,8 @@ lookup(query, reason, kind)
 ```
 
 Lookup output should include primary tool, next allowed commands, route graph,
-output contract, evidence profile, chain starter or extension, fallback route,
-and proof boundary reminders.
+output contract, evidence profile, navigation-only `map_navigation`, chain
+starter or extension, fallback route, and proof boundary reminders.
 
 ## Chain Extension Mode
 
@@ -43,9 +43,10 @@ Fallback should not simply reuse the old chain. It should say:
 
 Lookup is navigation. It can propose chain nodes but cannot prove anything.
 
-Backend hits, CIX, map nodes, topic hits, and generated summaries should be
+Backend hits, CIX, `MAP-*` cells, topic hits, and generated summaries should be
 kept out of proof nodes unless converted into canonical records through support
-capture.
+capture. `MAP-*` cells may appear under `map_navigation`; they must not appear
+as `chain_starter.nodes`.
 
 ## API Requirements
 
@@ -69,4 +70,3 @@ capture.
   pressure.
 - Lookup fallback should be tested against cases where no new fact exists but a
   useful hypothesis can be formed.
-
