@@ -798,6 +798,9 @@ It must expose:
 - missing-link probes
 - mode filter: `general`, `research`, `theory`, `code`
 - volume setting: `compact`, `normal`, `wide`
+- refresh triggers for uncovered or newer map-worthy `CLM-*`, `MODEL-*`, and
+  `FLOW-*` records. These triggers are navigation signals only and recommend
+  explicit `attention-index build` plus `map_refresh` dry-run/apply.
 
 Rules:
 

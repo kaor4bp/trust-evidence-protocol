@@ -1184,6 +1184,8 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
     map_refresh_payload = json.loads(map_refresh["content"][0]["text"])
     assert map_refresh_payload["map_refresh_is_proof"] is False
     assert map_refresh_payload["applied"] is True
+    assert map_refresh_payload["refresh_triggers_are_proof"] is False
+    assert "refresh_triggers" in map_refresh_payload
     assert map_refresh_payload["created_refs"]
 
     map_open = by_id[35]["result"]

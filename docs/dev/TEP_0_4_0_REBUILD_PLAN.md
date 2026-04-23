@@ -274,8 +274,14 @@ Progress:
 - `lookup` now returns relevant durable cells under navigation-only
   `map_navigation` and adds `map-open`/`map-drilldown` route hints without
   adding `MAP-*` refs to proof-capable chain nodes.
+- Added explicit navigation-only refresh triggers for map-worthy `CLM-*`,
+  `MODEL-*`, and `FLOW-*` changes. `lookup.map_navigation` and `map_refresh`
+  now surface `refresh_required`, `refresh_triggers`, and recommended
+  `attention-index build` / `map-refresh --dry-run` commands without silently
+  regenerating durable map records.
 - Remaining work: richer move ranking, dismissed/deferred candidate memory,
-  explicit multi-session support, and L2/L3 map-cell creation.
+  explicit multi-session support, anchor archival staleness triggers, and L2/L3
+  map-cell creation.
 
 ## Milestone 7: Feature Recovery And Conformance
 

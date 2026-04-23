@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,13 @@ from .search import concise
 
 
 MAP_REFRESH_GENERATOR = "map_refresh"
+MAP_REFRESH_TRIGGER_TYPES = {"claim", "model", "flow"}
+MAP_REFRESH_TRIGGER_CLAIM_KINDS = {"", "factual", "implied", "statistical"}
+MAP_REFRESH_TRIGGER_STATUSES = {
+    "claim": {"supported", "corroborated", "contested", "tentative"},
+    "model": {"working", "stable"},
+    "flow": {"working", "stable"},
+}
 
 
 def _canonical_json(payload: Any) -> str:
@@ -32,6 +40,42 @@ def _sha256_payload(payload: Any) -> str:
 
 def _map_scope(mode: str, scope: str) -> str:
     return f"map_refresh.{mode}.{scope}"
+
+
+def _safe_list(record: dict, key: str) -> list[str]:
+    values = record.get(key, [])
+    if not isinstance(values, list):
+        return []
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
+def _parse_timestamp(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _record_change_timestamp(record: dict) -> datetime | None:
+    for key in ("updated_at", "recorded_at", "captured_timestamp", "created_at"):
+        parsed = _parse_timestamp(str(record.get(key, "")).strip())
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _record_change_timestamp_text(record: dict) -> str:
+    for key in ("updated_at", "recorded_at", "captured_timestamp", "created_at"):
+        value = str(record.get(key, "")).strip()
+        if value:
+            return value
+    return ""
+
+
+def _map_updated_timestamp(record: dict) -> datetime | None:
+    return _parse_timestamp(str(record.get("updated_at", "")).strip())
 
 
 def _scope_refs(root: Path) -> dict[str, list[str]]:
@@ -63,6 +107,128 @@ def _record_summary(records: dict[str, dict], record_ref: str) -> str:
         str(record.get("statement") or record.get("summary") or record.get("title") or record.get("note") or record_ref),
         140,
     )
+
+
+def _map_record_scope_matches(root: Path, map_record: dict, *, mode: str, scope: str) -> bool:
+    if str(map_record.get("scope", "")) != _map_scope(mode, scope):
+        return False
+    if scope == "all":
+        return True
+    scope_refs = map_record.get("scope_refs", {})
+    if not isinstance(scope_refs, dict):
+        scope_refs = {}
+    current_refs = {
+        "workspace_refs": current_workspace_ref(root),
+        "project_refs": current_project_ref(root),
+        "task_refs": current_task_ref(root),
+    }
+    for key, current_ref in current_refs.items():
+        if not current_ref:
+            continue
+        values = [*_safe_list(map_record, key), *[str(ref) for ref in scope_refs.get(key, []) if str(ref)]]
+        if values and current_ref not in values:
+            return False
+    return True
+
+
+def _source_record_scope_matches(root: Path, record: dict, *, scope: str) -> bool:
+    if scope == "all":
+        return True
+    for key, current_ref in (
+        ("workspace_refs", current_workspace_ref(root)),
+        ("project_refs", current_project_ref(root)),
+        ("task_refs", current_task_ref(root)),
+    ):
+        if not current_ref:
+            continue
+        refs = _safe_list(record, key)
+        if refs and current_ref not in refs:
+            return False
+    return True
+
+
+def _mapworthy_record(record: dict) -> bool:
+    record_type = str(record.get("record_type", "")).strip()
+    if record_type not in MAP_REFRESH_TRIGGER_TYPES:
+        return False
+    status = str(record.get("status", "")).strip() or "tentative"
+    if status not in MAP_REFRESH_TRIGGER_STATUSES[record_type]:
+        return False
+    if record_type == "claim":
+        claim_kind = str(record.get("claim_kind", "")).strip()
+        if claim_kind not in MAP_REFRESH_TRIGGER_CLAIM_KINDS:
+            return False
+    return True
+
+
+def map_refresh_triggers(
+    root: Path,
+    records: dict[str, dict],
+    *,
+    scope: str = "current",
+    mode: str = "general",
+    limit: int = 12,
+) -> list[dict[str, Any]]:
+    """Return navigation-only reasons why durable MAP cells should be refreshed."""
+
+    active_maps = [
+        record
+        for record in _existing_maps(records)
+        if str(record.get("status", "active")).strip() == "active"
+        and _map_record_scope_matches(root, record, mode=mode, scope=scope)
+    ]
+    covered_refs: dict[str, list[dict[str, Any]]] = {}
+    for map_record in active_maps:
+        map_ref = str(map_record.get("id", "")).strip()
+        map_updated = _map_updated_timestamp(map_record)
+        for ref in sorted({*_safe_list(map_record, "anchor_refs"), *_safe_list(map_record, "derived_from_refs")}):
+            covered_refs.setdefault(ref, []).append({"map_ref": map_ref, "map_updated_at": map_updated})
+
+    triggers: list[dict[str, Any]] = []
+    for record_id, record in sorted(records.items()):
+        if not _mapworthy_record(record) or not _source_record_scope_matches(root, record, scope=scope):
+            continue
+        record_timestamp = _record_change_timestamp(record)
+        covering_maps = covered_refs.get(record_id, [])
+        reason = ""
+        map_refs: list[str] = []
+        if not covering_maps:
+            reason = "uncovered_mapworthy_record"
+        elif record_timestamp is not None:
+            stale_maps = [
+                item["map_ref"]
+                for item in covering_maps
+                if item.get("map_updated_at") is not None and item["map_updated_at"] < record_timestamp
+            ]
+            if stale_maps:
+                reason = "covered_record_newer_than_map"
+                map_refs = stale_maps
+        if not reason:
+            continue
+        triggers.append(
+            {
+                "record_ref": record_id,
+                "record_type": str(record.get("record_type", "")),
+                "claim_kind": str(record.get("claim_kind", "")),
+                "status": str(record.get("status", "")),
+                "reason": reason,
+                "changed_at": _record_change_timestamp_text(record),
+                "map_refs": map_refs,
+                "summary": _record_summary(records, record_id),
+                "trigger_is_proof": False,
+            }
+        )
+        if len(triggers) >= limit:
+            break
+    return triggers
+
+
+def map_refresh_recommended_commands(*, scope: str, mode: str, dry_run_first: bool = True) -> list[str]:
+    commands = ["attention-index build"]
+    if dry_run_first:
+        commands.append(f"map-refresh --mode {mode} --scope {scope} --dry-run --format json")
+    commands.append(f"map-refresh --mode {mode} --scope {scope} --format json")
+    return commands
 
 
 def _proof_route(record_refs: list[str]) -> dict[str, Any]:
@@ -173,9 +339,25 @@ def build_map_refresh_plan(
     volume: str = "compact",
     limit: int = 5,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    refresh_triggers = map_refresh_triggers(root, records, scope=scope, mode=mode)
     attention_payload = load_attention_payload(root)
     if not attention_payload:
-        return {}, [{"path": "", "reason": "attention_index_missing", "detail": "run attention-index build first"}]
+        return (
+            {
+                "map_refresh_is_proof": False,
+                "attention_index_is_proof": False,
+                "mode": mode,
+                "scope": scope,
+                "volume": volume,
+                "limit": limit,
+                "refresh_triggers": refresh_triggers,
+                "refresh_trigger_count": len(refresh_triggers),
+                "refresh_required": bool(refresh_triggers),
+                "refresh_triggers_are_proof": False,
+                "recommended_commands": map_refresh_recommended_commands(scope=scope, mode=mode),
+            },
+            [{"path": "", "reason": "attention_index_missing", "detail": "run attention-index build first"}],
+        )
     scoped = _scoped_attention_payload(root, attention_payload, scope, mode)
     visual_map = curiosity_map_payload(scoped, volume=volume)
     timestamp = now_timestamp()
@@ -252,6 +434,11 @@ def build_map_refresh_plan(
             "created_refs": created_refs,
             "updated_refs": updated_refs,
             "stale_refs": stale_refs,
+            "refresh_triggers": refresh_triggers,
+            "refresh_trigger_count": len(refresh_triggers),
+            "refresh_required": bool(refresh_triggers),
+            "refresh_triggers_are_proof": False,
+            "recommended_commands": map_refresh_recommended_commands(scope=scope, mode=mode),
             "candidate_count": len(candidates),
             "mutations": mutations,
             "note": "MAP-* cells are durable navigation records. Drill down through proof_routes before citing support.",
@@ -300,6 +487,7 @@ def map_refresh_text_lines(payload: dict[str, Any]) -> list[str]:
         "Mode: durable MAP-* refresh. Navigation only; not proof.",
         f"scope: `{payload.get('scope')}` mode: `{payload.get('mode')}` volume: `{payload.get('volume')}` applied=`{payload.get('applied')}`",
         f"candidates: `{payload.get('candidate_count', 0)}` created=`{len(payload.get('created_refs', []))}` updated=`{len(payload.get('updated_refs', []))}` stale=`{len(payload.get('stale_refs', []))}`",
+        f"refresh triggers: `{payload.get('refresh_trigger_count', 0)}` required=`{payload.get('refresh_required', False)}`",
         "",
         "## Actions",
     ]
@@ -307,5 +495,10 @@ def map_refresh_text_lines(payload: dict[str, Any]) -> list[str]:
         lines.append(f"- {action.get('action')}: `{action.get('record_id')}`")
     if not payload.get("planned_actions"):
         lines.append("- none")
+    triggers = payload.get("refresh_triggers", [])
+    if triggers:
+        lines.extend(["", "## Refresh Triggers"])
+        for trigger in triggers[:8]:
+            lines.append(f"- `{trigger.get('record_ref')}` {trigger.get('reason')}: {trigger.get('summary', '')}")
     lines.extend(["", str(payload.get("note", ""))])
     return lines

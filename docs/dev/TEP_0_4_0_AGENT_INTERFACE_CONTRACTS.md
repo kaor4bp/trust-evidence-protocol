@@ -238,6 +238,9 @@ Rules:
   `MAP-*` cells.
 - New map-relevant `CLM-*` records and new or changed `MODEL-*`/`FLOW-*`
   records are refresh triggers.
+- `lookup.map_navigation` and `map_refresh` expose these as navigation-only
+  `refresh_triggers` with `refresh_triggers_are_proof=false`; agents should run
+  `attention-index build`, then `map_refresh` dry-run/apply explicitly.
 - Map tools must not automatically create `OPEN-*`, `DEBT-*`, `PRP-*`, or truth
   records.
 - `map_drilldown` returns a proof route, not proof.

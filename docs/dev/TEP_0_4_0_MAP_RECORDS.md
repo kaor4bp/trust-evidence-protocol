@@ -462,6 +462,9 @@ Current implementation status:
 - CLI exposes this as `map-refresh`; `--dry-run` plans the same mutations
   without writing records.
 - MCP exposes `map_refresh` as a direct core-service tool, not a CLI shell-out.
+- `map_refresh` returns navigation-only `refresh_triggers` before mutation.
+  These triggers tell the agent why refresh is warranted without treating the
+  trigger list as proof.
 - Matching active cells with the same level, map kind, scope, anchors, and
   source-set fingerprint are updated in place for signals/timestamps.
 - Matching active cells with the same anchor key but changed source fingerprint
@@ -486,13 +489,18 @@ Refresh flow:
 
 Refresh triggers:
 
-- any anchor record is archived/rejected/superseded
-- source set fingerprint changes
-- linked `CLM(meta_aggregated)` becomes stale
-- new `CLM-*` records of map-relevant kinds appear near the cell's anchors,
-  including meta aggregates, record-link claims, contradiction/conflict claims,
-  runtime claims, and high-value supported object claims
-- new or changed `MODEL-*` or `FLOW-*` records appear near the cell's anchors
+- uncovered map-worthy `CLM-*` records appear. In the implemented 0.4 detector,
+  map-worthy claim kinds are empty/default, `factual`, `implied`, and
+  `statistical`, and unsupported speculative claim kinds are excluded.
+- a covered map-worthy `CLM-*` has a newer `recorded_at`/`updated_at` than the
+  active map cell that covers it.
+- uncovered or newer active `MODEL-*` or `FLOW-*` records appear. Current
+  implemented statuses are `working` and `stable`.
+- any anchor record is archived/rejected/superseded. Planned follow-up:
+  integrate this with the trigger detector as a staleness reason rather than
+  only validator/search pressure.
+- source set fingerprint changes.
+- linked `CLM(meta_aggregated)` becomes stale.
 - current task/WCTX is closed or forked
 - explicit user, curator, or agent request
 

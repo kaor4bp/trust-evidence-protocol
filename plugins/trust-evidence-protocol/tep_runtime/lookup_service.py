@@ -15,6 +15,7 @@ from .hydration import invalidate_hydration_state
 from .hypotheses import active_hypothesis_entry_by_claim
 from .ids import next_record_id, now_timestamp
 from .io import write_json_file
+from .map_refresh import map_refresh_recommended_commands, map_refresh_triggers
 from .notes import append_note
 from .paths import record_path
 from .reason_ledger import latest_reason_step, validate_reason_ledger
@@ -339,6 +340,7 @@ def build_lookup_map_navigation(
     limit: int = 5,
 ) -> dict:
     terms = task_terms(query)
+    refresh_triggers = map_refresh_triggers(root, records, scope=scope, mode=selected_mode, limit=5)
     active_maps = [
         record
         for record in records.values()
@@ -386,6 +388,12 @@ def build_lookup_map_navigation(
         "map_session_ref": f"{wctx_ref}#map-session" if wctx_ref else "",
         "cells": cells,
         "cell_count": len(cells),
+        "refresh_triggers": refresh_triggers,
+        "refresh_trigger_count": len(refresh_triggers),
+        "refresh_required": bool(refresh_triggers),
+        "refresh_triggers_are_proof": False,
+        "refresh_recommended": bool(refresh_triggers),
+        "recommended_commands": map_refresh_recommended_commands(scope=scope, mode=selected_mode),
         "next_tools": ["map_open", "map_view", "map_drilldown", "record_detail", "augment_chain"],
         "note": "MAP-* cells are durable navigation memory. Drill down through proof_routes before using support.",
     }

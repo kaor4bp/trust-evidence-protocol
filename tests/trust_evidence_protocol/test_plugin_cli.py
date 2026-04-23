@@ -2283,6 +2283,11 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert refreshed_map["attention_index_is_proof"] is False
     assert refreshed_map["applied"] is True
     assert refreshed_map["candidate_count"] >= 1
+    assert refreshed_map["refresh_trigger_count"] >= 1
+    assert refreshed_map["refresh_required"] is True
+    assert refreshed_map["refresh_triggers_are_proof"] is False
+    assert "attention-index build" in refreshed_map["recommended_commands"]
+    assert all(trigger["trigger_is_proof"] is False for trigger in refreshed_map["refresh_triggers"])
     assert refreshed_map["created_refs"]
     assert refreshed_map["updated_refs"] == []
     map_record_id = refreshed_map["created_refs"][0]
@@ -2333,6 +2338,11 @@ def test_attention_index_tracks_taps_and_generates_curiosity_probes(tmp_path: Pa
     assert lookup_facts["map_navigation"]["map_navigation_is_proof"] is False
     assert lookup_facts["map_navigation"]["cells"][0]["ref"] == map_record_id
     assert lookup_facts["map_navigation"]["cells"][0]["map_is_proof"] is False
+    assert lookup_facts["map_navigation"]["refresh_recommended"] is True
+    assert lookup_facts["map_navigation"]["refresh_required"] is True
+    assert lookup_facts["map_navigation"]["refresh_triggers_are_proof"] is False
+    assert lookup_facts["map_navigation"]["refresh_trigger_count"] >= 1
+    assert "attention-index build" in lookup_facts["map_navigation"]["recommended_commands"]
     assert any(command.startswith("map-open") for command in lookup_facts["route"])
     assert any(command.startswith("claim-graph") for command in lookup_facts["route"])
     chain_starter = lookup_facts["chain_starter"]

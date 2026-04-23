@@ -477,6 +477,7 @@ from tep_runtime.logic_check import (  # noqa: E402
     structural_logic_check_text_lines,
     z3_logic_check_text_lines,
 )
+from tep_runtime.map_refresh import map_refresh_triggers  # noqa: E402
 from tep_runtime.topic_index import (  # noqa: E402
     build_lexical_topic_index,
     infer_topic_terms_from_refs,
@@ -2765,6 +2766,76 @@ def test_map_records_require_record_version_and_directional_links(tmp_path: Path
     wrong_link = {**l1, "up_refs": [wrong_target["id"]]}
     direction_errors = validate_refs({l1["id"]: wrong_link, wrong_target["id"]: wrong_target})
     assert any(error.message == f"map up_ref {wrong_target['id']} must point from L1 to L2/L3" for error in direction_errors)
+
+
+def test_map_refresh_triggers_track_new_and_changed_claim_model_flow_records(tmp_path: Path) -> None:
+    root = tmp_path / ".tep_context"
+    old_claim_id = "CLM-20260423-aaaa1111"
+    new_claim_id = "CLM-20260423-bbbb2222"
+    model_id = "MODEL-20260423-cccc3333"
+    flow_id = "FLOW-20260423-dddd4444"
+    ignored_claim_id = "CLM-20260423-eeee5555"
+    map_id = "MAP-20260423-ffff6666"
+    records = {
+        old_claim_id: {
+            "id": old_claim_id,
+            "record_type": "claim",
+            "status": "supported",
+            "claim_kind": "factual",
+            "statement": "Old covered claim changed after map refresh.",
+            "recorded_at": "2026-04-23T12:00:00+03:00",
+        },
+        new_claim_id: {
+            "id": new_claim_id,
+            "record_type": "claim",
+            "status": "supported",
+            "claim_kind": "implied",
+            "statement": "New mapworthy claim is not covered by a MAP cell.",
+            "recorded_at": "2026-04-23T10:00:00+03:00",
+        },
+        model_id: {
+            "id": model_id,
+            "record_type": "model",
+            "status": "stable",
+            "summary": "New stable model should refresh map navigation.",
+            "updated_at": "2026-04-23T10:30:00+03:00",
+        },
+        flow_id: {
+            "id": flow_id,
+            "record_type": "flow",
+            "status": "working",
+            "summary": "New working flow should refresh map navigation.",
+            "updated_at": "2026-04-23T10:40:00+03:00",
+        },
+        ignored_claim_id: {
+            "id": ignored_claim_id,
+            "record_type": "claim",
+            "status": "tentative",
+            "claim_kind": "prediction",
+            "statement": "Prediction claims are not map refresh triggers.",
+            "recorded_at": "2026-04-23T11:00:00+03:00",
+        },
+        map_id: {
+            "id": map_id,
+            "record_type": "map",
+            "scope": "map_refresh.general.all",
+            "status": "active",
+            "anchor_refs": [old_claim_id],
+            "derived_from_refs": [old_claim_id],
+            "updated_at": "2026-04-23T09:00:00+03:00",
+        },
+    }
+
+    triggers = map_refresh_triggers(root, records, scope="all", mode="general")
+    by_ref = {trigger["record_ref"]: trigger for trigger in triggers}
+
+    assert by_ref[old_claim_id]["reason"] == "covered_record_newer_than_map"
+    assert by_ref[old_claim_id]["map_refs"] == [map_id]
+    assert by_ref[new_claim_id]["reason"] == "uncovered_mapworthy_record"
+    assert by_ref[model_id]["reason"] == "uncovered_mapworthy_record"
+    assert by_ref[flow_id]["reason"] == "uncovered_mapworthy_record"
+    assert ignored_claim_id not in by_ref
+    assert all(trigger["trigger_is_proof"] is False for trigger in triggers)
 
 
 def test_validation_core_normalizes_optional_lists_and_confidence() -> None:
