@@ -424,6 +424,21 @@ def _active_same_anchor(records: dict[str, dict], candidate: dict) -> dict | Non
     return None
 
 
+def _triggered_stale_map_refs(refresh_triggers: list[dict[str, Any]]) -> dict[str, list[str]]:
+    reasons_by_ref: dict[str, list[str]] = {}
+    for trigger in refresh_triggers:
+        if str(trigger.get("record_type", "")) != "map":
+            continue
+        reason = str(trigger.get("reason", "")).strip()
+        if reason not in {"map_has_terminal_anchor", "source_set_fingerprint_changed"}:
+            continue
+        record_ref = str(trigger.get("record_ref", "")).strip()
+        if not record_ref:
+            continue
+        reasons_by_ref.setdefault(record_ref, []).append(reason)
+    return {record_ref: sorted(set(reasons)) for record_ref, reasons in reasons_by_ref.items()}
+
+
 def build_map_refresh_plan(
     root: Path,
     records: dict[str, dict],
@@ -515,6 +530,30 @@ def build_map_refresh_plan(
                 "anchor_refs": created["anchor_refs"],
             }
         )
+
+    for record_id, reasons in _triggered_stale_map_refs(refresh_triggers).items():
+        existing = working_records.get(record_id)
+        if not existing or existing.get("record_type") != "map":
+            continue
+        if str(existing.get("status", "")).strip() == "stale":
+            continue
+        stale = public_record_payload(existing)
+        stale["status"] = "stale"
+        stale["updated_at"] = timestamp
+        mutations[record_id] = stale
+        working_records[record_id] = stale
+        if record_id in updated_refs:
+            updated_refs.remove(record_id)
+        if record_id not in stale_refs:
+            stale_refs.append(record_id)
+        if not any(action.get("action") == "mark_map_stale" and action.get("record_id") == record_id for action in planned_actions):
+            planned_actions.append(
+                {
+                    "action": "mark_map_stale",
+                    "record_id": record_id,
+                    "trigger_reasons": reasons,
+                }
+            )
 
     return (
         {

@@ -282,6 +282,9 @@ Progress:
 - Extended refresh triggers to active map cells whose anchors become terminal
   and to map cells whose stored `source_set_fingerprint` no longer matches
   their current source refs.
+- `map_refresh` now turns those stale-cell triggers into explicit
+  `mark_map_stale` planned actions and mutations, so dry-run and apply share
+  the same lifecycle decision.
 - Remaining work: richer move ranking, dismissed/deferred candidate memory,
   explicit multi-session support, and L2/L3 map-cell creation.
 

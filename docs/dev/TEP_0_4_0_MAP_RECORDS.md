@@ -470,6 +470,9 @@ Current implementation status:
 - Matching active cells with the same anchor key but changed source fingerprint
   are marked `stale`; the new cell links them through `supersedes_refs` and
   `refines_map_refs`.
+- Stale-cell triggers create explicit `mark_map_stale` planned actions for
+  terminal anchors and source-set fingerprint mismatches. Dry-run shows the
+  same stale mutations that apply would perform.
 - The generated `curiosity-map`, `attention-map`, HTML map, and `map-brief`
   remain read-only navigation views.
 

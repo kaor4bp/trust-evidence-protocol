@@ -477,7 +477,7 @@ from tep_runtime.logic_check import (  # noqa: E402
     structural_logic_check_text_lines,
     z3_logic_check_text_lines,
 )
-from tep_runtime.map_refresh import map_refresh_triggers  # noqa: E402
+from tep_runtime.map_refresh import build_map_refresh_plan, map_refresh_triggers  # noqa: E402
 from tep_runtime.topic_index import (  # noqa: E402
     build_lexical_topic_index,
     infer_topic_terms_from_refs,
@@ -2869,6 +2869,57 @@ def test_map_refresh_triggers_track_new_and_changed_claim_model_flow_records(tmp
     assert terminal_trigger["anchor_refs"] == [rejected_claim_id]
     assert terminal_trigger["anchor_reasons"] == ["anchor_rejected"]
     assert all(trigger["trigger_is_proof"] is False for trigger in triggers)
+
+
+def test_map_refresh_plan_marks_stale_cells_from_terminal_anchor_triggers(tmp_path: Path) -> None:
+    root = tmp_path / ".tep_context"
+    for name, payload in {
+        "records.json": {},
+        "clusters.json": {},
+        "bridges.json": {"bridges": [], "link_edges": [], "established_pairs": []},
+        "cold_zones.json": {"cold_zones": []},
+        "probes.json": {"probes": []},
+    }.items():
+        write_json_file(root / "attention_index" / name, payload)
+
+    rejected_claim_id = "CLM-20260423-aaaa1111"
+    map_id = "MAP-20260423-bbbb2222"
+    records = {
+        rejected_claim_id: {
+            "id": rejected_claim_id,
+            "record_type": "claim",
+            "status": "rejected",
+            "claim_kind": "factual",
+            "statement": "Rejected anchors stale active map cells.",
+            "recorded_at": "2026-04-23T11:30:00+03:00",
+        },
+        map_id: {
+            "id": map_id,
+            "record_type": "map",
+            "scope": "map_refresh.general.all",
+            "level": "L1",
+            "map_kind": "evidence_patch",
+            "status": "active",
+            "summary": "Map with a rejected anchor.",
+            "anchor_refs": [rejected_claim_id],
+            "derived_from_refs": [rejected_claim_id],
+            "source_set_fingerprint": "sha256:terminal-anchor-map",
+            "updated_at": "2026-04-23T09:00:00+03:00",
+        },
+    }
+
+    payload, issues = build_map_refresh_plan(root, records, scope="all", mode="general")
+
+    assert issues == []
+    assert payload["created_refs"] == []
+    assert payload["updated_refs"] == []
+    assert payload["stale_refs"] == [map_id]
+    assert payload["mutations"][map_id]["status"] == "stale"
+    assert {
+        "action": "mark_map_stale",
+        "record_id": map_id,
+        "trigger_reasons": ["map_has_terminal_anchor", "source_set_fingerprint_changed"],
+    } in payload["planned_actions"]
 
 
 def test_validation_core_normalizes_optional_lists_and_confidence() -> None:
