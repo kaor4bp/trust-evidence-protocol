@@ -23,7 +23,7 @@ class AgentIdentityRecord:
     created_at: str
     record_type: str = "agent_identity"
     key_algorithm: str = "hmac-sha256"
-    key_scope: str = "local-agent"
+    key_scope: str = "agent-owned"
     status: str = "active"
     note: str = "Public local-agent identity metadata only."
     contract_version: str = CONTRACT_VERSION
@@ -115,7 +115,7 @@ AGENT_IDENTITY_RECORD_SCHEMA = compact_object_schema(
         "agent_name": {"type": "string", "minLength": 1},
         "key_algorithm": {"type": "string", "const": "hmac-sha256"},
         "key_fingerprint": {"type": "string", "pattern": "^sha256:"},
-        "key_scope": {"type": "string", "const": "local-agent"},
+        "key_scope": {"type": "string", "const": "agent-owned"},
         "status": {"type": "string", "enum": ["active", "revoked", "archived"]},
         "created_at": {"type": "string"},
         "note": {"type": "string", "minLength": 1},

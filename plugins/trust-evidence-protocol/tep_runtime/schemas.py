@@ -242,8 +242,8 @@ def validate_record(record_id: str, data: dict) -> list[str]:
             errors.append("agent_identity.key_algorithm must be hmac-sha256")
         if not str(data.get("key_fingerprint", "")).strip().startswith("sha256:"):
             errors.append("agent_identity.key_fingerprint must start with sha256:")
-        if str(data.get("key_scope", "")).strip() != "local-agent":
-            errors.append("agent_identity.key_scope must be local-agent")
+        if str(data.get("key_scope", "")).strip() != "agent-owned":
+            errors.append("agent_identity.key_scope must be agent-owned")
         if str(data.get("status", "")).strip() not in AGENT_IDENTITY_STATUSES:
             errors.append("invalid agent_identity status")
         if not str(data.get("created_at", "")).strip():

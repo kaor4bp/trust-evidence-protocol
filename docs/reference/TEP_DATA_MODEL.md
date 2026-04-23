@@ -109,14 +109,14 @@ schema migration are separate operations.
 `hmac-sha256` key algorithm, `local-agent` scope, and `sha256:` key
 fingerprint. It must not store private key material.
 
-Each agent must invent and reuse a private agent token. The corresponding HMAC
+Each agent must invent and reuse a private agent key. The corresponding HMAC
 key is derived into runtime-private state under
-`.tep_context/runtime/agent_identity/agents/<token_hash>.json`; only public
+`.tep_context/runtime/agent_identity/agents/<key_fingerprint_hash>.json`; only public
 fingerprints appear in `AGENT-*` and `WCTX-*` records. Owner-bound `WCTX-*`
 records store an `owner_signature` over the canonical WCTX focus payload plus
 the public `AGENT-*` reference and fingerprint. Runtime validators recompute the
 signed payload hash for every signed WCTX, and verify the HMAC when the current
-agent token owns that WCTX. Another agent may inspect that WCTX as navigation
+agent key owns that WCTX. Another agent may inspect that WCTX as navigation
 context, but must create a signed fork/adopted WCTX before using it as current
 focus.
 

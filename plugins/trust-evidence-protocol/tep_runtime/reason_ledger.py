@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import secrets
 from collections import Counter, defaultdict, deque
@@ -12,23 +11,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from .agent_identity import (
-    AgentIdentityRequiredError,
-    agent_key_fingerprint,
-    load_local_agent_secret,
-    load_or_create_local_agent_secret,
-    local_agent_owns_working_context,
-)
+from .agent_identity import AgentIdentityRequiredError, current_agent_private_key, current_bound_agent_ref, ensure_local_agent_identity, local_agent_owns_working_context, require_agent_private_key
 from .claim_relations import PROOF_RELATION_KINDS, NAVIGATION_RELATION_KINDS, relation_connects, relation_shape_for_claim
 from .claims import claim_is_archived
 from .errors import ValidationError
 from .hydration import compute_context_fingerprint
 from .io import write_json_file
-from .paths import (
-    reasoning_runtime_dir,
-    reasoning_seal_path,
-    reasons_ledger_path,
-)
+from .paths import reasoning_runtime_dir, reasons_ledger_path
 from .policy import is_mutating_action_kind
 from .records import load_records
 from .reasoning import PROOF_DECISION_MODES, UNCERTAIN_DECISION_MODES
@@ -49,8 +38,6 @@ POW_ALGORITHM = "sha256-leading-zero-bits"
 class LedgerScope:
     agent_ref: str
     path: Path
-    seal_path: Path
-    secret: str
 
 
 def _now() -> datetime:
@@ -182,11 +169,6 @@ def _ledger_hash(prev_ledger_hash: str, entry_hash: str, seal: str) -> str:
     return _sha256_text(f"{prev_ledger_hash}\n{entry_hash}\n{seal}")
 
 
-def _seal_payload(secret: str, entry_hash: str) -> str:
-    digest = hmac.new(secret.encode("utf-8"), entry_hash.encode("utf-8"), hashlib.sha256).hexdigest()
-    return "hmac-sha256:" + digest
-
-
 def command_hash(command: str) -> str:
     return hashlib.sha256(str(command or "").encode("utf-8")).hexdigest()
 
@@ -201,51 +183,26 @@ def normalize_cwd(cwd: str | Path | None) -> str:
         return value
 
 
-def _current_agent_secret_payload(root: Path, *, create: bool) -> dict[str, Any]:
+def _current_agent_metadata(root: Path, *, create: bool) -> dict[str, str]:
     if create:
         records, _ = load_records(root)
-        return load_or_create_local_agent_secret(root, records, _now().isoformat(timespec="seconds"))
-    return load_local_agent_secret(root)
-
-
-def _current_agent_metadata(root: Path, *, create: bool) -> dict[str, str]:
-    payload = _current_agent_secret_payload(root, create=create)
-    agent_ref = str(payload.get("agent_identity_ref", "")).strip()
-    secret = str(payload.get("secret", "")).strip()
-    if not agent_ref or not secret:
+        agent_record, private_key = ensure_local_agent_identity(root, records, _now().isoformat(timespec="seconds"))
+        return {
+            "agent_identity_ref": str(agent_record.get("id", "")).strip(),
+            "agent_key_fingerprint": str(agent_record.get("key_fingerprint", "")).strip(),
+            "agent_private_key": require_agent_private_key(private_key),
+        }
+    agent_ref = current_bound_agent_ref(root)
+    if not agent_ref:
+        return {}
+    records, _ = load_records(root)
+    agent_record = records.get(agent_ref, {})
+    if agent_record.get("record_type") != "agent_identity":
         return {}
     return {
         "agent_identity_ref": agent_ref,
-        "agent_key_fingerprint": agent_key_fingerprint(secret),
+        "agent_key_fingerprint": str(agent_record.get("key_fingerprint", "")).strip(),
     }
-
-
-def _read_reasoning_secret_file(path: Path) -> str:
-    if not path.exists():
-        return ""
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return ""
-    return str(payload.get("secret", "")).strip()
-
-
-def _write_reasoning_secret_file(path: Path, *, agent_ref: str) -> str:
-    secret = secrets.token_hex(32)
-    payload: dict[str, Any] = {
-        "version": 1,
-        "created_at": _now().isoformat(timespec="seconds"),
-        "secret": secret,
-    }
-    if agent_ref:
-        payload["agent_identity_ref"] = agent_ref
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_json_file(path, payload)
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
-    return secret
 
 
 def current_reasoning_agent_ref(root: Path, *, create: bool = False) -> str:
@@ -259,29 +216,10 @@ def current_reasons_ledger_path(root: Path, *, create_agent: bool = False) -> Pa
     return reasons_ledger_path(root, agent_ref)
 
 
-def ensure_reasoning_secret(root: Path, agent_ref: str | None = None) -> str:
-    if not agent_ref:
-        agent_ref = current_reasoning_agent_ref(root, create=True)
-    if not agent_ref:
-        return ""
-    path = reasoning_seal_path(root, agent_ref)
-    secret = load_reasoning_secret(root, agent_ref)
-    if secret:
-        reasons_ledger_path(root, agent_ref).touch(exist_ok=True)
-        return secret
-    secret = _write_reasoning_secret_file(path, agent_ref=agent_ref)
-    reasons_ledger_path(root, agent_ref).touch(exist_ok=True)
-    return secret
+def _seal_payload(private_key: str, entry_hash: str) -> str:
+    from .agent_identity import _sign_hash  # local import to avoid broad API export
 
-
-def load_reasoning_secret(root: Path, agent_ref: str | None = None) -> str:
-    """Read the local agent ledger seal secret without creating it."""
-
-    if not agent_ref:
-        agent_ref = current_reasoning_agent_ref(root, create=False)
-    if not agent_ref:
-        return ""
-    return _read_reasoning_secret_file(reasoning_seal_path(root, agent_ref))
+    return _sign_hash(private_key, entry_hash)
 
 
 def _active_wctx_ref_for_task(root: Path, records: dict[str, dict], task_ref: str) -> str:
@@ -650,24 +588,11 @@ def _read_reason_entries_for_scope(scope: LedgerScope) -> tuple[list[dict[str, A
 
 def _read_only_ledger_scopes(root: Path) -> list[LedgerScope]:
     scopes: list[LedgerScope] = []
-    seen: set[Path] = set()
-    agents_root = reasoning_runtime_dir(root) / "agents"
-    if agents_root.is_dir():
-        for agent_dir in sorted(path for path in agents_root.iterdir() if path.is_dir()):
-            agent_ref = agent_dir.name
-            path = reasons_ledger_path(root, agent_ref)
-            seal_path = reasoning_seal_path(root, agent_ref)
-            if not path.exists() and not seal_path.exists():
-                continue
-            scopes.append(LedgerScope(agent_ref, path, seal_path, _read_reasoning_secret_file(seal_path)))
-            seen.add(path)
     current_agent = current_reasoning_agent_ref(root, create=False)
     if current_agent:
         path = reasons_ledger_path(root, current_agent)
-        if path not in seen and path.exists():
-            seal_path = reasoning_seal_path(root, current_agent)
-            scopes.append(LedgerScope(current_agent, path, seal_path, _read_reasoning_secret_file(seal_path)))
-            seen.add(path)
+        if path.exists():
+            scopes.append(LedgerScope(current_agent, path))
     return scopes
 
 
@@ -676,8 +601,9 @@ def _write_ledger_scope(root: Path, agent_ref: str | None = None) -> LedgerScope
         agent_ref = current_reasoning_agent_ref(root, create=True)
     if not agent_ref:
         return None
-    secret = ensure_reasoning_secret(root, agent_ref)
-    return LedgerScope(agent_ref, reasons_ledger_path(root, agent_ref), reasoning_seal_path(root, agent_ref), secret)
+    path = reasons_ledger_path(root, agent_ref)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return LedgerScope(agent_ref, path)
 
 
 def _ledger_scopes(root: Path, *, create_secret: bool, agent_ref: str | None = None) -> list[LedgerScope]:
@@ -685,8 +611,7 @@ def _ledger_scopes(root: Path, *, create_secret: bool, agent_ref: str | None = N
         scope = _write_ledger_scope(root, agent_ref)
         return [scope] if scope else []
     if agent_ref:
-        seal_path = reasoning_seal_path(root, agent_ref)
-        return [LedgerScope(agent_ref, reasons_ledger_path(root, agent_ref), seal_path, _read_reasoning_secret_file(seal_path))]
+        return [LedgerScope(agent_ref, reasons_ledger_path(root, agent_ref))]
     return _read_only_ledger_scopes(root)
 
 
@@ -715,7 +640,7 @@ def validate_reason_ledger(root: Path, *, create_secret: bool = False, agent_ref
         entries, read_errors = _read_reason_entries_for_scope(scope)
         errors.extend(read_errors)
         all_entries.extend(entries)
-        scope_errors, head_hash = _validate_reason_ledger_scope(scope, entries, global_ids)
+        scope_errors, head_hash = _validate_reason_ledger_scope(root, scope, entries, global_ids)
         errors.extend(scope_errors)
     return {
         "ok": not errors,
@@ -726,14 +651,12 @@ def validate_reason_ledger(root: Path, *, create_secret: bool = False, agent_ref
 
 
 def _validate_reason_ledger_scope(
+    root: Path,
     scope: LedgerScope,
     entries: list[dict[str, Any]],
     global_ids: set[str],
 ) -> tuple[list[str], str]:
     errors: list[str] = []
-    secret = scope.secret
-    if entries and not secret:
-        errors.append(f"{scope.path}: reason seal secret missing; ledger cannot be fully validated")
     previous = ZERO_LEDGER_HASH
     for index, entry in enumerate(entries, start=1):
         entry_id = str(entry.get("id", "")).strip()
@@ -757,13 +680,14 @@ def _validate_reason_ledger_scope(
         pow_error = _validate_pow(entry)
         if pow_error:
             errors.append(f"{entry_id or index}: {pow_error}; ledger appears tampered")
-        if secret:
-            expected_seal = _seal_payload(secret, expected_entry_hash)
+        current_key = current_agent_private_key()
+        if current_key and current_reasoning_agent_ref(root, create=False) == scope.agent_ref:
+            expected_seal = _seal_payload(current_key, expected_entry_hash)
             if str(entry.get("seal", "")).strip() != expected_seal:
                 errors.append(f"{entry_id or index}: seal mismatch; ledger appears tampered")
-            expected_ledger_hash = _ledger_hash(previous, expected_entry_hash, expected_seal)
-            if str(entry.get("ledger_hash", "")).strip() != expected_ledger_hash:
-                errors.append(f"{entry_id or index}: ledger_hash mismatch; ledger appears tampered")
+        expected_ledger_hash = _ledger_hash(previous, expected_entry_hash, str(entry.get("seal", "")).strip())
+        if str(entry.get("ledger_hash", "")).strip() != expected_ledger_hash:
+            errors.append(f"{entry_id or index}: ledger_hash mismatch; ledger appears tampered")
         entry_type = str(entry.get("entry_type", "")).strip()
         if entry_type not in {"claim_step", "grant"}:
             errors.append(f"{entry_id or index}: unsupported reason ledger entry_type {entry_type or 'none'}")
@@ -798,6 +722,16 @@ def validate_reason_ledger_state(root: Path) -> list[ValidationError]:
     records, record_errors = load_records(root)
     if record_errors:
         return errors
+    for entry in validation["entries"]:
+        agent_ref = str(entry.get("agent_identity_ref", "")).strip()
+        if not agent_ref:
+            continue
+        agent = records.get(agent_ref)
+        if not agent or agent.get("record_type") != "agent_identity":
+            errors.append(ValidationError(path, f"{str(entry.get('id', '')).strip() or 'entry'} missing agent_identity record {agent_ref}"))
+            continue
+        if str(entry.get("agent_key_fingerprint", "")).strip() != str(agent.get("key_fingerprint", "")).strip():
+            errors.append(ValidationError(path, f"{str(entry.get('id', '')).strip() or 'entry'} agent_key_fingerprint mismatch"))
     errors.extend(ValidationError(path, message) for message in validate_claim_step_lineage_relations(records, validation["entries"]))
     return errors
 
@@ -973,7 +907,9 @@ def append_reason_entry(
     agent_ref = str(agent.get("agent_identity_ref", "")).strip()
     if not agent_ref:
         return None, "local agent identity is required for reason ledger entries"
-    secret = ensure_reasoning_secret(root, agent_ref)
+    private_key = str(agent.get("agent_private_key", "")).strip()
+    if not private_key:
+        return None, "agent private key is required for reason ledger entries"
     entry = {
         "id": _next_ledger_id(entries, id_prefix),
         "record_type": "reason",
@@ -989,7 +925,7 @@ def append_reason_entry(
     except RuntimeError as exc:
         return None, str(exc)
     entry_hash = _entry_hash(entry)
-    seal = _seal_payload(secret, entry_hash)
+    seal = _seal_payload(private_key, entry_hash)
     entry["entry_hash"] = entry_hash
     entry["seal"] = seal
     entry["ledger_hash"] = _ledger_hash(str(entry["prev_ledger_hash"]), entry_hash, seal)

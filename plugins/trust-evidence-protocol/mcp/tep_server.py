@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
-SERVER_VERSION = "0.4.8"
+SERVER_VERSION = "0.4.9"
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 
 plugin_root = str(PLUGIN_ROOT)
@@ -26,7 +26,7 @@ if plugin_root not in sys.path:
     sys.path.insert(0, plugin_root)
 
 from tep_runtime.action_graph import build_next_step_payload, next_step_text_lines  # noqa: E402
-from tep_runtime.agent_identity import agent_identity_scope, require_agent_secret_token  # noqa: E402
+from tep_runtime.agent_identity import agent_identity_scope, require_agent_private_key  # noqa: E402
 from tep_runtime.chain_service import (  # noqa: E402
     augment_chain_service,
     augment_chain_text,
@@ -79,12 +79,12 @@ def context_property() -> JsonObject:
     return {"type": "string", "description": CONTEXT_ROOT_DESCRIPTION}
 
 
-def agent_token_property() -> JsonObject:
+def agent_private_key_property() -> JsonObject:
     return {
         "type": "string",
         "description": (
-            "Per-agent secret token for owner-bound mutations. The agent invents this token and reuses it; "
-            "the runtime stores only token-scoped private state and public fingerprints."
+            "Per-agent private key for owner-bound mutations. The agent invents and keeps this secret; "
+            "the runtime stores only its fingerprint and thread-scoped bindings."
         ),
     }
 
@@ -190,7 +190,7 @@ TOOLS: list[JsonObject] = [
                 "root": {"type": "string", "description": "Repository root for code lookup routes. Defaults to cwd."},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "mode": {"type": "string", "enum": ["general", "research", "theory", "code"], "default": "general"},
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["query", "reason"],
@@ -219,7 +219,7 @@ TOOLS: list[JsonObject] = [
                 "action_kind": {"type": "string", "description": "Optional protected action kind such as write, bash, git, or final."},
                 "why": {"type": "string", "description": "Short public justification for appending this reasoning step."},
                 "branch": {"type": "string", "default": "main"},
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["claim_ref", "why"],
@@ -257,7 +257,7 @@ TOOLS: list[JsonObject] = [
                 "claim_status": {"type": "string", "enum": ["supported", "corroborated", "tentative"], "default": "supported"},
                 "note": {"type": "string"},
                 "tags": {"type": "array", "items": {"type": "string"}},
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["kind", "quote"],
@@ -283,7 +283,7 @@ TOOLS: list[JsonObject] = [
                 "command": {"type": "string", "description": "Optional exact command binding for shell grants."},
                 "command_cwd": {"type": "string", "description": "Optional cwd binding for exact command grants."},
                 "tool": {"type": "string", "default": "bash"},
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["reason_ref"],
@@ -635,7 +635,7 @@ TOOLS: list[JsonObject] = [
                     "items": {"type": "string"},
                     "description": "Optional migration ids to run. Defaults to the full registered schema migration chain.",
                 },
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
@@ -787,7 +787,7 @@ TOOLS: list[JsonObject] = [
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "mode": {"type": "string", "enum": ["general", "research", "theory", "code"], "default": "general"},
                 "dry_run": {"type": "boolean", "default": False},
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
@@ -801,7 +801,7 @@ TOOLS: list[JsonObject] = [
                 "query": {"type": "string", "description": "Task, topic, or map question to orient the session."},
                 "scope": {"type": "string", "enum": ["current", "all"], "default": "current"},
                 "mode": {"type": "string", "enum": ["general", "research", "theory", "code"], "default": "general"},
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
@@ -813,7 +813,7 @@ TOOLS: list[JsonObject] = [
             {
                 "context": context_property(),
                 "map_session_ref": {"type": "string", "description": "WCTX-*#map-session. Defaults to current owned WCTX session."},
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
         ),
@@ -826,7 +826,7 @@ TOOLS: list[JsonObject] = [
                 "context": context_property(),
                 "map_session_ref": {"type": "string", "description": "WCTX-*#map-session.", "minLength": 1},
                 "target": {"type": "string", "description": "MAP-* ref or MZONE-MAP-* zone id.", "minLength": 1},
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["map_session_ref", "target"],
@@ -840,7 +840,7 @@ TOOLS: list[JsonObject] = [
                 "context": context_property(),
                 "map_session_ref": {"type": "string", "description": "WCTX-*#map-session.", "minLength": 1},
                 "record": {"type": "string", "description": "MAP-*/CLM-*/SRC-* or other canonical ref to inspect.", "minLength": 1},
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["map_session_ref", "record"],
@@ -854,7 +854,7 @@ TOOLS: list[JsonObject] = [
                 "context": context_property(),
                 "map_session_ref": {"type": "string", "description": "WCTX-*#map-session.", "minLength": 1},
                 "note": {"type": "string", "description": "Short checkpoint note."},
-                "agent_token": agent_token_property(),
+                "agent_private_key": agent_private_key_property(),
                 "format": {"type": "string", "enum": ["text", "json"], "default": "text"},
             },
             ["map_session_ref"],
@@ -1077,13 +1077,13 @@ def as_format(value: Any) -> str:
     return "json" if value == "json" else "text"
 
 
-def agent_token_arg(args: JsonObject) -> str:
-    return str(args.get("agent_token") or "").strip()
+def agent_private_key_arg(args: JsonObject) -> str:
+    return str(args.get("agent_private_key") or "").strip()
 
 
-def require_agent_token_arg(args: JsonObject) -> str | None:
+def require_agent_private_key_arg(args: JsonObject) -> str | None:
     try:
-        require_agent_secret_token(agent_token_arg(args) or None)
+        require_agent_private_key(agent_private_key_arg(args) or None)
     except RuntimeError as exc:
         return str(exc)
     return None
@@ -1252,7 +1252,7 @@ def tool_lookup(args: JsonObject) -> tuple[bool, str]:
     if load_error:
         return False, load_error
     assert records is not None
-    with agent_identity_scope(agent_token_arg(args)):
+    with agent_identity_scope(agent_private_key_arg(args)):
         payload, error = build_lookup_service_payload(
             root,
             records,
@@ -1282,11 +1282,11 @@ def tool_record_evidence(args: JsonObject) -> tuple[bool, str]:
     unsafe_fallback = unsafe_unanchored_fallback(args, cwd)
     if unsafe_fallback:
         return False, unsafe_fallback
-    token_error = require_agent_token_arg(args)
+    token_error = require_agent_private_key_arg(args)
     if token_error:
         return False, token_error
     try:
-        with agent_identity_scope(agent_token_arg(args)), context_write_lock(root):
+        with agent_identity_scope(agent_private_key_arg(args)), context_write_lock(root):
             records, load_error = load_mcp_records(root)
             if load_error:
                 return False, load_error
@@ -1340,13 +1340,13 @@ def tool_reason_step(args: JsonObject) -> tuple[bool, str]:
     if load_error:
         return False, load_error
     assert records is not None
-    token_error = require_agent_token_arg(args)
+    token_error = require_agent_private_key_arg(args)
     if token_error:
         return False, token_error
     claim_ref = str(args.get("claim_ref") or "").strip()
     if not claim_ref:
         return False, "reason_step requires claim_ref for STEP-*"
-    with agent_identity_scope(agent_token_arg(args)):
+    with agent_identity_scope(agent_private_key_arg(args)):
         reason, error = reason_step_service(
             root,
             records,
@@ -1388,13 +1388,13 @@ def tool_reason_review(args: JsonObject) -> tuple[bool, str]:
     _, load_error = load_mcp_records(root)
     if load_error:
         return False, load_error
-    token_error = require_agent_token_arg(args)
+    token_error = require_agent_private_key_arg(args)
     if token_error:
         return False, token_error
     ttl_seconds = None
     if args.get("ttl_seconds") is not None:
         ttl_seconds = as_int(args.get("ttl_seconds"), 0, 1, 604800)
-    with agent_identity_scope(agent_token_arg(args)):
+    with agent_identity_scope(agent_private_key_arg(args)):
         payload, error = reason_review_service(
             root,
             reason_ref=str(args.get("reason_ref") or ""),
@@ -1733,7 +1733,7 @@ def tool_schema_migration_apply(args: JsonObject) -> tuple[bool, str]:
     root = mcp_context_root(args)
     if root is None:
         return False, "Could not resolve TEP context root"
-    token_error = require_agent_token_arg(args)
+    token_error = require_agent_private_key_arg(args)
     if token_error:
         return False, token_error
     report = build_schema_migration_report(root, apply=True, migration_ids=schema_migration_ids(args)).to_payload()
@@ -1913,14 +1913,14 @@ def tool_map_refresh(args: JsonObject) -> tuple[bool, str]:
     if unsafe_fallback:
         return False, unsafe_fallback
     if not as_bool(args.get("dry_run")):
-        token_error = require_agent_token_arg(args)
+        token_error = require_agent_private_key_arg(args)
         if token_error:
             return False, token_error
     records, load_error = load_mcp_records(root)
     if load_error:
         return False, load_error
     assert records is not None
-    with agent_identity_scope(agent_token_arg(args)):
+    with agent_identity_scope(agent_private_key_arg(args)):
         payload, error = map_refresh_service(
             root,
             records,
@@ -1960,10 +1960,10 @@ def tool_map_open(args: JsonObject) -> tuple[bool, str]:
     if error:
         return False, error
     assert root is not None and records is not None
-    token_error = require_agent_token_arg(args)
+    token_error = require_agent_private_key_arg(args)
     if token_error:
         return False, token_error
-    with agent_identity_scope(agent_token_arg(args)):
+    with agent_identity_scope(agent_private_key_arg(args)):
         payload, service_error = map_open_service(
             root,
             records,
@@ -1984,7 +1984,7 @@ def tool_map_view(args: JsonObject) -> tuple[bool, str]:
     if error:
         return False, error
     assert root is not None and records is not None
-    with agent_identity_scope(agent_token_arg(args)):
+    with agent_identity_scope(agent_private_key_arg(args)):
         payload, service_error = map_view_service(root, records, session_ref=str(args.get("map_session_ref") or ""))
     if service_error:
         return False, service_error
@@ -1999,10 +1999,10 @@ def tool_map_move(args: JsonObject) -> tuple[bool, str]:
     if error:
         return False, error
     assert root is not None and records is not None
-    token_error = require_agent_token_arg(args)
+    token_error = require_agent_private_key_arg(args)
     if token_error:
         return False, token_error
-    with agent_identity_scope(agent_token_arg(args)):
+    with agent_identity_scope(agent_private_key_arg(args)):
         payload, service_error = map_move_service(
             root,
             records,
@@ -2022,7 +2022,7 @@ def tool_map_drilldown(args: JsonObject) -> tuple[bool, str]:
     if error:
         return False, error
     assert root is not None and records is not None
-    with agent_identity_scope(agent_token_arg(args)):
+    with agent_identity_scope(agent_private_key_arg(args)):
         payload, service_error = map_drilldown_service(
             root,
             records,
@@ -2042,10 +2042,10 @@ def tool_map_checkpoint(args: JsonObject) -> tuple[bool, str]:
     if error:
         return False, error
     assert root is not None and records is not None
-    token_error = require_agent_token_arg(args)
+    token_error = require_agent_private_key_arg(args)
     if token_error:
         return False, token_error
-    with agent_identity_scope(agent_token_arg(args)):
+    with agent_identity_scope(agent_private_key_arg(args)):
         payload, service_error = map_checkpoint_service(
             root,
             records,

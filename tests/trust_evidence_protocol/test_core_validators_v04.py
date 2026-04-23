@@ -349,9 +349,8 @@ def test_reason_ledger_write_path_creates_per_agent_files(tmp_path: Path) -> Non
     with agent_identity_scope("ledger-agent-token"):
         ledger = current_reasons_ledger_path(tmp_path)
     assert ledger is not None
-    assert ledger.exists()
     assert ledger.parent.name.startswith("AGENT-")
-    assert (ledger.parent / "seal.json").exists()
+    assert ledger.parent.exists()
     assert not (tmp_path / "runtime" / "reasoning" / "reasons.jsonl").exists()
 
 
@@ -400,6 +399,44 @@ def test_reason_ledger_state_validation_detects_tamper(tmp_path: Path) -> None:
     errors = messages(validate_records_state(tmp_path, {}))
 
     assert any("ledger appears tampered" in error for error in errors)
+
+
+def test_reason_ledger_state_ignores_foreign_invalid_ledgers(tmp_path: Path) -> None:
+    (tmp_path / "settings.json").write_text(
+        json.dumps({"reasoning": {"pow": {"enabled": False}}}),
+        encoding="utf-8",
+    )
+    with agent_identity_scope("ledger-current-agent"):
+        entry, error = append_reason_entry(
+            tmp_path,
+            {
+                "version": 3,
+                "entry_type": "claim_step",
+                "status": "reviewed",
+                "workspace_ref": WORKSPACE_REF,
+                "project_ref": "PRJ-20260423-a0000011",
+                "task_ref": "TASK-20260423-a0000012",
+                "wctx_ref": "WCTX-20260423-a0000014",
+                "claim_ref": "CLM-20260423-a0000015",
+                "prev_claim_ref": "",
+                "relation_claim_ref": "",
+                "prev_step_ref": "",
+                "mode": "edit",
+                "justification_valid": True,
+                "decision_chain_valid": True,
+                "decision_valid": True,
+                "valid_for": ["edit"],
+                "claim_step_hash": "pytest-step-hash",
+            },
+        )
+    assert entry is not None, error
+
+    foreign_ledger = tmp_path / "runtime" / "reasoning" / "agents" / "AGENT-20260423-foreign" / "reasons.jsonl"
+    foreign_ledger.parent.mkdir(parents=True, exist_ok=True)
+    foreign_ledger.write_text('{"id":"STEP-20260423-bad","prev_ledger_hash":"sha256:0","entry_hash":"sha256:broken"}\n', encoding="utf-8")
+
+    with agent_identity_scope("ledger-current-agent"):
+        assert messages(validate_records_state(tmp_path, {})) == []
 
 
 def write_pow_disabled_settings(root: Path) -> None:

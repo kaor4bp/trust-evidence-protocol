@@ -125,7 +125,7 @@ Progress:
   preflight path. `validate_reason_ledger()` keeps the existing write-path
   behavior by default, while shared validation checks `prev_ledger_hash`,
   `entry_hash`, seal, `ledger_hash`, `chain_hash`, and PoW without creating
-  per-agent `runtime/reasoning/agents/AGENT-*/seal.json` for empty contexts.
+  agent-scoped runtime files for empty contexts.
 - Added local agent identity signing helpers. Lookup auto-created WCTX records
   now write/reuse a public `AGENT-*` identity, keep the HMAC key under runtime
   private storage, and persist signed owner-bound 0.4 WCTX payloads.

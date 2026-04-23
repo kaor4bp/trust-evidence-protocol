@@ -14,13 +14,41 @@ PLUGIN_ROOT = REPO_ROOT / "plugins" / "trust-evidence-protocol"
 BOOTSTRAP = PLUGIN_ROOT / "scripts" / "bootstrap_codex_context.py"
 CLI = PLUGIN_ROOT / "scripts" / "context_cli.py"
 MCP_SERVER = PLUGIN_ROOT / "mcp" / "tep_server.py"
+_TEST_AGENT_KEYS: dict[str, str] = {}
+
+
+def make_agent_private_key(label: str) -> str:
+    cached = _TEST_AGENT_KEYS.get(label)
+    if cached:
+        return cached
+    value = f"test-private-key::{label}"
+    _TEST_AGENT_KEYS[label] = value
+    return value
+
+
+def _rewrite_agent_tokens(value):
+    if isinstance(value, dict):
+        rewritten: dict[str, object] = {}
+        for key, item in value.items():
+            if key == "agent_private_key" and isinstance(item, str):
+                rewritten["agent_private_key"] = _rewrite_agent_tokens(make_agent_private_key(str(item)))
+                continue
+            rewritten[key] = _rewrite_agent_tokens(item)
+        return rewritten
+    if isinstance(value, list):
+        return [_rewrite_agent_tokens(item) for item in value]
+    return value
 
 
 def run_cli(context: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         [sys.executable, str(CLI), "--context", str(context), *args],
         cwd=REPO_ROOT,
-        env={**os.environ, "TEP_AGENT_SECRET_TOKEN": "pytest-mcp-cli-agent-token"},
+        env={
+            **os.environ,
+            "TEP_AGENT_PRIVATE_KEY": make_agent_private_key("pytest-mcp-cli-agent-token"),
+            "CODEX_THREAD_ID": "pytest-thread-mcp-cli",
+        },
         capture_output=True,
         text=True,
         check=False,
@@ -53,11 +81,16 @@ def recorded_id(result: subprocess.CompletedProcess[str], record_type: str) -> s
 
 
 def run_mcp(messages: list[dict], cwd: Path = REPO_ROOT) -> list[dict]:
-    payload = "\n".join(json.dumps(message) for message in messages) + "\n"
+    rewritten = [_rewrite_agent_tokens(message) for message in messages]
+    payload = "\n".join(json.dumps(message) for message in rewritten) + "\n"
     result = subprocess.run(
         [sys.executable, str(MCP_SERVER)],
         cwd=cwd,
         input=payload,
+        env={
+            **os.environ,
+            "CODEX_THREAD_ID": "pytest-thread-mcp-stdio",
+        },
         capture_output=True,
         text=True,
         check=False,
@@ -89,7 +122,7 @@ def load_mcp_server_module():
 def test_mcp_manifest_declares_readonly_server() -> None:
     plugin_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_manifest["mcpServers"] == "./.mcp.json"
-    assert plugin_manifest["version"] == "0.4.8"
+    assert plugin_manifest["version"] == "0.4.9"
 
     claude_manifest = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert claude_manifest["version"] == plugin_manifest["version"]
@@ -249,7 +282,7 @@ def test_mcp_schema_migration_plan_and_apply_use_service(tmp_path: Path) -> None
                 "method": "tools/call",
                 "params": {
                     "name": "schema_migration_apply",
-                    "arguments": {"context": str(context), "agent_token": "mcp-schema-migration-agent", "format": "json"},
+                    "arguments": {"context": str(context), "agent_private_key": "mcp-schema-migration-agent", "format": "json"},
                 },
             },
         ]
@@ -266,7 +299,7 @@ def test_mcp_schema_migration_plan_and_apply_use_service(tmp_path: Path) -> None
 
 def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monkeypatch) -> None:
     context = bootstrap_context(tmp_path)
-    agent_token = "mcp-front-door-agent-token"
+    agent_private_key = "mcp-front-door-agent-token"
     run_cli(
         context,
         "record-workspace",
@@ -369,7 +402,7 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
             "query": "direct service lookup",
             "reason": "orientation",
             "kind": "facts",
-            "agent_token": agent_token,
+            "agent_private_key": agent_private_key,
             "format": "json",
         }
     )
@@ -396,7 +429,7 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
             "claim_text": "MCP record_evidence writes support through the service layer.",
             "claim_status": "supported",
             "note": "direct mcp record_evidence service test",
-            "agent_token": agent_token,
+            "agent_private_key": agent_private_key,
             "format": "json",
         }
     )
@@ -437,7 +470,7 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
             "mode": "edit",
             "action_kind": "write",
             "why": "prove MCP can create ledger steps through the service layer",
-            "agent_token": agent_token,
+            "agent_private_key": agent_private_key,
             "format": "json",
         }
     )
@@ -459,7 +492,7 @@ def test_mcp_front_doors_call_services_without_cli_shellout(tmp_path: Path, monk
             "mode": "edit",
             "action_kind": "write",
             "grant": True,
-            "agent_token": agent_token,
+            "agent_private_key": agent_private_key,
             "format": "json",
         }
     )
@@ -845,7 +878,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                             "volume": "compact",
                             "scope": "all",
                             "limit": 2,
-                            "agent_token": "mcp-readonly-agent-token",
+                            "agent_private_key": "mcp-readonly-agent-token",
                             "format": "json",
                         },
                 },
@@ -860,7 +893,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                             "context": str(context),
                             "query": "Facility Program relationship",
                             "scope": "all",
-                            "agent_token": "mcp-readonly-agent-token",
+                            "agent_private_key": "mcp-readonly-agent-token",
                             "format": "json",
                         },
                 },
@@ -876,7 +909,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                         "query": "MCP gateway code lookup",
                             "reason": "orientation",
                             "kind": "auto",
-                            "agent_token": "mcp-readonly-agent-token",
+                            "agent_private_key": "mcp-readonly-agent-token",
                             "format": "json",
                         },
                 },
@@ -1230,7 +1263,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                         "arguments": {
                             "context": str(context),
                             "map_session_ref": map_session_ref,
-                            "agent_token": "mcp-readonly-agent-token",
+                            "agent_private_key": "mcp-readonly-agent-token",
                             "format": "json",
                         },
                 },
@@ -1245,7 +1278,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                             "context": str(context),
                             "map_session_ref": map_session_ref,
                             "target": map_target,
-                            "agent_token": "mcp-readonly-agent-token",
+                            "agent_private_key": "mcp-readonly-agent-token",
                             "format": "json",
                         },
                 },
@@ -1260,7 +1293,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                             "context": str(context),
                             "map_session_ref": map_session_ref,
                             "record": anchor_ref,
-                            "agent_token": "mcp-readonly-agent-token",
+                            "agent_private_key": "mcp-readonly-agent-token",
                             "format": "json",
                         },
                 },
@@ -1275,7 +1308,7 @@ def test_mcp_lists_and_calls_readonly_record_tools(tmp_path: Path) -> None:
                             "context": str(context),
                             "map_session_ref": map_session_ref,
                             "note": "mcp checkpoint",
-                            "agent_token": "mcp-readonly-agent-token",
+                            "agent_private_key": "mcp-readonly-agent-token",
                             "format": "json",
                         },
                 },

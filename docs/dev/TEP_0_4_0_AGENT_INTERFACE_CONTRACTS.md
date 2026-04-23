@@ -340,11 +340,11 @@ Rules:
 
 - WCTX is operational state, not proof.
 - Private agent key material is never stored in the public WCTX record.
-- Each agent must invent and reuse a private `agent_token` for owner-bound
-  mutations. MCP mutating tools accept this as `agent_token`; CLI/hooks can read
-  the same value from `TEP_AGENT_SECRET_TOKEN`.
+- Each agent must invent and reuse a private `agent_private_key` for owner-bound
+  mutations. MCP mutating tools accept this as `agent_private_key`; CLI/hooks can read
+  the same value from `TEP_AGENT_PRIVATE_KEY`.
 - The token is scoped into runtime-private state under
-  `.tep_context/runtime/agent_identity/agents/<token_hash>.json`; public records
+  `.tep_context/runtime/agent_identity/agents/<key_fingerprint_hash>.json`; public records
   expose only `sha256:` fingerprints through `AGENT-*`.
 - The WCTX owner signature covers the canonical focus payload that the runtime
   uses for `next_step`, lookup routing, map sessions, and protected actions.

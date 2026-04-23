@@ -35,10 +35,6 @@ def reasons_ledger_path(root: Path, agent_ref: str) -> Path:
     return agent_reasoning_runtime_dir(root, agent_ref) / "reasons.jsonl"
 
 
-def reasoning_seal_path(root: Path, agent_ref: str) -> Path:
-    return agent_reasoning_runtime_dir(root, agent_ref) / "seal.json"
-
-
 def hypotheses_index_path(root: Path) -> Path:
     return root / "hypotheses.jsonl"
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -12,6 +13,16 @@ from types import SimpleNamespace
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "trust-evidence-protocol"
 SCRIPTS_ROOT = PLUGIN_ROOT / "scripts"
+_TEST_AGENT_KEYS: dict[str, str] = {}
+
+
+def make_agent_private_key(label: str) -> str:
+    cached = _TEST_AGENT_KEYS.get(label)
+    if cached:
+        return cached
+    value = f"test-private-key::{label}"
+    _TEST_AGENT_KEYS[label] = value
+    return value
 
 for path in (PLUGIN_ROOT, SCRIPTS_ROOT):
     path_str = str(path)
@@ -2250,8 +2261,9 @@ def test_working_context_core_builds_payloads_and_mutations() -> None:
     }
 
 
-def test_agent_identity_signs_working_context_without_public_secret(tmp_path: Path) -> None:
+def test_agent_identity_signs_working_context_without_public_secret(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / ".tep_context"
+    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     timestamp = "2026-04-23T00:00:00+03:00"
     context = build_working_context_payload(
         record_id="WCTX-20260423-abcdef12",
@@ -2271,7 +2283,7 @@ def test_agent_identity_signs_working_context_without_public_secret(tmp_path: Pa
         note="Auto-created WCTX.",
     )
 
-    with agent_identity_scope("test-agent-token-a"):
+    with agent_identity_scope(make_agent_private_key("test-agent-token-a")):
         signed, agent = sign_working_context_payload(root, {}, context, timestamp=timestamp)
 
     assert agent["record_type"] == "agent_identity"
@@ -2285,13 +2297,14 @@ def test_agent_identity_signs_working_context_without_public_secret(tmp_path: Pa
     assert signed["handoff_policy"] == "fork-required"
     assert signed["owner_signature"]["signed_payload_hash"] == signed_wctx_payload_hash(signed)
     assert signed["owner_signature"]["signature"].startswith("hmac-sha256:")
-    secret_file = agent_secret_path(root, "test-agent-token-a")
-    secret_payload = json.loads(secret_file.read_text(encoding="utf-8"))
-    assert secret_payload["secret"]
-    with agent_identity_scope("test-agent-token-a"):
+    binding_file = agent_secret_path(root, make_agent_private_key("test-agent-token-a"))
+    binding_payload = json.loads(binding_file.read_text(encoding="utf-8"))
+    assert binding_payload["agent_identity_ref"] == agent["id"]
+    assert binding_payload["key_fingerprint"] == agent["key_fingerprint"]
+    with agent_identity_scope(make_agent_private_key("test-agent-token-a")):
         reused_agent, _ = ensure_local_agent_identity(root, {agent["id"]: agent}, timestamp=timestamp)
     assert reused_agent == agent
-    with agent_identity_scope("test-agent-token-b"):
+    with agent_identity_scope(make_agent_private_key("test-agent-token-b")):
         other_agent, _ = ensure_local_agent_identity(root, {agent["id"]: agent}, timestamp=timestamp)
     assert other_agent["id"] != agent["id"]
     assert other_agent["key_fingerprint"] != agent["key_fingerprint"]

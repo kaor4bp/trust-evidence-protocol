@@ -1,7 +1,8 @@
 [project]
 name = "trust-evidence-protocol"
-version = "0.4.8"
+version = "0.4.9"
 requires-python = ">=3.13"
+dependencies = []
 
 [project.optional-dependencies]
 test = [

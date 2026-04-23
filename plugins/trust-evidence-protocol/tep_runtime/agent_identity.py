@@ -1,4 +1,4 @@
-"""Local agent identity and WCTX owner-signature helpers."""
+"""Agent identity, secret-hash ownership, and thread binding helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import hashlib
 import hmac
 import json
 import os
-import secrets
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -16,12 +15,12 @@ from typing import Any
 from .contracts import AgentIdentityRecord
 from .ids import next_record_id, now_timestamp
 from .io import parse_json_file, write_json_file
-from .paths import runtime_dir
+from .paths import record_path, runtime_dir
 
 
-LOCAL_AGENT_SECRET_VERSION = 1
-AGENT_SECRET_TOKEN_ENV = "TEP_AGENT_SECRET_TOKEN"
-_AGENT_SECRET_TOKEN: ContextVar[str] = ContextVar("tep_agent_secret_token", default="")
+AGENT_PRIVATE_KEY_ENV = "TEP_AGENT_PRIVATE_KEY"
+CODEX_THREAD_ID_ENV = "CODEX_THREAD_ID"
+_AGENT_PRIVATE_KEY: ContextVar[str] = ContextVar("tep_agent_private_key", default="")
 WCTX_SIGNED_FIELDS = (
     "id",
     "record_type",
@@ -61,19 +60,148 @@ def _sha256_text(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def agent_secret_token_hash(token: str) -> str:
-    return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+def agent_key_fingerprint(secret: str) -> str:
+    return _sha256_text(str(secret))
 
 
-def agent_secret_path(root: Path, token: str | None = None) -> Path:
-    normalized = _normalize_agent_token(token if token is not None else current_agent_secret_token())
+def _runtime_identity_dir(root: Path) -> Path:
+    return runtime_dir(root) / "agent_identity"
+
+
+def _agents_dir(root: Path) -> Path:
+    return _runtime_identity_dir(root) / "agents"
+
+
+def _thread_bindings_dir(root: Path) -> Path:
+    return _runtime_identity_dir(root) / "thread_bindings"
+
+
+def _key_bindings_dir(root: Path) -> Path:
+    return _runtime_identity_dir(root) / "key_bindings"
+
+
+def _binding_path(directory: Path, key: str) -> Path:
+    return directory / f"{hashlib.sha256(key.encode('utf-8')).hexdigest()}.json"
+
+
+def agent_secret_path(root: Path, private_key: str | None = None) -> Path:
+    secret = require_agent_private_key(private_key)
+    return _binding_path(_agents_dir(root), agent_key_fingerprint(secret))
+
+
+def current_codex_thread_id() -> str:
+    return str(os.environ.get(CODEX_THREAD_ID_ENV) or "").strip()
+
+
+def _normalize_private_key(private_key: str | None) -> str:
+    return str(private_key or "").strip()
+
+
+def current_agent_private_key() -> str:
+    return _normalize_private_key(_AGENT_PRIVATE_KEY.get() or os.environ.get(AGENT_PRIVATE_KEY_ENV))
+
+
+class AgentIdentityRequiredError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__(
+            "agent_identity_required: provide a per-agent private key with "
+            "agent_private_key or TEP_AGENT_PRIVATE_KEY before WCTX/STEP/GRANT mutations"
+        )
+
+
+def require_agent_private_key(private_key: str | None = None) -> str:
+    normalized = _normalize_private_key(private_key if private_key is not None else current_agent_private_key())
     if not normalized:
         raise AgentIdentityRequiredError()
-    return runtime_dir(root) / "agent_identity" / "agents" / f"{agent_secret_token_hash(normalized)}.json"
+    return normalized
 
 
-def agent_key_fingerprint(secret: str) -> str:
-    return _sha256_text(secret)
+@contextmanager
+def agent_identity_scope(private_key: str | None) -> Iterator[None]:
+    normalized = _normalize_private_key(private_key)
+    if not normalized:
+        yield
+        return
+    reset_token = _AGENT_PRIVATE_KEY.set(normalized)
+    try:
+        yield
+    finally:
+        _AGENT_PRIVATE_KEY.reset(reset_token)
+
+
+def _read_binding(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return parse_json_file(path)
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _write_binding(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_json_file(path, payload)
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def _thread_binding(root: Path) -> dict[str, Any]:
+    thread_id = current_codex_thread_id()
+    if not thread_id:
+        return {}
+    return _read_binding(_binding_path(_thread_bindings_dir(root), thread_id))
+
+
+def _key_binding(root: Path, fingerprint: str) -> dict[str, Any]:
+    if not fingerprint:
+        return {}
+    return _read_binding(_binding_path(_key_bindings_dir(root), fingerprint))
+
+
+def _bind_thread(root: Path, *, agent_ref: str, fingerprint: str) -> None:
+    thread_id = current_codex_thread_id()
+    if not thread_id:
+        return
+    _write_binding(
+        _binding_path(_thread_bindings_dir(root), thread_id),
+        {
+            "version": 1,
+            "thread_id_sha256": hashlib.sha256(thread_id.encode("utf-8")).hexdigest(),
+            "agent_identity_ref": agent_ref,
+            "key_fingerprint": fingerprint,
+            "bound_at": now_timestamp(),
+        },
+    )
+
+
+def _bind_key(root: Path, *, agent_ref: str, fingerprint: str) -> None:
+    _write_binding(
+        _binding_path(_key_bindings_dir(root), fingerprint),
+        {
+            "version": 1,
+            "agent_identity_ref": agent_ref,
+            "key_fingerprint": fingerprint,
+            "bound_at": now_timestamp(),
+        },
+    )
+
+
+def _write_agent_binding(root: Path, *, agent_ref: str, fingerprint: str) -> None:
+    _write_binding(
+        _binding_path(_agents_dir(root), fingerprint),
+        {
+            "version": 1,
+            "agent_identity_ref": agent_ref,
+            "key_fingerprint": fingerprint,
+            "bound_at": now_timestamp(),
+        },
+    )
+
+
+def _persist_agent_record(root: Path, payload: dict[str, Any]) -> None:
+    write_json_file(record_path(root, "agent_identity", str(payload.get("id", "")).strip()), payload)
 
 
 def _public_record(record: dict) -> dict:
@@ -84,127 +212,84 @@ def _local_agent_name() -> str:
     return str(os.environ.get("TEP_AGENT_NAME") or os.environ.get("USER") or "local-agent").strip() or "local-agent"
 
 
-class AgentIdentityRequiredError(RuntimeError):
-    def __init__(self) -> None:
-        super().__init__(
-            "agent_identity_required: provide a per-agent secret token with "
-            "agent_token or TEP_AGENT_SECRET_TOKEN before WCTX/STEP/GRANT mutations"
-        )
-
-
-def _normalize_agent_token(token: str | None) -> str:
-    return str(token or "").strip()
-
-
-def current_agent_secret_token() -> str:
-    return _normalize_agent_token(_AGENT_SECRET_TOKEN.get() or os.environ.get(AGENT_SECRET_TOKEN_ENV))
-
-
-@contextmanager
-def agent_identity_scope(token: str | None) -> Iterator[None]:
-    normalized = _normalize_agent_token(token)
-    if not normalized:
-        yield
-        return
-    reset_token = _AGENT_SECRET_TOKEN.set(normalized)
-    try:
-        yield
-    finally:
-        _AGENT_SECRET_TOKEN.reset(reset_token)
-
-
-def require_agent_secret_token(token: str | None = None) -> str:
-    normalized = _normalize_agent_token(token if token is not None else current_agent_secret_token())
-    if not normalized:
-        raise AgentIdentityRequiredError()
-    return normalized
-
-
-def _signing_secret_from_token(token: str) -> str:
-    return hashlib.sha256(f"tep-agent-signing-v1\0{token}".encode("utf-8")).hexdigest()
-
-
-def _new_secret_payload(records: dict[str, dict], timestamp: str, token: str) -> dict[str, str | int]:
-    token_hash = agent_secret_token_hash(token)
-    return {
-        "version": LOCAL_AGENT_SECRET_VERSION,
-        "agent_identity_ref": next_record_id(records, "AGENT-"),
-        "agent_name": _local_agent_name(),
-        "key_algorithm": "hmac-sha256",
-        "key_scope": "local-agent",
-        "token_hash": token_hash,
-        "secret": _signing_secret_from_token(token),
-        "created_at": timestamp,
-    }
-
-
-def load_or_create_local_agent_secret(root: Path, records: dict[str, dict], timestamp: str | None = None) -> dict:
-    token = require_agent_secret_token()
-    path = agent_secret_path(root, token)
-    if path.exists():
-        try:
-            payload = parse_json_file(path)
-        except (OSError, json.JSONDecodeError, ValueError):
-            payload = {}
-        if (
-            int(payload.get("version", 0) or 0) == LOCAL_AGENT_SECRET_VERSION
-            and str(payload.get("agent_identity_ref", "")).startswith("AGENT-")
-            and str(payload.get("token_hash", "")).strip() == agent_secret_token_hash(token)
-            and str(payload.get("secret", "")).strip()
-        ):
-            return payload
-
-    payload = _new_secret_payload(records, timestamp or now_timestamp(), token)
-    write_json_file(path, payload)
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
-    return payload
-
-
-def load_local_agent_secret(root: Path) -> dict:
-    token = current_agent_secret_token()
-    if not token:
-        return {}
-    path = agent_secret_path(root, token)
-    if not path.exists():
-        return {}
-    try:
-        payload = parse_json_file(path)
-    except (OSError, json.JSONDecodeError, ValueError):
-        return {}
-    if (
-        int(payload.get("version", 0) or 0) != LOCAL_AGENT_SECRET_VERSION
-        or not str(payload.get("agent_identity_ref", "")).startswith("AGENT-")
-        or str(payload.get("token_hash", "")).strip() != agent_secret_token_hash(token)
-        or not str(payload.get("secret", "")).strip()
-    ):
-        return {}
-    return payload
-
-
-def local_agent_identity_record(secret_payload: dict) -> dict:
-    timestamp = str(secret_payload.get("created_at") or now_timestamp())
+def _agent_record(agent_ref: str, *, fingerprint: str, created_at: str) -> dict:
     return AgentIdentityRecord(
-        id=str(secret_payload["agent_identity_ref"]),
+        id=agent_ref,
         scope="agent.local",
-        agent_name=str(secret_payload.get("agent_name") or _local_agent_name()),
-        key_fingerprint=agent_key_fingerprint(str(secret_payload["secret"])),
-        created_at=timestamp,
-        note="Public local-agent identity metadata only. Private key material is runtime-private.",
+        agent_name=_local_agent_name(),
+        key_fingerprint=fingerprint,
+        created_at=created_at,
+        key_algorithm="hmac-sha256",
+        key_scope="agent-owned",
+        note="Public agent identity metadata only. Private key material remains agent-held.",
     ).to_payload()
 
 
+def current_bound_agent_ref(root: Path) -> str:
+    thread_binding = _thread_binding(root)
+    if str(thread_binding.get("agent_identity_ref", "")).startswith("AGENT-"):
+        return str(thread_binding.get("agent_identity_ref", "")).strip()
+    private_key = current_agent_private_key()
+    if not private_key:
+        return ""
+    binding = _key_binding(root, agent_key_fingerprint(private_key))
+    return str(binding.get("agent_identity_ref", "")).strip() if str(binding.get("agent_identity_ref", "")).startswith("AGENT-") else ""
+
+
 def ensure_local_agent_identity(root: Path, records: dict[str, dict], timestamp: str | None = None) -> tuple[dict, str]:
-    secret_payload = load_or_create_local_agent_secret(root, records, timestamp)
-    agent_ref = str(secret_payload["agent_identity_ref"])
-    existing = records.get(agent_ref)
-    secret = str(secret_payload["secret"])
-    fingerprint = agent_key_fingerprint(secret)
-    if existing and existing.get("record_type") == "agent_identity" and str(existing.get("key_fingerprint", "")) == fingerprint:
-        return _public_record(existing), secret
-    return local_agent_identity_record({**secret_payload, "key_fingerprint": fingerprint}), secret
+    private_key = require_agent_private_key()
+    fingerprint = agent_key_fingerprint(private_key)
+    created_at = timestamp or now_timestamp()
+
+    thread_binding = _thread_binding(root)
+    thread_agent_ref = str(thread_binding.get("agent_identity_ref", "")).strip()
+    if thread_agent_ref:
+        existing = records.get(thread_agent_ref)
+        if not existing or existing.get("record_type") != "agent_identity":
+            raise AgentIdentityRequiredError()
+        if str(existing.get("key_fingerprint", "")).strip() != fingerprint:
+            raise RuntimeError(f"agent identity isolation error: thread is already bound to {thread_agent_ref} with another key")
+        _bind_thread(root, agent_ref=thread_agent_ref, fingerprint=fingerprint)
+        _bind_key(root, agent_ref=thread_agent_ref, fingerprint=fingerprint)
+        _write_agent_binding(root, agent_ref=thread_agent_ref, fingerprint=fingerprint)
+        _persist_agent_record(root, _public_record(existing))
+        return _public_record(existing), private_key
+
+    key_binding = _key_binding(root, fingerprint)
+    bound_agent_ref = str(key_binding.get("agent_identity_ref", "")).strip()
+    if bound_agent_ref:
+        existing = records.get(bound_agent_ref)
+        if existing and existing.get("record_type") == "agent_identity":
+            _bind_key(root, agent_ref=bound_agent_ref, fingerprint=fingerprint)
+            _bind_thread(root, agent_ref=bound_agent_ref, fingerprint=fingerprint)
+            _write_agent_binding(root, agent_ref=bound_agent_ref, fingerprint=fingerprint)
+            _persist_agent_record(root, _public_record(existing))
+            return _public_record(existing), private_key
+
+    existing = next(
+        (
+            _public_record(record)
+            for record in records.values()
+            if record.get("record_type") == "agent_identity"
+            and str(record.get("key_fingerprint", "")).strip() == fingerprint
+        ),
+        None,
+    )
+    if existing:
+        agent_ref = str(existing["id"])
+        _bind_key(root, agent_ref=agent_ref, fingerprint=fingerprint)
+        _bind_thread(root, agent_ref=agent_ref, fingerprint=fingerprint)
+        _write_agent_binding(root, agent_ref=agent_ref, fingerprint=fingerprint)
+        _persist_agent_record(root, existing)
+        return existing, private_key
+
+    agent_ref = next_record_id(records, "AGENT-")
+    created = _agent_record(agent_ref, fingerprint=fingerprint, created_at=created_at)
+    _bind_key(root, agent_ref=agent_ref, fingerprint=fingerprint)
+    _bind_thread(root, agent_ref=agent_ref, fingerprint=fingerprint)
+    _write_agent_binding(root, agent_ref=agent_ref, fingerprint=fingerprint)
+    _persist_agent_record(root, created)
+    return created, private_key
 
 
 def signed_wctx_payload_hash(payload: dict) -> str:
@@ -212,50 +297,37 @@ def signed_wctx_payload_hash(payload: dict) -> str:
     return _sha256_text(_canonical_json(signed_payload))
 
 
+def _sign_hash(private_key: str, payload_hash: str) -> str:
+    digest = hmac.new(private_key.encode("utf-8"), payload_hash.encode("utf-8"), hashlib.sha256).hexdigest()
+    return "hmac-sha256:" + digest
+
+
 def local_agent_owns_working_context(root: Path, payload: dict) -> bool:
-    secret_payload = load_local_agent_secret(root)
-    if not secret_payload:
-        return False
-    secret = str(secret_payload.get("secret", ""))
-    fingerprint = agent_key_fingerprint(secret)
-    return (
-        str(secret_payload.get("agent_identity_ref", "")).strip()
-        == str(payload.get("agent_identity_ref", "")).strip()
-        and fingerprint == str(payload.get("agent_key_fingerprint", "")).strip()
-    )
+    agent_ref = current_bound_agent_ref(root)
+    return bool(agent_ref and agent_ref == str(payload.get("agent_identity_ref", "")).strip())
 
 
-def verify_working_context_signature(root: Path, payload: dict) -> list[str]:
+def verify_working_context_signature(root: Path, payload: dict, agent_record: dict) -> list[str]:
     signature = payload.get("owner_signature")
     if not isinstance(signature, dict):
         return []
     errors: list[str] = []
     expected_hash = signed_wctx_payload_hash(payload)
     actual_hash = str(signature.get("signed_payload_hash", "")).strip()
-    if actual_hash.startswith("sha256:") and actual_hash != expected_hash:
+    if actual_hash != expected_hash:
         errors.append("WCTX owner_signature.signed_payload_hash mismatch")
 
-    secret_payload = load_local_agent_secret(root)
-    if not secret_payload:
-        return errors
-    if str(secret_payload.get("agent_identity_ref", "")).strip() != str(payload.get("agent_identity_ref", "")).strip():
-        return errors
-
-    secret = str(secret_payload.get("secret", ""))
-    fingerprint = agent_key_fingerprint(secret)
-    if fingerprint != str(payload.get("agent_key_fingerprint", "")).strip():
-        errors.append("WCTX local agent secret fingerprint mismatch")
-        return errors
-
-    expected_signature = "hmac-sha256:" + hmac.new(secret.encode("utf-8"), expected_hash.encode("utf-8"), hashlib.sha256).hexdigest()
-    actual_signature = str(signature.get("signature", "")).strip()
-    if actual_signature.startswith("hmac-sha256:") and not hmac.compare_digest(actual_signature, expected_signature):
-        errors.append("WCTX owner_signature.signature mismatch")
+    current_key = current_agent_private_key()
+    record_fingerprint = str(agent_record.get("key_fingerprint", "")).strip()
+    if current_key and agent_key_fingerprint(current_key) == record_fingerprint:
+        expected_signature = _sign_hash(current_key, expected_hash)
+        if not hmac.compare_digest(str(signature.get("signature", "")).strip(), expected_signature):
+            errors.append("WCTX owner_signature.signature mismatch")
     return errors
 
 
 def sign_working_context_payload(root: Path, records: dict[str, dict], payload: dict, timestamp: str | None = None) -> tuple[dict, dict]:
-    agent_record, secret = ensure_local_agent_identity(root, records, timestamp)
+    agent_record, private_key = ensure_local_agent_identity(root, records, timestamp)
     signed = dict(payload)
     signed["contract_version"] = "0.4"
     signed["record_version"] = 1
@@ -264,11 +336,10 @@ def sign_working_context_payload(root: Path, records: dict[str, dict], payload: 
     signed["ownership_mode"] = "owner-only"
     signed["handoff_policy"] = "fork-required"
     payload_hash = signed_wctx_payload_hash(signed)
-    digest = hmac.new(secret.encode("utf-8"), payload_hash.encode("utf-8"), hashlib.sha256).hexdigest()
     signed["owner_signature"] = {
         "algorithm": "hmac-sha256",
         "signed_payload_hash": payload_hash,
-        "signature": "hmac-sha256:" + digest,
+        "signature": _sign_hash(private_key, payload_hash),
         "signed_fields": list(WCTX_SIGNED_FIELDS),
     }
     return signed, agent_record

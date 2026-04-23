@@ -12,7 +12,6 @@ The 0.4 runtime writes one ledger per agent:
 
 ```text
 runtime/reasoning/agents/AGENT-*/reasons.jsonl
-runtime/reasoning/agents/AGENT-*/seal.json
 ```
 
 Rules:

@@ -17,17 +17,28 @@ CURATOR_SKILL_ROOT = PLUGIN_ROOT / "skills" / "trust-evidence-curator"
 BOOTSTRAP = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "bootstrap_codex_context.py"
 CLI = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "scripts" / "context_cli.py"
 INSTALL_LOCAL_PLUGIN = REPO_ROOT / "scripts" / "install-local-plugin.sh"
+_TEST_AGENT_KEYS: dict[str, str] = {}
+
+
+def make_agent_private_key(label: str) -> str:
+    cached = _TEST_AGENT_KEYS.get(label)
+    if cached:
+        return cached
+    value = f"test-private-key::{label}"
+    _TEST_AGENT_KEYS[label] = value
+    return value
 
 
 def run_cli(
     context: Path,
     *args: str,
     check: bool = True,
-    agent_token: str | None = "pytest-cli-agent-token",
+    agent_private_key_label: str | None = "pytest-cli-agent-token",
 ) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
-    if agent_token is not None:
-        env["TEP_AGENT_SECRET_TOKEN"] = agent_token
+    if agent_private_key_label is not None:
+        env["TEP_AGENT_PRIVATE_KEY"] = make_agent_private_key(agent_private_key_label)
+        env["CODEX_THREAD_ID"] = f"pytest-thread-{agent_private_key_label}"
     result = subprocess.run(
         [sys.executable, str(CLI), "--context", str(context), *args],
         cwd=REPO_ROOT,
@@ -3611,7 +3622,7 @@ def test_lookup_ignores_active_working_context_linked_to_paused_task(tmp_path: P
             "facts",
             "--format",
             "json",
-            agent_token="pytest-other-cli-agent-token",
+            agent_private_key_label="pytest-other-cli-agent-token",
         ).stdout
     )
     assert lookup["focus"]["auto_created_working_context"] is True
@@ -3679,7 +3690,7 @@ def test_lookup_forks_focus_when_active_wctx_is_owned_by_another_agent(tmp_path:
         "--note",
         "should fail for non-owner",
         check=False,
-        agent_token="pytest-other-cli-agent-token",
+        agent_private_key_label="pytest-other-cli-agent-token",
     )
     assert close_attempt.returncode == 1
     assert "owned by another local agent" in close_attempt.stdout
@@ -3696,7 +3707,7 @@ def test_lookup_forks_focus_when_active_wctx_is_owned_by_another_agent(tmp_path:
             "facts",
             "--format",
             "json",
-            agent_token="pytest-other-cli-agent-token",
+            agent_private_key_label="pytest-other-cli-agent-token",
         ).stdout
     )
     assert lookup["focus"]["auto_created_working_context"] is True

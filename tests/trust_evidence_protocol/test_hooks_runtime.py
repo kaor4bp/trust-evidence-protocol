@@ -16,11 +16,22 @@ HYDRATE_WRAPPER = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / 
 PREFLIGHT_WRAPPER = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / "preflight_task.sh"
 HOOK_DIR = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / "codex"
 CLAUDE_HOOK_DIR = REPO_ROOT / "plugins" / "trust-evidence-protocol" / "hooks" / "claude"
+_TEST_AGENT_KEYS: dict[str, str] = {}
+
+
+def make_agent_private_key(label: str) -> str:
+    cached = _TEST_AGENT_KEYS.get(label)
+    if cached:
+        return cached
+    value = f"test-private-key::{label}"
+    _TEST_AGENT_KEYS[label] = value
+    return value
 
 
 def run_script(script: Path, payload: dict | None = None, *, check: bool = True) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
-    env["TEP_AGENT_SECRET_TOKEN"] = "pytest-hooks-agent-token"
+    env["TEP_AGENT_PRIVATE_KEY"] = make_agent_private_key("pytest-hooks-agent-token")
+    env["CODEX_THREAD_ID"] = "pytest-thread-hooks"
     if payload:
         cwd = payload.get("cwd")
         if isinstance(cwd, str):
@@ -45,7 +56,11 @@ def run_cli(context: Path, *args: str, check: bool = True) -> subprocess.Complet
     result = subprocess.run(
         [sys.executable, str(CLI), "--context", str(context), *args],
         cwd=REPO_ROOT,
-        env={**os.environ, "TEP_AGENT_SECRET_TOKEN": "pytest-hooks-agent-token"},
+        env={
+            **os.environ,
+            "TEP_AGENT_PRIVATE_KEY": make_agent_private_key("pytest-hooks-agent-token"),
+            "CODEX_THREAD_ID": "pytest-thread-hooks",
+        },
         capture_output=True,
         text=True,
         check=False,
@@ -66,7 +81,11 @@ def run_runtime(
     result = subprocess.run(
         [sys.executable, str(RUNTIME_GATE), "--context", str(context), *args],
         cwd=cwd or context.parent,
-        env={**os.environ, "TEP_AGENT_SECRET_TOKEN": "pytest-hooks-agent-token"},
+        env={
+            **os.environ,
+            "TEP_AGENT_PRIVATE_KEY": make_agent_private_key("pytest-hooks-agent-token"),
+            "CODEX_THREAD_ID": "pytest-thread-hooks",
+        },
         capture_output=True,
         text=True,
         check=False,

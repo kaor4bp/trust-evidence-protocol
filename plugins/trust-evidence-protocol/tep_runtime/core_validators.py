@@ -146,7 +146,7 @@ def validate_wctx_ownership(root: Path, records: dict[str, dict]) -> list[Valida
             errors.append(ValidationError(_path(record), "WCTX owner_signature.signed_payload_hash must start with sha256:"))
         if not str(signature.get("signature", "")).strip().startswith("hmac-sha256:"):
             errors.append(ValidationError(_path(record), "WCTX owner_signature.signature must start with hmac-sha256:"))
-        for message in verify_working_context_signature(root, record):
+        for message in verify_working_context_signature(root, record, agent):
             errors.append(ValidationError(_path(record), message))
     return errors
 

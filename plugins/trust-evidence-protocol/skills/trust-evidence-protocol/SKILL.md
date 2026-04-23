@@ -51,7 +51,7 @@ They should rank above scattered claims, but they must come from supported or us
 
 ## Start Here
 
-1. Invent a private per-agent secret token at the start of a work session and reuse it for every mutating MCP call as `agent_token`, or expose it to CLI/hooks as `TEP_AGENT_SECRET_TOKEN`. Do not share this token with another agent.
+1. Invent a private per-agent key at the start of a work session and reuse it for every mutating MCP call as `agent_private_key`, or expose it to CLI/hooks as `TEP_AGENT_PRIVATE_KEY`. Do not share this key with another agent.
 2. If unsure what to do, call `next_step` or CLI `next-step`. Read the briefing before acting: it includes the current `STEP-*` cursor and a non-authoritative rights snapshot. `next_step` and `lookup` are always allowed entrypoints; protected writes, mutating bash, and autonomous `done` still need a valid reviewed `STEP-*`/`GRANT-*` checked at use time.
 3. If looking for facts, code, policy, or theory, call `lookup` first with a concrete reason. If you do not know what is important yet, use map/curiosity navigation to inspect anchors, bridges, ignored facts, and tap smell. If a current `STEP-*` exists, lookup and map drill-down should prefer records that can extend or safely fork the CLM chain.
 4. If the route says task decomposition is missing, use `validate-task-decomposition`, `confirm-atomic-task`, or `decompose-task`.
