@@ -643,12 +643,15 @@ evidence:
   scope, context fingerprint, expiry, and optionally exact command hash plus cwd.
 
 The ledger is not a free-form record store. The append-only ledger validator
-accepts current `REASON-*` and `GRANT-*` entries, plus legacy `AUTH/USE` entries
-for old contexts. Current entries must carry the same `agent_identity_ref` as
-their enclosing ledger path. `REASON-*` chain snapshots may cite only supported
-evidence chain roles: `fact`, `observation`, `hypothesis`, `exploration_context`,
-`permission`, `requested_permission`, `restriction`, `guideline`, `proposal`,
-`task`, `working_context`, `project`, `model`, `flow`, and `open_question`.
+accepts only current `REASON-*` and `GRANT-*` entries. Current entries must
+carry the same `agent_identity_ref` as their enclosing ledger path. A valid
+ledger proves protocol-valid justification structure, sequence integrity, and
+agent ownership. It does not prove that the agent chose the globally correct
+interpretation or that its private reasoning was adequate.
+`REASON-*` chain snapshots may cite only supported evidence chain roles:
+`fact`, `observation`, `hypothesis`, `exploration_context`, `permission`,
+`requested_permission`, `restriction`, `guideline`, `proposal`, `task`,
+`working_context`, `project`, `model`, `flow`, and `open_question`.
 Generated/backend/navigation ids such as `CIX-*`, `BCK-*`, `backend:*`, or
 `topic_index:*` cannot be proof nodes.
 

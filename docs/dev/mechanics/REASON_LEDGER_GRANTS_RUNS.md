@@ -27,7 +27,10 @@ Rules:
   same branch
 - hash-chain seal and weak proof-of-work detect rewriting
 
-The ledger is not canonical truth. It is runtime control evidence.
+The ledger is not canonical truth. It is runtime control evidence. A valid
+ledger proves that the agent produced an untampered, owner-bound, mode-valid
+public justification chain. It does not prove semantic correctness, optimality,
+or that no better interpretation was available.
 
 The ledger also functions as task-local working-memory pressure. Each step
 forces the agent to attach its next move to cited facts, observations, marked
